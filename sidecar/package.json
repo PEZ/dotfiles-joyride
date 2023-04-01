@@ -1,0 +1,36 @@
+{
+    "name": "joyride-sidecar",
+    "displayName": "Joyride Sidecar",
+    "publisher": "betterthantomorrow",
+    "description": "A VS Code extension manifest to load some configuration for my Joyride scripts",
+    "version": "0.0.1",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/BetterThanTomorrow/joyride.git"
+    },
+    "icon": "sidecar.png",
+    "license": "MIT",
+    "engines": {
+        "vscode": "^1.67.0"
+    },
+    "sponsor": {
+        "url": "https://calva.io/sponsors/"
+    },
+    "categories": [
+        "Other"
+    ],
+    "keywords": [
+        "Joyride"
+    ],
+    "contributes": {
+        "views": {
+            "explorer": [
+                {
+                    "id": "hello-world.view",
+                    "name": "Hello World View",
+                    "when": "joyride.sidecar:helloWorldViewEnabled"
+                }
+            ]
+        }
+    }
+}

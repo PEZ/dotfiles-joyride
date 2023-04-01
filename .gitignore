@@ -19,3 +19,4 @@ words-alpha.txt
 .shadow-cljs/
 node_modules/
 tsconfig.tsbuildinfo
+*.vsix
