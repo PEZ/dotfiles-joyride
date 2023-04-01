@@ -1,0 +1,20 @@
+{
+  "name": "joyride",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "dependencies": {
+    "moment": "^2.29.4",
+    "posthtml-parser": "^0.11.0"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "shadow-cljs": "^2.20.5",
+    "source-map-support": "^0.5.21"
+  }
+}
