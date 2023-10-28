@@ -2,7 +2,8 @@
     "name": "joyride-sidecar",
     "displayName": "Joyride Sidecar",
     "publisher": "betterthantomorrow",
-    "description": "A VS Code extension manifest to load some configuration for my Joyride scripts",
+    "description": "A VS Code extension manifest to load configuration for Joyride scripts. Not intended to be published to the marketplace.",
+    "author": "pez@pezius.com",
     "version": "0.0.1",
     "repository": {
         "type": "git",
