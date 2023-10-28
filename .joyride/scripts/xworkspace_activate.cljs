@@ -42,4 +42,5 @@
 (comment
   (.then (util/slurp-ws-file+ ".nrepl-port")
          (fn [x] (println x)))
+  (clear-disposables!)
   :rcf)
