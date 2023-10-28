@@ -1,10 +1,10 @@
-(ns hello-world-view
-  (:require ["vscode" :as vscode]
-            [joyride.core :as joyride]
-            ["child_process" :as child-process]
-            [promesa.core :as p]
+(ns sidecar-hello
+  (:require ["child_process" :as child-process]
+            ["path" :as path]
             ["util" :as node-util]
-            ["path" :as path]))
+            ["vscode" :as vscode]
+            [joyride.core :as joyride]
+            [promesa.core :as p]))
 
 (def exec!+ (node-util/promisify child-process/exec))
 (def sidecar-dir (path/resolve (path/dirname joyride/*file*) "../sidecar"))
