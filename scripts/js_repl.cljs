@@ -1,7 +1,6 @@
 (ns js-repl
   (:require ["vscode" :as vscode]
             [joyride.core :as joyride]
-            [clojure.string :as string]
             [promesa.core :as p]
             ["repl" :as node-repl]
             ["vm" :as vm]))
@@ -12,28 +11,42 @@
                     :decorations {}}))
 
 (defn vm-eval
-  [code context _filename callback]
-  (try (let [result (vm/runInContext code context)]
+  [code context file-info callback]
+  (try (let [result (vm/runInContext code context file-info)]
          (callback nil result))
        (catch :default e
          (callback e))))
 
 (defonce repl (.start node-repl #js {:eval vm-eval}))
 
-(defn eval+ [code]
+(defn eval+ [code {:keys [filename line-offset column-offset]}]
   (let [!resolve (atom nil)]
-    (-> (p/create (fn [resolve _reject]
-                    (reset! !resolve resolve)
-                    (.eval repl
-                           code
-                           (.-context repl)
-                           ""
-                           (fn [err, result]
-                             (if err
-                               (resolve {:err err})
-                               (resolve {:result result}))))))
+    (-> (p/create
+         (fn [resolve _reject]
+           (reset! !resolve resolve)
+           (.eval repl
+                  code
+                  (.-context repl)
+                  #js {:filename filename
+                       :lineOffset line-offset
+                       :columnOffset column-offset}
+                  (fn [err, result]
+                    (def err err)
+                    (-> (p/let [resolved-result result]
+                          (if err
+                            (resolve {:err err})
+                            (resolve {:result resolved-result})))
+                        (p/catch (fn [p-err]
+                                   (resolve {:err p-err}))))))))
+        ;; Some errors are not sent to the eval callback...
         (p/catch (fn [err]
                    (@!resolve {:err err}))))))
+
+(comment
+  (joyride/js-properties err)
+  (.-message err)
+  (.-stack err)
+  :rcf)
 
 (defn- clear-disposables! []
   (run! (fn [disposable]
@@ -50,11 +63,10 @@
         :rangeBehavior vscode/DecorationRangeBehavior.ClosedOpen}))
 
 (defn evaluated-render-options [range result error language]
-  (let [display-results (str result error)]
-    {:renderOptions {:after {:contentText (str "\u00a0=> "
-                                               (string/replace display-results #" ", "\u00a0")),
+  (let [display-results (if error (str error) result)]
+    {:renderOptions {:after {:contentText (str " " (when-not error "=> ") display-results),
                              :overflow "hidden"
-                             :color (if error "red" "#db9550")}}
+                             :color (if error "#F55" "#db9550")}}
      :hoverMessage (str "``` " language "\n"
                         display-results
                         "\n```\n")
@@ -90,10 +102,14 @@
 
 (defn ^:export evaluate-selection! []
   (p/let [selection vscode/window.activeTextEditor.selection
+          line (-> selection .-start .-line)
+          column (-> selection .-start .-character)
           document vscode/window.activeTextEditor.document
+          filename (.-fileName document)
           selectedText (.getText document selection)
-          result (eval+ selectedText)
-          _ (def result result)
+          result (eval+ selectedText {:filename filename
+                                      :line-offset line
+                                      :column-offset column})
           pretty-printed-result (stringify (:result result))]
     (decorate! vscode/window.activeTextEditor.selection pretty-printed-result (:err result) "js")))
 
@@ -105,6 +121,9 @@
 
 (comment
   (decorate! vscode/window.activeTextEditor.selection "\"Hello World!\"" "js")
+  (def selection vscode/window.activeTextEditor.selection)
+  (joyride/js-properties selection)
+  (joyride/js-properties (-> selection .-start))
   (clear-decorations!)
   :rcf)
 
