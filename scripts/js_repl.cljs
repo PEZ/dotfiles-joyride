@@ -6,11 +6,13 @@
             ["repl" :as node-repl]
             ["vm" :as vm]))
 
-(def when-context-key "joyride-js-repl:hasDecorations")
+(def js-repl-active?-when-key "joyride-js-repl:isActive")
+(def decorations?-when-key "joyride-js-repl:hasDecorations")
 
 (defonce !db (atom {:disposables []
                     :decorations {}
-                    :output-channel nil}))
+                    :output-channel nil
+                    :repl nil}))
 
 (defn vm-eval
   [code context file-info callback]
@@ -19,10 +21,9 @@
        (catch :default e
          (callback e))))
 
-(defonce repl (.start node-repl #js {:eval vm-eval}))
-
 (defn eval+ [code {:keys [filename line-offset column-offset]}]
-  (let [!resolve (atom nil)]
+  (let [!resolve (atom nil)
+        repl (:repl @!db)]
     (-> (p/create
          (fn [resolve _reject]
            (reset! !resolve resolve)
@@ -73,7 +74,7 @@
 
 (defn set-decorations-context! [editor]
   (let [decorations? (not (nil? (get-in @!db [:decorations (editor->key editor)])))]
-    (vscode/commands.executeCommand "setContext" when-context-key decorations?)))
+    (vscode/commands.executeCommand "setContext" decorations?-when-key decorations?)))
 
 (defn decorate! [range s error language]
   (when-let [active-editor vscode/window.activeTextEditor]
@@ -135,10 +136,14 @@
 
 (defn init! []
   (clear-disposables!)
+  (clear-decorations!)
   (push-disposable! (vscode/window.onDidChangeActiveTextEditor set-decorations-context!))
   (let [channel (vscode/window.createOutputChannel "Joyride JS-REPL" "javascript")]
     (swap! !db assoc :output-channel channel)
-    (push-disposable! channel)))
+    (push-disposable! channel))
+  ;; Create a new repl context on init so that we can undeclare stuff
+  (swap! !db assoc :repl (.start node-repl #js {:eval vm-eval}))
+  (vscode/commands.executeCommand "setContext" js-repl-active?-when-key true))
 
 
 (when (= (joyride/invoked-script) joyride/*file*)
