@@ -6,7 +6,7 @@
             ["repl" :as node-repl]
             ["vm" :as vm]))
 
-(def when-context-key "joyride-repl:hasDecorations")
+(def when-context-key "joyride-js-repl:hasDecorations")
 
 (defonce !db (atom {:disposables []
                     :decorations {}
@@ -33,6 +33,7 @@
                        :lineOffset line-offset
                        :columnOffset column-offset}
                   (fn [err, result]
+                    ;; Some results (and errors are promises)
                     (-> (p/let [resolved-result result]
                           (if err
                             (resolve {:err err})
@@ -132,15 +133,6 @@
     (.setDecorations active-editor eval-results-decoration-type #js [])
     (set-decorations-context! active-editor)))
 
-(comment
-  (def selection vscode/window.activeTextEditor.selection)
-  (joyride/js-properties selection)
-  (joyride/js-properties (-> selection .-start))
-  (clear-decorations!)
-  :rcf)
-
-
-
 (defn init! []
   (clear-disposables!)
   (push-disposable! (vscode/window.onDidChangeActiveTextEditor set-decorations-context!))
@@ -156,7 +148,6 @@
   (init!)
   (clear-disposables!)
 
-  (joyride/js-properties vscode/window.createOutputChannel)
   :rcf)
 
 "🚗💨"
