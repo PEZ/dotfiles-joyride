@@ -13,13 +13,14 @@
 
 (defn eval+ [code]
   (p/create (fn [resolve reject]
-              (-> node-repl
-                  (.eval code (.-context node-repl)
-                         ""
-                         (fn [err, result]
-                           (if err
-                             (reject err)
-                             (resolve result))))))))
+              (.eval node-repl
+                     code
+                     (.-context node-repl)
+                     ""
+                     (fn [err, result]
+                       (if err
+                         (reject err)
+                         (resolve result)))))))
 
 (def when-context-key "joyride-repl:hasDecorations")
 
