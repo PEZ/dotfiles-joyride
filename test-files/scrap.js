@@ -33,3 +33,10 @@ config;
 
   // Other module code
 })();
+
+process.cwd();
+__dirname;
+var { hello_fine, hello_borked } = require('/Users/pez/.config/joyride/test-files/has-errors.js');
+
+hello_fine('World');
+hello_borked('World');

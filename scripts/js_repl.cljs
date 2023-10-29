@@ -1,5 +1,6 @@
 (ns js-repl
   (:require ["vscode" :as vscode]
+            [clojure.string :as string]
             [joyride.core :as joyride]
             [promesa.core :as p]
             ["repl" :as node-repl]
@@ -8,7 +9,8 @@
 (def when-context-key "joyride-repl:hasDecorations")
 
 (defonce !db (atom {:disposables []
-                    :decorations {}}))
+                    :decorations {}
+                    :output-channel nil}))
 
 (defn vm-eval
   [code context file-info callback]
@@ -31,7 +33,6 @@
                        :lineOffset line-offset
                        :columnOffset column-offset}
                   (fn [err, result]
-                    (def err err)
                     (-> (p/let [resolved-result result]
                           (if err
                             (resolve {:err err})
@@ -41,12 +42,6 @@
         ;; Some errors are not sent to the eval callback...
         (p/catch (fn [err]
                    (@!resolve {:err err}))))))
-
-(comment
-  (joyride/js-properties err)
-  (.-message err)
-  (.-stack err)
-  :rcf)
 
 (defn- clear-disposables! []
   (run! (fn [disposable]
@@ -100,6 +95,16 @@
               (str value)
               json-str))))
 
+(defn- format-error [error]
+  (str "// " error "\n"
+       (->> (.-stack error)
+            (clojure.string/split-lines)
+            (map (fn [line]
+                   (str "// " line)))
+            (take-while (fn [line]
+                          (not (re-find #"at Script.runInContext" line))))
+            (string/join "\n"))))
+
 (defn ^:export evaluate-selection! []
   (p/let [selection vscode/window.activeTextEditor.selection
           line (-> selection .-start .-line)
@@ -111,7 +116,15 @@
                                       :line-offset line
                                       :column-offset column})
           pretty-printed-result (stringify (:result result))]
-    (decorate! vscode/window.activeTextEditor.selection pretty-printed-result (:err result) "js")))
+    (doto (:output-channel @!db)
+      (.append (if (:err result)
+                     (format-error (:err result))
+                     pretty-printed-result))
+      (.append "\n---\n\n"))
+    (decorate! vscode/window.activeTextEditor.selection
+               pretty-printed-result
+               (:err result)
+               (if (:err result) "text" "js"))))
 
 (defn clear-decorations! []
   (when-let [active-editor vscode/window.activeTextEditor]
@@ -120,7 +133,6 @@
     (set-decorations-context! active-editor)))
 
 (comment
-  (decorate! vscode/window.activeTextEditor.selection "\"Hello World!\"" "js")
   (def selection vscode/window.activeTextEditor.selection)
   (joyride/js-properties selection)
   (joyride/js-properties (-> selection .-start))
@@ -131,7 +143,10 @@
 
 (defn init! []
   (clear-disposables!)
-  (push-disposable! (vscode/window.onDidChangeActiveTextEditor set-decorations-context!)))
+  (push-disposable! (vscode/window.onDidChangeActiveTextEditor set-decorations-context!))
+  (let [channel (vscode/window.createOutputChannel "Joyride JS-REPL" "javascript")]
+    (swap! !db assoc :output-channel channel)
+    (push-disposable! channel)))
 
 
 (when (= (joyride/invoked-script) joyride/*file*)
@@ -140,6 +155,8 @@
 (comment
   (init!)
   (clear-disposables!)
+
+  (joyride/js-properties vscode/window.createOutputChannel)
   :rcf)
 
 "🚗💨"
