@@ -1,10 +1,34 @@
+;; Best placed among your user scripts
+;; How to use:
+;; 0. Configure the keyboard shortcuts (see below)
+;; 1. Run the command **Joyride: Run User Script...**
+;;    Select `js-repl.cljs`
+;; 2. In your JS files, select code and evaluate with `ctrl+enter`
+;;    Clear result decorations with `ctrl+escape`
+;;
+;; You decide yourself what are good keyboard shortcuts, of course
+;;
+;; == Keyboard shortcuts ==
+;;    {
+;;        "key": "ctrl+enter",
+;;        "when": "editorLangId == 'javascript' && joyride-js-repl:isActive",
+;;        "command": "joyride.runCode",
+;;        "args": "(js-repl/evaluate-selection!)"
+;;    },
+;;    {
+;;        "key": "ctrl+escape",
+;;        "when": "joyride-js-repl:hasDecorations",
+;;        "command": "joyride.runCode",
+;;        "args": "(js-repl/clear-decorations!)",
+;;    },
+
 (ns js-repl
-  (:require ["vscode" :as vscode]
-            [clojure.string :as string]
-            [joyride.core :as joyride]
-            [promesa.core :as p]
-            ["repl" :as node-repl]
-            ["vm" :as vm]))
+    (:require ["vscode" :as vscode]
+              [clojure.string :as string]
+              [joyride.core :as joyride]
+              [promesa.core :as p]
+              ["repl" :as node-repl]
+              ["vm" :as vm]))
 
 (def js-repl-active?-when-key "joyride-js-repl:isActive")
 (def decorations?-when-key "joyride-js-repl:hasDecorations")
