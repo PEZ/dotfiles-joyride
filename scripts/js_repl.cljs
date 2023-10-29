@@ -3,26 +3,37 @@
             [joyride.core :as joyride]
             [clojure.string :as string]
             [promesa.core :as p]
-            ["repl" :as repl]
-            :reload))
+            ["repl" :as node-repl]
+            ["vm" :as vm]))
+
+(def when-context-key "joyride-repl:hasDecorations")
 
 (defonce !db (atom {:disposables []
                     :decorations {}}))
 
-(defonce node-repl (.start repl))
+(defn vm-eval
+  [code context _filename callback]
+  (try (let [result (vm/runInContext code context)]
+         (callback nil result))
+       (catch :default e
+         (callback e))))
+
+(defonce repl (.start node-repl #js {:eval vm-eval}))
 
 (defn eval+ [code]
-  (p/create (fn [resolve reject]
-              (.eval node-repl
-                     code
-                     (.-context node-repl)
-                     ""
-                     (fn [err, result]
-                       (if err
-                         (reject err)
-                         (resolve result)))))))
-
-(def when-context-key "joyride-repl:hasDecorations")
+  (let [!resolve (atom nil)]
+    (-> (p/create (fn [resolve _reject]
+                    (reset! !resolve resolve)
+                    (.eval repl
+                           code
+                           (.-context repl)
+                           ""
+                           (fn [err, result]
+                             (if err
+                               (resolve {:err err})
+                               (resolve {:result result}))))))
+        (p/catch (fn [err]
+                   (@!resolve {:err err}))))))
 
 (defn- clear-disposables! []
   (run! (fn [disposable]
@@ -35,16 +46,19 @@
 
 (def eval-results-decoration-type
   (vscode/window.createTextEditorDecorationType
-   #js {:after #js {:color "#db9550"},
+   #js {:after #js {},
         :rangeBehavior vscode/DecorationRangeBehavior.ClosedOpen}))
 
-(defn evaluated-render-options [range s language]
-   {:renderOptions {:after {:contentText (str "\u00a0=> " (string/replace s #" ", "\u00a0")),
-                            :overflow "hidden"}}
-    :hoverMessage (str "``` " language "\n"
-                       s
-                       "\n```\n")
-    :range range})
+(defn evaluated-render-options [range result error language]
+  (let [display-results (str result error)]
+    {:renderOptions {:after {:contentText (str "\u00a0=> "
+                                               (string/replace display-results #" ", "\u00a0")),
+                             :overflow "hidden"
+                             :color (if error "red" "#db9550")}}
+     :hoverMessage (str "``` " language "\n"
+                        display-results
+                        "\n```\n")
+     :range range}))
 
 (defn editor->key [active-editor]
   (-> active-editor .-document .-uri str))
@@ -53,11 +67,13 @@
   (let [decorations? (not (nil? (get-in @!db [:decorations (editor->key editor)])))]
     (vscode/commands.executeCommand "setContext" when-context-key decorations?)))
 
-(defn decorate! [range s language]
+(defn decorate! [range s error language]
   (when-let [active-editor vscode/window.activeTextEditor]
     (let [k (editor->key active-editor)
-          decorations (conj (get-in @!db [:decorations k] [])
-                            (evaluated-render-options range s language))]
+          decorations (-> (remove (fn [decoration]
+                                    (.intersection (:range decoration) range))
+                                  (get-in @!db [:decorations k] []))
+                          (conj (evaluated-render-options range s error language)))]
       (swap! !db assoc-in [:decorations k] decorations)
       (.setDecorations active-editor eval-results-decoration-type (clj->js decorations))
       (set-decorations-context! active-editor))))
@@ -77,8 +93,9 @@
           document vscode/window.activeTextEditor.document
           selectedText (.getText document selection)
           result (eval+ selectedText)
-          pretty-printed-result (stringify result)]
-    (decorate! vscode/window.activeTextEditor.selection pretty-printed-result "js")))
+          _ (def result result)
+          pretty-printed-result (stringify (:result result))]
+    (decorate! vscode/window.activeTextEditor.selection pretty-printed-result (:err result) "js")))
 
 (defn clear-decorations! []
   (when-let [active-editor vscode/window.activeTextEditor]
