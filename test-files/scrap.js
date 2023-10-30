@@ -1,4 +1,6 @@
 const s = 'World';
+let x = 'Worldz';
+x = 'World';
 hello = function (strings, ...values) {
   return strings[0] + values[0] + strings[1];
 }
@@ -20,6 +22,7 @@ async function testAwait() {
 
 testAwait();
 
+var vscode = require('vscode');
 // ES6 not supported
 //import { readFile } from 'fs/promises';
 const { readFile } = require('fs').promises;
@@ -36,6 +39,8 @@ config;
 
 process.cwd();
 __dirname;
+
+
 var { hello_fine, hello_borked } = require('/Users/pez/.config/joyride/test-files/has-errors.js');
 
 hello_fine('World');
