@@ -28,7 +28,8 @@
               [joyride.core :as joyride]
               [promesa.core :as p]
               ["repl" :as node-repl]
-              ["vm" :as vm]))
+              ["vm" :as vm]
+              ["acorn-loose" :as acorn]))
 
 (def js-repl-active?-when-key "joyride-js-repl:isActive")
 (def decorations?-when-key "joyride-js-repl:hasDecorations")
@@ -69,14 +70,13 @@
         (p/catch (fn [err]
                    (@!resolve {:err err}))))))
 
-(defn- clear-disposables! []
-  (run! (fn [disposable]
-          (.dispose disposable))
-        (:disposables @!db))
-  (swap! !db assoc :disposables []))
+(defn start-repl! []
+  (.start node-repl #js {:eval vm-eval
+                         :replMode repl/REPL_MODE_SLOPPY}))
 
-(defn- push-disposable! [disposable]
-  (swap! !db update :disposables conj disposable))
+(comment
+  (-> (:repl @!db) .-replMode)
+  :rcf)
 
 (def eval-results-decoration-type
   (vscode/window.createTextEditorDecorationType
@@ -136,6 +136,8 @@
           line (-> selection .-start .-line)
           column (-> selection .-start .-character)
           document vscode/window.activeTextEditor.document
+          _ (def document document)
+          text (.getText document)
           filename (.-fileName document)
           selectedText (.getText document selection)
           result (eval+ selectedText {:filename filename
@@ -152,11 +154,50 @@
                (:err result)
                (if (:err result) "text" "js"))))
 
-(defn clear-decorations! []
+(defn transpile-declaration [node]
+  (if (map? node)
+    (if (and (= (:type node) "VariableDeclaration")
+             (or (= (:kind node) "const")
+                 (= (:kind node) "let")))
+      (assoc node :kind "var")
+      node)
+    node))
+
+(defn transpile-top-level-declaration [ast]
+  (update ast :body (fn [body] (mapv transpile-declaration body))))
+
+(defn parse-js [js]
+  (-> (acorn.parse js #js {:allowAwaitOutsideFunction true})
+      js/JSON.stringify
+      js/JSON.parse
+      (js->clj :keywordize-keys true)))
+
+(comment
+  (require '[util :refer [time]])
+  (def text (.getText document))
+  (time
+   (def ast (acorn.parse text #js {:allowAwaitOutsideFunction true})))
+  (time
+   (def clojure-ast (parse-js text)))
+  (time
+   (def transpiled-ast (transpile-top-level-declaration clojure-ast)))
+  :rcf)
+
+
+(defn ^:export clear-decorations! []
   (when-let [active-editor vscode/window.activeTextEditor]
     (swap! !db assoc-in [:decorations (editor->key active-editor)] nil)
     (.setDecorations active-editor eval-results-decoration-type #js [])
     (set-decorations-context! active-editor)))
+
+(defn- clear-disposables! []
+  (run! (fn [disposable]
+          (.dispose disposable))
+        (:disposables @!db))
+  (swap! !db assoc :disposables []))
+
+(defn- push-disposable! [disposable]
+  (swap! !db update :disposables conj disposable))
 
 (defn init! []
   (clear-disposables!)
@@ -166,7 +207,7 @@
     (swap! !db assoc :output-channel channel)
     (push-disposable! channel))
   ;; Create a new repl context on init so that we can undeclare stuff
-  (swap! !db assoc :repl (.start node-repl #js {:eval vm-eval}))
+  (swap! !db assoc :repl (start-repl!))
   (vscode/commands.executeCommand "setContext" js-repl-active?-when-key true))
 
 
@@ -174,6 +215,7 @@
   (init!))
 
 (comment
+  (object? (new js/Object))
   (init!)
   (clear-disposables!)
 
