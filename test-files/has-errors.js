@@ -1,5 +1,5 @@
 function hello_fine(s) {
-  return `Hello ${s}!`;
+  return `Hello ${s}!!!!!`;
 }
 
 function hello_borked(s) {
