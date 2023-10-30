@@ -1,9 +1,7 @@
-const s = 'World';
-let x = 'Worldz';
-x = 'World';
+const s = "World";
 hello = function (strings, ...values) {
   return strings[0] + values[0] + strings[1];
-}
+};
 hello`Hello ${s}!`;
 
 async function testAwait() {
@@ -15,33 +13,32 @@ async function testAwait() {
 
   console.log("Before await");
   const result = await promise;
-  console.log(result);  // Output: Promise resolved
+  console.log(result); // Output: Promise resolved
   console.log("After await");
   return result;
 }
 
 testAwait();
 
-var vscode = require('vscode');
 // ES6 not supported
 //import { readFile } from 'fs/promises';
-const { readFile } = require('fs').promises;
-const packageJson = await readFile('/Users/pez/.config/joyride/sidecar/package.json', 'utf-8');
-const config = JSON.parse(packageJson);
-config;
-
-(async () => {
-  const config = JSON.parse(await readFile('/Users/pez/.config/joyride/sidecar/package.json', 'utf-8'));
+const { readFile } = require("fs").promises;
+// Top level await not supported
+// const packageJson = await readFile('/Users/pez/.config/joyride/sidecar/package.json', 'utf-8');
+// const config = JSON.parse(packageJson);
+const config = (async () => {
+  const config = JSON.parse(
+    await readFile("/Users/pez/.config/joyride/sidecar/package.json", "utf-8")
+  );
   return config;
-
-  // Other module code
 })();
 
-process.cwd();
-__dirname;
+config.then((config) => config);
 
+var {
+  hello_fine,
+  hello_borked,
+} = require("/Users/pez/.config/joyride/test-files/has-errors.js");
 
-var { hello_fine, hello_borked } = require('/Users/pez/.config/joyride/test-files/has-errors.js');
-
-hello_fine('World');
-hello_borked('World');
+hello_fine("World");
+hello_borked("World");
