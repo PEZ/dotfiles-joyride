@@ -13,7 +13,8 @@
 ;;        "key": "ctrl+enter",
 ;;        "when": "editorLangId == 'javascript' && joyride-js-repl:isActive",
 ;;        "command": "joyride.runCode",
-;;        "args": "(js-repl/evaluate-selection!)"
+;;        // "args": "(js-repl/evaluate-selection! false) // do not rewrite top level const and let
+;;        "args": "(js-repl/evaluate-selection! true)" // rewrite top level const and let
 ;;    },
 ;;    {
 ;;        "key": "ctrl+escape",
@@ -78,6 +79,53 @@
   (-> (:repl @!db) .-replMode)
   :rcf)
 
+(defn find-declarations [node]
+  (when (map? node)
+    (when (and (= (:type node) "VariableDeclaration")
+               (or (= (:kind node) "const")
+                   (= (:kind node) "let")))
+      {:start (:start node)
+       :length (count (:kind node))})))
+
+(defn find-top-level-declarations [body]
+  (keep find-declarations body))
+
+(defn replace-at-locations [text locations s]
+  (reduce (fn [acc {:keys [start length]}]
+            (str (subs acc 0 start) s (subs acc (+ start length))))
+          text
+          (reverse locations)))
+
+(defn parse-js [js]
+  (-> (acorn.parse js #js {:allowAwaitOutsideFunction true})
+      js/JSON.stringify
+      js/JSON.parse
+      (js->clj :keywordize-keys true)))
+
+(defn top-level-declarations->var [text]
+  (let [locations (-> text
+                      parse-js
+                      :body
+                      find-top-level-declarations)]
+    (replace-at-locations text locations "var")))
+
+(comment
+  (require '[util :refer [time]]
+           '["fs" :as fs])
+  (def text (fs/readFileSync "/Users/pez/.config/joyride/test-files/large.js"
+                             #js {:encoding "utf8" :flag "r"}))
+  (time ; 60 ms
+   (def clojure-ast (parse-js text)))
+  (time ; 0.02 ms
+   (def declarations (find-top-level-declarations (:body clojure-ast))))
+  (count declarations) ;=> 248 for large.js
+  (time ; 8 ms
+   (def new-text (replace-at-locations text declarations "var")))
+  (println new-text)
+  (time ; 70ms
+   (def replaced (top-level-declarations->var text)))
+  :rcf)
+
 (def eval-results-decoration-type
   (vscode/window.createTextEditorDecorationType
    #js {:after #js {},
@@ -131,17 +179,20 @@
                           (not (re-find #"at Script.runInContext" line))))
             (string/join "\n"))))
 
-(defn ^:export evaluate-selection! []
+(defn ^:export evaluate-selection! [dynamic-top-level?]
   (p/let [selection vscode/window.activeTextEditor.selection
           line (-> selection .-start .-line)
           column (-> selection .-start .-character)
           document vscode/window.activeTextEditor.document
           _ (def document document)
           filename (.-fileName document)
-          selectedText (.getText document selection)
-          result (eval+ selectedText {:filename filename
-                                      :line-offset line
-                                      :column-offset column})
+          selected-text (.getText document selection)
+          code (if dynamic-top-level?
+                 (top-level-declarations->var selected-text)
+                 selected-text)
+          result (eval+ code {:filename filename
+                              :line-offset line
+                              :column-offset column})
           pretty-printed-result (stringify (:result result))]
     (doto (:output-channel @!db)
       (.append (if (:err result)
@@ -152,45 +203,6 @@
                pretty-printed-result
                (:err result)
                (if (:err result) "text" "js"))))
-
-(defn find-declarations [node]
-  (when (map? node)
-    (when (and (= (:type node) "VariableDeclaration")
-               (or (= (:kind node) "const")
-                   (= (:kind node) "let")))
-      {:start (:start node)
-       :length (count (:kind node))})))
-
-(defn find-top-level-declarations [body]
-  (keep find-declarations body))
-
-(defn replace-at-locations [text locations s]
-  (reduce (fn [acc {:keys [start length]}]
-            (str (subs acc 0 start) s (subs acc (+ start length))))
-          text
-          (reverse locations)))
-
-(defn parse-js [js]
-  (-> (acorn.parse js #js {:allowAwaitOutsideFunction true})
-      js/JSON.stringify
-      js/JSON.parse
-      (js->clj :keywordize-keys true)))
-
-(comment
-  (require '[util :refer [time]]
-           '["fs" :as fs])
-  (def text (fs/readFileSync "/Users/pez/.config/joyride/test-files/scrap.js"
-                             #js {:encoding "utf8" :flag "r"}))
-  (time ; 81 ms
-   (def clojure-ast (parse-js text)))
-  (time ; 0.02 ms
-   (def declarations (find-top-level-declarations (:body clojure-ast))))
-  (count declarations) ;=> 248 for large.js
-  (time ; 6 ms
-   (def new-text (replace-at-locations text declarations "var")))
-  (println new-text)
-  :rcf)
-
 
 (defn ^:export clear-decorations! []
   (when-let [active-editor vscode/window.activeTextEditor]
@@ -217,7 +229,6 @@
   ;; Create a new repl context on init so that we can undeclare stuff
   (swap! !db assoc :repl (start-repl!))
   (vscode/commands.executeCommand "setContext" js-repl-active?-when-key true))
-
 
 (when (= (joyride/invoked-script) joyride/*file*)
   (init!))
