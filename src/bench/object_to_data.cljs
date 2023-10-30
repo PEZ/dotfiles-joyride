@@ -15,7 +15,8 @@
 (comment
   ; wc test-files/large.js
   ; 7662   18943  169040 test-files/large.js
-  (def text (fs/readFileSync "/Users/pez/.config/joyride/test-files/large.js"))
+  (def text (fs/readFileSync "/Users/pez/.config/joyride/test-files/large.js"
+                             #js {:encoding "utf8" :flag "r"}))
   (util/time ; Elapsed time: 8.087583065032959 msecs
    (def ast (acorn.parse text #js {:allowAwaitOutsideFunction true})))
   (util/time ; Elapsed time: 5.1631669998168945 msecs
