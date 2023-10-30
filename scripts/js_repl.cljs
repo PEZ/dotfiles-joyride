@@ -137,7 +137,6 @@
           column (-> selection .-start .-character)
           document vscode/window.activeTextEditor.document
           _ (def document document)
-          text (.getText document)
           filename (.-fileName document)
           selectedText (.getText document selection)
           result (eval+ selectedText {:filename filename
@@ -154,17 +153,22 @@
                (:err result)
                (if (:err result) "text" "js"))))
 
-(defn transpile-declaration [node]
-  (if (map? node)
-    (if (and (= (:type node) "VariableDeclaration")
-             (or (= (:kind node) "const")
-                 (= (:kind node) "let")))
-      (assoc node :kind "var")
-      node)
-    node))
+(defn find-declarations [node]
+  (when (map? node)
+    (when (and (= (:type node) "VariableDeclaration")
+               (or (= (:kind node) "const")
+                   (= (:kind node) "let")))
+      {:start (:start node)
+       :length (count (:kind node))})))
 
-(defn transpile-top-level-declaration [ast]
-  (update ast :body (fn [body] (mapv transpile-declaration body))))
+(defn find-top-level-declarations [body]
+  (keep find-declarations body))
+
+(defn replace-at-locations [text locations s]
+  (reduce (fn [acc {:keys [start length]}]
+            (str (subs acc 0 start) s (subs acc (+ start length))))
+          text
+          (reverse locations)))
 
 (defn parse-js [js]
   (-> (acorn.parse js #js {:allowAwaitOutsideFunction true})
@@ -173,14 +177,18 @@
       (js->clj :keywordize-keys true)))
 
 (comment
-  (require '[util :refer [time]])
-  (def text (.getText document))
-  (time
-   (def ast (acorn.parse text #js {:allowAwaitOutsideFunction true})))
-  (time
+  (require '[util :refer [time]]
+           '["fs" :as fs])
+  (def text (fs/readFileSync "/Users/pez/.config/joyride/test-files/scrap.js"
+                             #js {:encoding "utf8" :flag "r"}))
+  (time ; 81 ms
    (def clojure-ast (parse-js text)))
-  (time
-   (def transpiled-ast (transpile-top-level-declaration clojure-ast)))
+  (time ; 0.02 ms
+   (def declarations (find-top-level-declarations (:body clojure-ast))))
+  (count declarations) ;=> 248 for large.js
+  (time ; 6 ms
+   (def new-text (replace-at-locations text declarations "var")))
+  (println new-text)
   :rcf)
 
 
