@@ -75,10 +75,6 @@
   (.start node-repl #js {:eval vm-eval
                          :replMode repl/REPL_MODE_SLOPPY}))
 
-(comment
-  (-> (:repl @!db) .-replMode)
-  :rcf)
-
 (defn find-declarations [node]
   (when (map? node)
     (when (and (= (:type node) "VariableDeclaration")
@@ -179,14 +175,12 @@
                           (not (re-find #"at Script.runInContext" line))))
             (string/join "\n"))))
 
-(defn ^:export evaluate-selection! [dynamic-top-level?]
-  (p/let [selection vscode/window.activeTextEditor.selection
-          line (-> selection .-start .-line)
-          column (-> selection .-start .-character)
-          document vscode/window.activeTextEditor.document
+(defn evaluate! [range document dynamic-top-level?]
+  (p/let [line (-> range .-start .-line)
+          column (-> range .-start .-character)
           _ (def document document)
           filename (.-fileName document)
-          selected-text (.getText document selection)
+          selected-text (.getText document range)
           code (if dynamic-top-level?
                  (top-level-declarations->var selected-text)
                  selected-text)
@@ -196,13 +190,24 @@
           pretty-printed-result (stringify (:result result))]
     (doto (:output-channel @!db)
       (.append (if (:err result)
-                     (format-error (:err result))
-                     pretty-printed-result))
+                 (format-error (:err result))
+                 pretty-printed-result))
       (.append "\n---\n\n"))
     (decorate! vscode/window.activeTextEditor.selection
                pretty-printed-result
                (:err result)
                (if (:err result) "text" "js"))))
+
+(defn evaluate-document! [dynamic-top-level?]
+  (let [document vscode/window.activeTextEditor.document
+        range (vscode/Range. (.positionAt document 0)
+                             (.positionAt document (-> document .getText count)))]
+    (evaluate! range document dynamic-top-level?)))
+
+(defn ^:export evaluate-selection! [dynamic-top-level?]
+  (evaluate! vscode/window.activeTextEditor.selection
+             vscode/window.activeTextEditor.document
+             dynamic-top-level?))
 
 (defn ^:export clear-decorations! []
   (when-let [active-editor vscode/window.activeTextEditor]
