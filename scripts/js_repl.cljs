@@ -17,6 +17,19 @@
 ;;        "args": "(js-repl/evaluate-selection! true)" // rewrite top level const and let
 ;;    },
 ;;    {
+;;        "key": "ctrl+alt+c enter",
+;;        "when": "editorLangId == 'javascript' && joyride-js-repl:isActive",
+;;        "command": "joyride.runCode",
+;;        "args": "(js-repl/evaluate-document! true)" // rewrite top level const and let
+;;    },
+;;    {
+;;        "key": "ctrl+alt+c ctrl+alt+enter",
+;;        "when": "editorLangId == 'javascript' && joyride-js-repl:isActive",
+;;        "command": "joyride.runCode",
+;;        "args": "(js-repl/evaluate-document! false)" // do not rewrite top level const and let
+;;                                                     // use to check that everything loads correctly
+;;    },
+;;    {
 ;;        "key": "ctrl+escape",
 ;;        "when": "joyride-js-repl:hasDecorations",
 ;;        "command": "joyride.runCode",
@@ -198,7 +211,13 @@
                (:err result)
                (if (:err result) "text" "js"))))
 
-(defn evaluate-document! [dynamic-top-level?]
+(defn ^:export evaluate-line! [dynamic-top-level?]
+  (let [document vscode/window.activeTextEditor.document
+        range (vscode/Range. (.positionAt document 0)
+                             (.positionAt document (-> document .getText count)))]
+    (evaluate! range document dynamic-top-level?)))
+
+(defn ^:export evaluate-document! [dynamic-top-level?]
   (let [document vscode/window.activeTextEditor.document
         range (vscode/Range. (.positionAt document 0)
                              (.positionAt document (-> document .getText count)))]
@@ -224,13 +243,23 @@
 (defn- push-disposable! [disposable]
   (swap! !db update :disposables conj disposable))
 
-(defn init! []
+(defn de-init! []
   (clear-disposables!)
   (clear-decorations!)
+  (set! (.-console js/globalThis) (:original-console @!db))
+  (vscode/commands.executeCommand "setContext" js-repl-active?-when-key false))
+
+(defn init! []
+  (de-init!)
   (push-disposable! (vscode/window.onDidChangeActiveTextEditor set-decorations-context!))
-  (let [channel (vscode/window.createOutputChannel "Joyride JS-REPL" "javascript")]
-    (swap! !db assoc :output-channel channel)
-    (push-disposable! channel))
+  (let [channel (vscode/window.createOutputChannel "Joyride JS-REPL" "javascript")
+        console js/console]
+    (swap! !db assoc
+           :output-channel channel
+           :original-console console)
+    (push-disposable! channel)
+    (set! (.-console js/globalThis) (clj->js (merge (js->clj js/console)
+                                                  {"log" println}))))
   ;; Create a new repl context on init so that we can undeclare stuff
   (swap! !db assoc :repl (start-repl!))
   (vscode/commands.executeCommand "setContext" js-repl-active?-when-key true))

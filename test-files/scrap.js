@@ -44,7 +44,7 @@ const packageJson = (async () => {
 })();
 config; // prints as an object in the repl, but it's a promise
 config.name; // null
-//c_name = config.then(x => x.name); // we need to do this to see the name
+const c_name = config.then(x => x.name); // we need to do this to see the name
 typeof c_name; // object (it's still a promise)
 
 var {
