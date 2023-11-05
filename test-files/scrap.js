@@ -7,11 +7,13 @@ hello`Hello ${s}!`;
 async function testAwait() {
   const promise = new Promise((resolve, reject) => {
     setTimeout(() => {
-      resolve("Promise resolved");
-    }, 1000);
+      const t2 = performance.now();
+      resolve(`Promise resolved after ${t2 - t1} ms`);
+    }, 1500);
   });
 
   console.log("Before await");
+  const t1 = performance.now();
   const result = await promise;
   console.log(result); // Output: Promise resolved
   console.log("After await");
@@ -30,7 +32,7 @@ const { readFile } = require("fs").promises;
 // This makes `packageJson` print as a string in the repl, but it's a promise
 const packageJson = (async () => {
   return await readFile("/Users/pez/.config/joyride/sidecar/package.json", "utf-8");
-});
+})();
 // this gives SyntaxError: Unexpected token 'o', "[object Promise]" is not valid JSON
 // const config = JSON.parse(packageJson); 
 // (You can select it, and evaluate and prove it for yourself)
@@ -53,4 +55,4 @@ var {
 } = require("/Users/pez/.config/joyride/test-files/has-errors.js");
 
 hello_fine("World");
-//hello_borked("World");
+hello_borked("World");
