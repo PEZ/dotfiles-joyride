@@ -7,6 +7,12 @@
 
 (def oc (joyride.core/output-channel))
 
+#_(p/let [splunk-ext (vscode/extensions.getExtension "splunk.splunk")]
+  (def splunk-ext splunk-ext)
+  (.activate splunk-ext))
+
+(require '["ext://splunk.splunk" :as splunk-api])
+
 (require '["vscode" :as vscode]
          '["ext://betterthantomorrow.calva$v0" :as calva]
          '[joyride.core :as joyride]
@@ -75,5 +81,5 @@
 
 (comment
   (calva/repl.nReplConnect "localhost", 58486, calva/repl.ConnectSequenceGeneric)
-  
+
   (vscode/commands.executeCommand "calva.connectNonProjectREPL"))

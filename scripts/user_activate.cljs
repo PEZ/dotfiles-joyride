@@ -94,12 +94,12 @@
   ;; particular extension is active, so we can't safely `(:require ..)`
   ;; in the `ns` form. Here's what you can do instead, using Calva
   ;; as the example. To try it for real, copy the example scripts from:
-  ;; https://github.com/BetterThanTomorrow/joyride/tree/master/examples 
+  ;; https://github.com/BetterThanTomorrow/joyride/tree/master/examples
   ;; Then un-ignore the below form and run
   ;;   *Joyride; Run User Script* -> user_activate.cljs
   ;; (Or reload the VS Code window.)
   #_(-> (vscode/extensions.getExtension "betterthantomorrow.calva")
-      ;; Force the Calva extension to activate 
+      ;; Force the Calva extension to activate
         (.activate)
       ;; The promise will resolve with the extension's API as the result
         (p/then (fn [_api]

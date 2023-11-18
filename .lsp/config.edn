@@ -1,0 +1,2 @@
+{:project-specs [{:project-path "joyride.edn"
+                  :classpath-cmd ["bash" "-c" "$HOME/binaries/tools-deps-native deps \"`< joyride.edn`\" | jet -t ':classpath-roots (str/join \":\") println'"]}]}

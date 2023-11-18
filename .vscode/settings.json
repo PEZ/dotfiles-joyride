@@ -1,0 +1,32 @@
+{
+  "calva.prettyPrintingOptions": {
+    "printEngine": "pprint",
+    "enabled": true,
+    "width": 150,
+    "maxLength": 50
+  },
+  "editor.lineNumbers": "off",
+  "cSpell.language": "en",
+  "cSpell.allowCompoundWords": true,
+  "markdown.preview.fontSize": 24,
+  "cSpell.words": [
+      "fooo",
+      "foooo"
+  ],
+  "zenMode.centerLayout": false,
+  "editor.fontSize": 16,
+  "gitlens.gitCommands.sortBy": "name",
+  "window.zoomLevel": 2,
+  "markdown.preview.typographer": true,
+  "markdown.styles": [
+      "style.css"
+  ],
+  "markdown.preview.scrollPreviewWithEditor": false,
+  "markdown.preview.scrollEditorWithPreview": false,
+  "markdown.preview.markEditorSelection": false,
+  "errorLens.enabled": false,
+  "screencastMode.keyboardShortcutsFormat": "commandWithGroup",
+  "markdown.preview.doubleClickToSwitchToEditor": false,
+  "calva.showCalvaSaysOnStart": false,
+  "calva.clojureLspVersion": "latest",
+}
