@@ -11,13 +11,19 @@
 ;10  1111111222111333444 :foo 555666 :bar 123 :baz 1234
 ;11   xxx   xxx   xxx         xxx                   xxx
 ;12 222222 33333 --- 4444444
-;13 xxx      xxx      xxx
+;13 xxx      xxx      xx
 
-(ns numbers
+(ns highlight-thousands
   (:require ["vscode" :as vscode]
             [joyride.core :as joyride]))
 
-(defn long-number-ranges
+(def ^:private decoration-type #js {:fontWeight "600"})
+
+(defonce ^:private !state (atom {:state/hightlight-timer nil
+                                 :state/decoration-type nil
+                                 :state/disposables []}))
+
+(defn- long-number-ranges
   "Finds the long numbers (more than 3 digits) returns their ranges as tuples."
   [text]
   (when-let [matches (re-seq #"\d{4,}" text)]
@@ -33,12 +39,11 @@
         :ranges)))
 
 (comment
-  ;; Test on the text in this document
   (long-number-ranges (-> vscode/window .-activeTextEditor .-document .getText))
   ;;=> [[664 683] [689 695] [710 714] [775 781] [782 787] [792 799]]
   :rcf)
 
-(defn group-thousands
+(defn- group-thousands
   "Takes a range and returns the thousands for odd-numbered groups from the most significant to least significant."
   [[start end]]
   (let [length (- end start)]
@@ -53,18 +58,17 @@
   ;;=> ([2 5])
   :rcf)
 
-(defn text->thousands-groups [text]
+(defn- text->thousands-groups [text]
   (->> text
        long-number-ranges
        (mapcat group-thousands)))
 
 (comment
-  ;; Test on the text in this document
   (text->thousands-groups (vscode/window.activeTextEditor.document.getText))
   ;;=> ([665 668] [671 674] [677 680] [689 692] [711 714] [775 778] [784 787] [793 796])
   :rcf)
 
-(defn document->thousands-ranges [document]
+(defn- document->thousands-ranges [document]
   (->> (.getText document)
        text->thousands-groups
        (map (fn [[start end]]
@@ -72,29 +76,22 @@
                              (.positionAt document end))))))
 
 (comment
-  ;; Test on the text in this document
   (->> (document->thousands-ranges (-> vscode/window.activeTextEditor.document))
        (map #(.-start %))
        (map (fn ([p] [(.-line p) (.-character p)]))))
   #_([10 6] [10 12] [10 18] [10 30] [10 52] [12 4] [12 13] [12 22])
   :rcf)
 
-(def decoration-type (vscode.window.createTextEditorDecorationType
-                      #js {:backgroundColor "rgba(255, 0, 0, 0.5)"
-                           :isWholeLine true}))
+(defn- clear-highlights! []
+  (.setDecorations (-> vscode/window .-activeTextEditor) (:state/decoration-type @!state) #js []))
 
-(defonce !state (atom {:state/hightlight-timer nil
-                       :state/disposables []}))
-
-(defn clear-highlights! []
-  (.setDecorations (-> vscode/window .-activeTextEditor) decoration-type #js []))
-
-(defn highlight! []
+(defn- highlight! []
   (clear-highlights!)
-  (let [editor (-> vscode/window .-activeTextEditor)]
-    (.setDecorations editor decoration-type (document->thousands-ranges (.-document editor)))))
+  (let [editor (-> vscode/window .-activeTextEditor)
+        ranges (document->thousands-ranges (.-document editor))]
+    (.setDecorations editor (:state/decoration-type @!state) (into-array ranges))))
 
-(defn schedule-highlight! []
+(defn- schedule-highlight! []
   (when-let [timeout (:state/hightlight-timer @!state)]
     (js/clearTimeout timeout))
   (swap! !state
@@ -109,13 +106,16 @@
   (doseq [disposable (:state/disposables @!state)]
     (.dispose disposable))
   (swap! !state dissoc :state/disposables)
+  (swap! !state dissoc :state/decoration-type)
   (when-let [timeout (:state/hightlight-timer @!state)]
     (js/clearTimeout timeout)
-    (swap! !state dissoc :state/hightlight-timer))
-  (clear-highlights!))
+    (swap! !state dissoc :state/hightlight-timer)))
 
 (defn ^:export activate! []
   (schedule-highlight!)
+  (let [decoration-type-disposable (vscode/window.createTextEditorDecorationType decoration-type)]
+    (swap! !state assoc :state/decoration-type decoration-type-disposable)
+    (swap! !state update :state/disposables conj decoration-type-disposable))
   (swap! !state update :state/disposables conj (vscode/workspace.onDidChangeTextDocument schedule-highlight!))
   (swap! !state update :state/disposables conj (vscode/window.onDidChangeActiveTextEditor schedule-highlight!)))
 
