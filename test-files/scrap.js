@@ -34,7 +34,7 @@ const packageJson = (async () => {
   return await readFile("/Users/pez/.config/joyride/sidecar/package.json", "utf-8");
 })();
 // this gives SyntaxError: Unexpected token 'o', "[object Promise]" is not valid JSON
-// const config = JSON.parse(packageJson); 
+// const config = JSON.parse(packageJson);
 // (You can select it, and evaluate and prove it for yourself)
 
 (async () => {
