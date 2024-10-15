@@ -6,13 +6,14 @@ In the vast expanse of the digital cosmos, where lines of code weave the fabric 
 
 ### Comparison of Grouped and Ungrouped Numbers
 
-| Number            | Grouped Form    | Ungrouped Form   |
-| ----------------: | --------------: | ---------------: |
-|             1234  |           1,234 |             1234 |
-|     123487654321  | 123,487,654,321 |     123487654321 |
-|          4567890  |       4,567,890 |          4567890 |
-|         12345678  |      12,345,678 |         12345678 |
-|           789012  |         789,012 |           789012 |
+| Number            | Grouped Form    |
+| ----------------: | --------------: |
+|             1234  |           1,234 |
+|     123487654321  | 123,487,654,321 |
+|          4567890  |       4,567,890 |
+|         12345678  |      12,345,678 |
+|           789012  |         789,012 |
+
 Notice how the grouped forms are much easier to scan and interpret, especially when dealing with large values.
 
 ## The Enigma of Numerical Legions

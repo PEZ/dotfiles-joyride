@@ -1,17 +1,15 @@
 ;; Joyride thousands highlighter
 ;; The end goal here is to help humans read long numbers by highlighting groups of thousands
 ;; First we need to find the groups of thousands. We only want to highlight _odd_ groups
-;; of thousands, starting with the most significant group to the least significant group.
-;; The xxx below are the groups of thousands we want to highlight on the numbers on the line above them.
+;; of thousands, starting with the least significant group to the most significant group.
+;; We also consider the most significant group of thousands when it is not three digits long.
 
-;; Example data
-;; These are column numbers, we use letters to not match them with our find-numbers function
-;bcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabc
-; This is some test data, line numbers are on the left
-;10  1111111222111333444 :foo 555666 :bar 123 :baz 1234
-;11   xxx   xxx   xxx         xxx                   xxx
-;12 222222 33333 --- 4444444
-;13 xxx      xxx      xxx
+; Here is some test data, line numbers are on the left
+; The xxx are the groups of thousands we want to highlight on the numbers on the line above them.
+;08  1111111222111333444 :foo 555666 :bar 123 :baz 1234
+;09  x   xxx   xxx   xxx         xxx                xxx
+;10 222222 33333 --- 4444444
+;11    xxx   xxx     x   xxx
 
 (ns highlight-thousands
   (:require ["vscode" :as vscode]
@@ -40,22 +38,25 @@
 
 (comment
   (long-number-ranges (-> vscode/window .-activeTextEditor .-document .getText))
-  ;;=> [[664 683] [689 695] [710 714] [775 781] [782 787] [792 799]]
   :rcf)
 
 (defn- group-thousands
-  "Takes a range and returns the thousands for odd-numbered groups from the most significant to least significant."
+  "Takes a range and returns the thousands for odd-numbered groups
+   right to left (from the least significant to most significant).
+   Also considering when the most significant group is not three digits long."
   [[start end]]
-  (let [length (- end start)]
-    (map (fn [i]
-           [i (+ i 3)])
-         (range (+ start (mod length 3)) end 6))))
+  (map (fn [i]
+         [(js/Math.abs (- i 3)) i])
+       (range end start -6)))
 
 (comment
+  1234567890
   (group-thousands [0 10])
-  ;;=> ([1 4] [7 10])
+  ;;=> ([7 10] [1 4])
+
+  1234567890
   (group-thousands [1 8])
-  ;;=> ([2 5])
+  ;;=> ([5 8] [1 2])
   :rcf)
 
 (defn- text->thousands-groups [text]
@@ -65,7 +66,6 @@
 
 (comment
   (text->thousands-groups (vscode/window.activeTextEditor.document.getText))
-  ;;=> ([665 668] [671 674] [677 680] [689 692] [711 714] [775 778] [784 787] [793 796])
   :rcf)
 
 (defn- document->thousands-ranges [document]
@@ -79,7 +79,6 @@
   (->> (document->thousands-ranges (-> vscode/window.activeTextEditor.document))
        (map #(.-start %))
        (map (fn ([p] [(.-line p) (.-character p)]))))
-  #_([10 6] [10 12] [10 18] [10 30] [10 52] [12 4] [12 13] [12 22])
   :rcf)
 
 (defn- clear-highlights! []
