@@ -2,7 +2,18 @@ The nonsense below is written by Claude Sonnet and ChatGPT 4o.
 
 # Numbers as Poetry: The Sublime Art of Highlighting Thousands in Code
 
-In the vast expanse of the digital cosmos, where lines of code weave the fabric of our modern world at speeds approaching that of light (approximately 299792458 (299,792,458) meters per second, covering about 9.46 trillion kilometers in a year, which is roughly 9.46 x 10¹⁵ (9460730472580800 (9,460,730,472,580,800)) meters per light year), there lies a subtle challenge—a challenge as intricate as the threads of a spider's web. It is the task of discerning the magnitude of numbers, such as 12345678901 (12,345,678,901), or 2345678 (2,345,678), those silent sentinels that stand guard over our data. These numbers, appearing in various forms—some grouped with commas, some not—pose a unique problem to the coder and the reader alike. The quest to bring meaning to this numerical chaos is not just a matter of aesthetics; it's about creating a clearer path to understanding.
+In the vast expanse of the digital cosmos, where lines of code weave the fabric of our modern world at speeds approaching that of light (approximately 299792458 (299,792,458) meters per second, covering about 9.46 trillion kilometers in a year, which is roughly 9.46 x 10¹⁵ (9460730472580800 (9,460,730,472,580,800)) meters per light year), there lies a subtle challenge—a challenge as intricate as the threads of a spider's web. It is the task of discerning the magnitude of numbers, such as 12345678901 (12,345,678,901), or 2345678 (2,345,678), those silent sentinels that stand guard over our data.
+
+### Comparison of Grouped and Ungrouped Numbers
+
+| Number            | Grouped Form    | Ungrouped Form   |
+| ----------------: | --------------: | ---------------: |
+|             1234  |           1,234 |             1234 |
+|     123487654321  | 123,487,654,321 |     123487654321 |
+|          4567890  |       4,567,890 |          4567890 |
+|         12345678  |      12,345,678 |         12345678 |
+|           789012  |         789,012 |           789012 |
+Notice how the grouped forms are much easier to scan and interpret, especially when dealing with large values.
 
 ## The Enigma of Numerical Legions
 
@@ -10,17 +21,6 @@ Consider the numbers: 1234, 98,765, and 4567890. Notice how the commas make a di
 
 Take, for instance, the numbers 456, 12345, and 6789012. When written without commas, they become significantly harder to differentiate at a glance. The simplicity of a comma can create natural divisions, transforming an overwhelming sequence into something easily parsed. This act of adding structure is like bringing language to the silence, giving the numbers a rhythm, a form, that even a hurried glance can recognize.
 
-### Comparison of Grouped and Ungrouped Numbers
-
-| Number    | Grouped Form | Ungrouped Form |
-| --------- | ------------ | -------------- |
-| 1234      | 1,234        | 1234           |
-| 987654321 | 987,654,321  | 987654321      |
-| 4567890   | 4,567,890    | 4567890        |
-| 12345678  | 12,345,678   | 12345678       |
-| 89012     | 89,012       | 89012          |
-
-Notice how the grouped forms are much easier to scan and interpret, especially when dealing with large values.
 
 ### Example in Clojure
 
