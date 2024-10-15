@@ -11,7 +11,7 @@
 ;10  1111111222111333444 :foo 555666 :bar 123 :baz 1234
 ;11   xxx   xxx   xxx         xxx                   xxx
 ;12 222222 33333 --- 4444444
-;13 xxx      xxx      xx
+;13 xxx      xxx      xxx
 
 (ns highlight-thousands
   (:require ["vscode" :as vscode]
