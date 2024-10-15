@@ -8,9 +8,9 @@ In the vast expanse of the digital cosmos, where lines of code weave the fabric 
 
 | Number            | Grouped Form    |
 | ----------------: | --------------: |
-|     XXXXXXXX1234  |           1,234 |
+|             1234  |           1,234 |
 |     123487654321  | 123,487,654,321 |
-|          4567890  |       4,567,890 |
+|   XXXXXXX4567890  |       4,567,890 |
 |         12345678  |      12,345,678 |
 |           789012  |         789,012 |
 

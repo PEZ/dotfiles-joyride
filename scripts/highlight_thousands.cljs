@@ -15,7 +15,10 @@
   (:require ["vscode" :as vscode]
             [joyride.core :as joyride]))
 
-(def ^:private decoration-type #js {:fontWeight "600"})
+(def ^:private decoration-type #js {:fontWeight "600"
+                                    ;; You can go quite crazy
+                                    ;:fontStyle "bold; text-shadow: 0 0 5px #fff, 0 0 10px #fff, 0 0 20px #fff, 0 0 40px #0ff, 0 0 80px #0ff, 0 0 90px #0ff, 0 0 100px #0ff, 0 0 150px #0ff;"
+                                    })
 
 (defonce ^:private !state (atom {:state/hightlight-timer nil
                                  :state/decoration-type nil
