@@ -113,12 +113,12 @@
 
 (defn ^:export activate! []
   (deactivate!)
-  (schedule-highlight!)
   (let [decoration-type-disposable (vscode/window.createTextEditorDecorationType decoration-type)]
     (swap! !state assoc :state/decoration-type decoration-type-disposable)
     (swap! !state update :state/disposables conj decoration-type-disposable))
   (swap! !state update :state/disposables conj (vscode/workspace.onDidChangeTextDocument schedule-highlight!))
-  (swap! !state update :state/disposables conj (vscode/window.onDidChangeActiveTextEditor schedule-highlight!)))
+  (swap! !state update :state/disposables conj (vscode/window.onDidChangeActiveTextEditor schedule-highlight!))
+  (schedule-highlight!))
 
 (when (= (joyride/invoked-script) joyride/*file*)
   (activate!))
