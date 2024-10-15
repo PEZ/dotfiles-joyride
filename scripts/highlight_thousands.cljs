@@ -110,6 +110,7 @@
     (swap! !state dissoc :state/hightlight-timer)))
 
 (defn ^:export activate! []
+  (deactivate!)
   (schedule-highlight!)
   (let [decoration-type-disposable (vscode/window.createTextEditorDecorationType decoration-type)]
     (swap! !state assoc :state/decoration-type decoration-type-disposable)
