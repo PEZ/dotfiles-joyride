@@ -30,10 +30,9 @@
   (when-let [matches (re-seq #"\d{4,}" text)]
     (-> (reduce (fn [{:keys [p] :as acc} match]
                   (let [match-start (.indexOf text match p)
-                        match-end (+ match-start (count match))
-                        range [match-start match-end]]
+                        match-end (+ match-start (count match))]
                     (-> acc
-                        (update :ranges conj range)
+                        (update :ranges conj [match-start match-end])
                         (assoc :p match-end))))
                 {:ranges [] :p 0}
                 matches)
@@ -53,7 +52,7 @@
        (range end start -6)))
 
 1234567890
-'XX1234567
+'XX4567890
 (comment
   (group-thousands [0 10])
   ; Expect ;=> ([7 10] [1 4])
