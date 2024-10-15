@@ -51,13 +51,13 @@
          [(max start (- i 3)) i])
        (range end start -6)))
 
-1234567890
+12345678901234567890122
 'XX4567890
 (comment
-  (group-thousands [0 10])
-  ; Expect ;=> ([7 10] [1 4])
+  (group-thousands [0 23])
+  #_([20 23] [14 17] [8 11] [2 5])
   (group-thousands [3 10])
-  ; Expect ;=> ([7 10] [3 4])
+  #_([7 10] [3 4])
   :rcf)
 
 (defn- text->thousands-groups [text]
@@ -67,6 +67,8 @@
 
 (comment
   (text->thousands-groups (vscode/window.activeTextEditor.document.getText))
+  #_([574 577] [568 571] [562 565] [558 559] [586 589] [605 608] [672 675] [678 681] [690 693]
+     [686 687] [2347 2350] [2341 2344] [2358 2361] [2354 2355])
   :rcf)
 
 (defn- document->thousands-ranges [document]
@@ -80,6 +82,8 @@
   (->> (document->thousands-ranges (-> vscode/window.activeTextEditor.document))
        (map #(.-start %))
        (map (fn ([p] [(.-line p) (.-character p)]))))
+  #_([8 21] [8 15] [8 9] [8 5] [8 33] [8 52] [10 7] [10 13] [10 25] [10 21] [53 7] [53 1]
+     [54 7] [54 3] [69 110] [69 115] [69 122] [69 127] [69 134] [69 139] [69 146] [69 151])
   :rcf)
 
 (defn- clear-highlights! []
