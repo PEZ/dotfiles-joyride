@@ -46,17 +46,16 @@
    Also considering when the most significant group is not three digits long."
   [[start end]]
   (map (fn [i]
-         [(js/Math.abs (- i 3)) i])
+         [(max start (- i 3)) i])
        (range end start -6)))
 
+1234567890
+'XX1234567
 (comment
-  1234567890
   (group-thousands [0 10])
-  ;;=> ([7 10] [1 4])
-
-  1234567890
-  (group-thousands [1 8])
-  ;;=> ([5 8] [1 2])
+  ; Expect ;=> ([7 10] [1 4])
+  (group-thousands [3 10])
+  ; Expect ;=> ([7 10] [3 4])
   :rcf)
 
 (defn- text->thousands-groups [text]
