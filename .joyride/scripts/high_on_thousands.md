@@ -8,11 +8,11 @@ In the vast expanse of the digital cosmos, where lines of code weave the fabric 
 
 | Number            | Grouped Form    |
 | ----------------: | --------------: |
-|             1234  |           1,234 |
-|     123487654321  | 123,487,654,321 |
-|   XXXXXXX4567890  |       4,567,890 |
-|         12345678  |      12,345,678 |
-|           789012  |         789,012 |
+|              1234 |           1,234 |
+|      123487654321 | 123,487,654,321 |
+|    XXXXXXX4567890 |       4,567,890 |
+|          12345678 |      12,345,678 |
+|            789012 |         789,012 |
 
 Notice how the grouped forms are much easier to scan and interpret, especially when dealing with large values.
 
