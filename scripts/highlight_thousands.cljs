@@ -113,7 +113,8 @@
   (swap! !state dissoc :state/decoration-type)
   (when-let [timeout (:state/hightlight-timer @!state)]
     (js/clearTimeout timeout)
-    (swap! !state dissoc :state/hightlight-timer)))
+    (swap! !state dissoc :state/hightlight-timer)
+    (.appendLine (joyride/output-channel) "Highlighting thousands deactivated!")))
 
 (defn ^:export activate! []
   (deactivate!)
@@ -122,7 +123,9 @@
     (swap! !state update :state/disposables conj decoration-type-disposable))
   (swap! !state update :state/disposables conj (vscode/workspace.onDidChangeTextDocument schedule-highlight!))
   (swap! !state update :state/disposables conj (vscode/window.onDidChangeActiveTextEditor schedule-highlight!))
-  (schedule-highlight!))
+  (schedule-highlight!)
+  (.appendLine (joyride/output-channel) "Highlighting thousands activated!")
+  #js {:dispose deactivate!})
 
 (when (= (joyride/invoked-script) joyride/*file*)
   (activate!))

@@ -83,6 +83,9 @@
   (clear-disposables!) ;; Any disposables add with `push-disposable!`
                        ;; will be cleared now. You can push them anew.
 
+  (push-disposable! (#_{:clj-kondo/ignore [:unresolved-symbol]}
+                     (requiring-resolve 'highlight-thousands/activate!)))
+
   ;; To register a diagnostics hover item above the fold, un-ignore this:
   #_(register-problem-hover)
 
