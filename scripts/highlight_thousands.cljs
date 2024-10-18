@@ -87,13 +87,14 @@
   :rcf)
 
 (defn- clear-highlights! []
-  (.setDecorations (-> vscode/window .-activeTextEditor) (:state/decoration-type @!state) #js []))
+  (when-let [editor (-> vscode/window .-activeTextEditor)]
+    (.setDecorations editor (:state/decoration-type @!state) #js [])))
 
 (defn- highlight! []
   (clear-highlights!)
-  (let [editor (-> vscode/window .-activeTextEditor)
-        ranges (document->thousands-ranges (.-document editor))]
-    (.setDecorations editor (:state/decoration-type @!state) (into-array ranges))))
+  (when-let [editor (-> vscode/window .-activeTextEditor)]
+    (let [ranges (document->thousands-ranges (.-document editor))]
+      (.setDecorations editor (:state/decoration-type @!state) (into-array ranges)))))
 
 (defn- schedule-highlight! []
   (when-let [timeout (:state/hightlight-timer @!state)]
