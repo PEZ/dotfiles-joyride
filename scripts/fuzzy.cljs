@@ -4,16 +4,16 @@
             [joyride.core :as joyride]
             [promesa.core :as p]))
 
+(defn- get-exclude-patterns []
+  (->> ["search.exclude" "files.exclude"]
+       (mapcat (fn [config-key]
+                 (-> (.get (vscode/workspace.getConfiguration) config-key)
+                     (js/Object.entries)
+                     (.filter (fn [[_k v]] v))
+                     (.map (fn [[k _v]] k)))))))
+
 (defn- configured-exclude-patterns []
-  (str "{"
-       (->> ["search.exclude" "files.exclude"]
-            (mapcat (fn [config-key]
-                      (-> (.get (vscode/workspace.getConfiguration) config-key)
-                          (js/Object.entries)
-                          (.filter (fn [[_k v]] v))
-                          (.map (fn [[k _v]] k)))))
-            (string/join ","))
-       "}"))
+  (str "{" (string/join "," (get-exclude-patterns)) "}"))
 
 (defn- find-files!+ []
   (p/let [excludes (configured-exclude-patterns)]
