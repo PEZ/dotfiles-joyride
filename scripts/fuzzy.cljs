@@ -20,16 +20,13 @@
           relative-path (vscode/workspace.asRelativePath uri)]
     (if (.includes data 0) ; Excludes binary files
       []
-      (let [lines (-> data
-                      (.toString "utf8")
-                      (.split "\n")
-                      (.map #(.trim %)))]
+      (let [lines (-> data (.toString "utf8") (.split "\n"))]
         (keep-indexed (fn [idx line]
                         (when-not (string/blank? line)
-                          #js {:label (str line " - " relative-path)
+                          #js {:label (str (.trim line) " - " relative-path)
                                :detail (str relative-path ", Line: " (inc idx))
                                :uri uri
-                               :range (vscode/Range. idx 0 idx (count line))}))
+                               :range (vscode/Range. idx (.search line #"\S") idx (count line))}))
                       lines)))))
 
 (defn- uris->line-items!+ [uris]
@@ -40,25 +37,55 @@
   (p/let [excludes (configured-exclude-patterns)]
     (vscode/workspace.findFiles "**/*" excludes)))
 
-(defn- reveal-picked! [selected-item]
-  (when selected-item
-    (p/let [document (vscode/workspace.openTextDocument (.-uri selected-item))
+(def line-decoration-type
+  (vscode/window.createTextEditorDecorationType #js {:backgroundColor "rgba(255,255,255,0.15)"}))
+
+(def !decorated-editor (atom nil))
+
+(defn- clear-decorations! [editor]
+  (.setDecorations editor line-decoration-type #js []))
+
+(defn- preview-item! [item]
+  (when item
+    (p/let [document (vscode/workspace.openTextDocument (.-uri item))
+            editor (vscode/window.showTextDocument document #js {:preview true :preserveFocus true})
+            range (.-range item)]
+      (.revealRange editor (.-range item) vscode/TextEditorRevealType.InCenter)
+      (clear-decorations! editor)
+      (.setDecorations editor line-decoration-type #js [range])
+      (reset! !decorated-editor editor))))
+
+(defn- reveal-picked! [item]
+  (when item
+    (p/let [document (vscode/workspace.openTextDocument (.-uri item))
             editor (vscode/window.showTextDocument document)
-            range (.-range selected-item)]
+            range (.-range item)]
       (.revealRange editor range vscode/TextEditorRevealType.InCenter)
+      (clear-decorations! editor)
       (set! (.-selection editor)
             (vscode/Selection. (.-start range) (.-start range))))))
 
 (defn show-search-box! []
   (p/let [uris (find-files!+)
           all-items (uris->line-items!+ uris)
-          _ (.appendLine (joyride/output-channel) (str "lines: " (count all-items)))
-          pick (vscode/window.showQuickPick (into-array all-items)
-                                            #js {:title "Fuzzy file search"
-                                                 :placeHolder "Use `foo*bar` to match `foo<whatever>bar`"
-                                                 :matchOnDescription true
-                                                 :matchOnDetail true})]
-    (reveal-picked! pick)))
+          _ (.appendLine (joyride/output-channel) (str "Fuzzy lines: " (count all-items)))
+          quick-pick (vscode/window.createQuickPick)]
+    (set! (.-items quick-pick) (into-array all-items))
+    (set! (.-title quick-pick) "Fuzzy file search")
+    (set! (.-placeHolder quick-pick) "Use `foo*bar` to match `foo<whatever>bar`")
+    (set! (.-matchOnDescription quick-pick) true)
+    (set! (.-matchOnDetail quick-pick) true)
+    (doto quick-pick
+      (.onDidChangeActive (fn [active-items]
+                            (preview-item! (first active-items))))
+      (.onDidAccept (fn []
+                      (reveal-picked! (first (.-selectedItems quick-pick)))
+                      (.dispose quick-pick)))
+      (.onDidHide (fn [e]
+                    (.appendLine (joyride/output-channel) (str "Fuzzy search cancelled: " e))
+                    (when-let [editor @!decorated-editor]
+                      (clear-decorations! editor))))
+      (.show))))
 
 (when (= (joyride/invoked-script) joyride/*file*)
   (show-search-box!))
