@@ -15,6 +15,10 @@
             (string/join ","))
        "}"))
 
+(defn- find-files!+ []
+  (p/let [excludes (configured-exclude-patterns)]
+    (vscode/workspace.findFiles "**/*" excludes)))
+
 (defn- uri->line-items!+ [uri]
   (p/let [data (vscode/workspace.fs.readFile uri)
           relative-path (vscode/workspace.asRelativePath uri)]
@@ -33,37 +37,27 @@
   (p/let [line-items (p/all (map uri->line-items!+ uris))]
     (apply concat line-items)))
 
-(defn- find-files!+ []
-  (p/let [excludes (configured-exclude-patterns)]
-    (vscode/workspace.findFiles "**/*" excludes)))
+(def ^:private !decorated-editor (atom nil))
 
 (def line-decoration-type
   (vscode/window.createTextEditorDecorationType #js {:backgroundColor "rgba(255,255,255,0.15)"}))
 
-(def !decorated-editor (atom nil))
-
 (defn- clear-decorations! [editor]
   (.setDecorations editor line-decoration-type #js []))
 
-(defn- preview-item! [item]
+(defn- highlight-item! [item preview?]
   (when item
     (p/let [document (vscode/workspace.openTextDocument (.-uri item))
-            editor (vscode/window.showTextDocument document #js {:preview true :preserveFocus true})
-            range (.-range item)]
-      (.revealRange editor (.-range item) vscode/TextEditorRevealType.InCenter)
-      (clear-decorations! editor)
-      (.setDecorations editor line-decoration-type #js [range])
-      (reset! !decorated-editor editor))))
-
-(defn- reveal-picked! [item]
-  (when item
-    (p/let [document (vscode/workspace.openTextDocument (.-uri item))
-            editor (vscode/window.showTextDocument document)
+            editor (vscode/window.showTextDocument document #js {:preview preview? :preserveFocus preview?})
             range (.-range item)]
       (.revealRange editor range vscode/TextEditorRevealType.InCenter)
       (clear-decorations! editor)
-      (set! (.-selection editor)
-            (vscode/Selection. (.-start range) (.-start range))))))
+      (if preview?
+        (do
+          (.setDecorations editor line-decoration-type #js [range])
+          (reset! !decorated-editor editor))
+        (set! (.-selection editor)
+              (vscode/Selection. (.-start range) (.-start range)))))))
 
 (defn show-search-box! []
   (p/let [uris (find-files!+)
@@ -77,9 +71,9 @@
     (set! (.-matchOnDetail quick-pick) true)
     (doto quick-pick
       (.onDidChangeActive (fn [active-items]
-                            (preview-item! (first active-items))))
+                            (highlight-item! (first active-items) true)))
       (.onDidAccept (fn []
-                      (reveal-picked! (first (.-selectedItems quick-pick)))
+                      (highlight-item! (first (.-selectedItems quick-pick)) false)
                       (.dispose quick-pick)))
       (.onDidHide (fn [e]
                     (.appendLine (joyride/output-channel) (str "Fuzzy search cancelled: " e))
