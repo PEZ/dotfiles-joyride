@@ -4,7 +4,7 @@
             [joyride.core :as joyride]
             [promesa.core :as p]))
 
-(defn- get-exclude-patterns []
+(defn- get-configured-exclude-patterns! []
   (->> ["search.exclude" "files.exclude"]
        (mapcat (fn [config-key]
                  (-> (.get (vscode/workspace.getConfiguration) config-key)
@@ -12,29 +12,33 @@
                      (.filter (fn [[_k v]] v))
                      (.map (fn [[k _v]] k)))))))
 
-(defn- configured-exclude-patterns []
-  (str "{" (string/join "," (get-exclude-patterns)) "}"))
+(defn- make-exclude-pattern! []
+  (str "{" (string/join "," (get-configured-exclude-patterns!)) "}"))
 
 (defn- find-files!+ []
-  (p/let [excludes (configured-exclude-patterns)]
+  (p/let [excludes (make-exclude-pattern!)]
     (vscode/workspace.findFiles "**/*" excludes)))
 
-(defn- uri->line-items!+ [uri]
+(defn- uri->line-items!+ [max-file-loc uri]
   (p/let [data (vscode/workspace.fs.readFile uri)
           relative-path (vscode/workspace.asRelativePath uri)]
     (if (.includes data 0) ; Excludes binary files
       []
       (let [lines (-> data (.toString "utf8") (.split "\n"))]
-        (keep-indexed (fn [idx line]
-                        (when-not (string/blank? line)
-                          #js {:label (str (.trim line) " - " relative-path)
-                               :detail (str relative-path ", Line: " (inc idx))
-                               :uri uri
-                               :range (vscode/Range. idx (.search line #"\S") idx (count line))}))
-                      lines)))))
+        (if (> (count lines) max-file-loc)
+          (do
+            (.appendLine (joyride/output-channel) (str "Excluding: " relative-path " (too many lines:" (count lines) ")"))
+            [])
+         (keep-indexed (fn [idx line]
+                         (when-not (string/blank? line)
+                           #js {:label (str (.trim line) " - " relative-path)
+                                :detail (str relative-path ", Line: " (inc idx))
+                                :uri uri
+                                :range (vscode/Range. idx (.search line #"\S") idx (count line))}))
+                       lines))))))
 
-(defn- uris->line-items!+ [uris]
-  (p/let [line-items (p/all (map uri->line-items!+ uris))]
+(defn- uris->line-items!+ [max-file-loc uris]
+  (p/let [line-items (p/all (map (partial uri->line-items!+ max-file-loc) uris))]
     (apply concat line-items)))
 
 (def ^:private !decorated-editor (atom nil))
@@ -59,26 +63,27 @@
         (set! (.-selection editor)
               (vscode/Selection. (.-start range) (.-start range)))))))
 
-(defn show-search-box! []
+(defn show-search-box! [max-file-loc]
   (p/let [uris (find-files!+)
-          all-items (uris->line-items!+ uris)
-          _ (.appendLine (joyride/output-channel) (str "Fuzzy lines: " (count all-items)))
+          all-items (uris->line-items!+ max-file-loc uris)
+          loc-item #js {:label "$(list-ordered)"
+                        :description (str "Workspace LOC: " (count all-items))}
           quick-pick (vscode/window.createQuickPick)]
-    (set! (.-items quick-pick) (into-array (concat [#js {:description (str "LOC: " (count all-items))}] all-items)))
+    (set! (.-items quick-pick) (into-array (concat [loc-item] all-items)))
     (set! (.-title quick-pick) "Fuzzy file search")
     (set! (.-placeHolder quick-pick) "Use `foo*bar` to match `foo<whatever>bar`")
     (set! (.-matchOnDetail quick-pick) true)
     (doto quick-pick
       (.onDidChangeActive (fn [active-items]
                             (highlight-item! (first active-items) true)))
-      (.onDidAccept (fn []
+      (.onDidAccept (fn [_e]
                       (highlight-item! (first (.-selectedItems quick-pick)) false)
                       (.dispose quick-pick)))
-      (.onDidHide (fn [e]
-                    (.appendLine (joyride/output-channel) (str "Fuzzy search cancelled: " e))
+      (.onDidHide (fn [_e]
+                    (.dispose quick-pick)
                     (when-let [editor @!decorated-editor]
                       (clear-decorations! editor))))
       (.show))))
 
 (when (= (joyride/invoked-script) joyride/*file*)
-  (show-search-box!))
+  (show-search-box! nil))
