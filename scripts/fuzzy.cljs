@@ -26,7 +26,8 @@
     (if (.includes data 0) ; Excludes binary files
       []
       (let [lines (-> data (.toString "utf8") (.split "\n"))]
-        (if (> (count lines) max-file-loc)
+        (if (and max-file-loc
+                 (> (count lines) max-file-loc))
           (do
             (.appendLine (joyride/output-channel) (str "Excluding: " relative-path " (too many lines:" (count lines) ")"))
             [])
