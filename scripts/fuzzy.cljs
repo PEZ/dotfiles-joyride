@@ -46,7 +46,7 @@
   (.setDecorations editor line-decoration-type #js []))
 
 (defn- highlight-item! [item preview?]
-  (when item
+  (when (some-> item .-range)
     (p/let [document (vscode/workspace.openTextDocument (.-uri item))
             editor (vscode/window.showTextDocument document #js {:preview preview? :preserveFocus preview?})
             range (.-range item)]
@@ -64,10 +64,9 @@
           all-items (uris->line-items!+ uris)
           _ (.appendLine (joyride/output-channel) (str "Fuzzy lines: " (count all-items)))
           quick-pick (vscode/window.createQuickPick)]
-    (set! (.-items quick-pick) (into-array all-items))
+    (set! (.-items quick-pick) (into-array (concat [#js {:description (str "LOC: " (count all-items))}] all-items)))
     (set! (.-title quick-pick) "Fuzzy file search")
     (set! (.-placeHolder quick-pick) "Use `foo*bar` to match `foo<whatever>bar`")
-    (set! (.-matchOnDescription quick-pick) true)
     (set! (.-matchOnDetail quick-pick) true)
     (doto quick-pick
       (.onDidChangeActive (fn [active-items]
