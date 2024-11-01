@@ -10,7 +10,8 @@
                  (-> (.get (vscode/workspace.getConfiguration) config-key)
                      (js/Object.entries)
                      (.filter (fn [[_k v]] v))
-                     (.map (fn [[k _v]] k)))))))
+                     (.map (fn [[k _v]] k)))))
+       set))
 
 (defn- make-exclude-pattern! []
   (str "{" (string/join "," (get-configured-exclude-patterns!)) "}"))
