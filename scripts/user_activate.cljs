@@ -66,7 +66,7 @@
                        ;; will be cleared now. You can push them anew.
 
   (push-disposable! (#_{:clj-kondo/ignore [:unresolved-symbol]}
-                     (requiring-resolve 'highlight-thousands/activate!)))
+                     #_(requiring-resolve 'highlight-thousands/activate!)))
 
   ;;; require VS Code extensions
   ;; In an activation.cljs script it can't be guaranteed that a
@@ -91,7 +91,7 @@
                    (vscode/window.showErrorMessage (str "Requiring Calva failed: " error))))))
 
 (when (= (joyride/invoked-script) joyride/*file*)
-  (my-main))
+  #_(my-main))
 
 "🎉"
 
