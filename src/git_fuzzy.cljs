@@ -17,6 +17,7 @@
 ;; (Ask CoPilot to fetch it to get great help with hacking on the script.)
 
 (def max-entries 5000)
+(def batch-size 250)
 
 (defn get-git-api!+ []
   (some-> (vscode/extensions.getExtension  "vscode.git")
@@ -96,61 +97,79 @@
         (let [parent-hash (first parents)]
           (.diffBetween repo parent-hash hash))))))
 
-
-#_(set! (.-enabled quick-pick) false)
-
-
 (defn show-git-history-search!+ []
   (p/let [repo (get-current-repository!+)
           _ (when-not repo
               (throw (js/Error. "No Git repository found in the current workspace")))
-          quick-pick (vscode/window.createQuickPick)
-          _ (set! (.-busy quick-pick) true)
-          _ (set! (.-title quick-pick) "Git History Search")
-          _ (set! (.-placeholder quick-pick) "Loading commit history... Please wait")
-          _ (.show quick-pick)
-          commits (get-commit-history!+ repo)
-          all-items-promises (map (fn [commit]
-                                    (p/let [changes (get-commit-changes!+ repo commit)]
-                                      (map #(format-file-for-quickpick commit %) changes)))
-                                  commits)
-          all-items-nested (p/all all-items-promises)
-          all-items (apply concat all-items-nested)]
 
-    (set! (.-busy quick-pick) false)
-    (set! (.-items quick-pick) (into-array all-items))
+          quick-pick (vscode/window.createQuickPick)]
+
+    (set! (.-busy quick-pick) true)
+    (.show quick-pick)
     (set! (.-title quick-pick) "Git History Search")
-    (set! (.-placeHolder quick-pick) "Search commit messages, files, authors, or hashes")
-    (set! (.-matchOnDescription quick-pick) true)
-    (set! (.-matchOnDetail quick-pick) true)
+    (set! (.-placeholder quick-pick) "Loading commit history... Please wait")
 
-    (.onDidChangeActive quick-pick (fn [active-items]
-                                     (let [first-item (first active-items)]
-                                       (when (and first-item (.-fileChange first-item))
-                                         (show-file-diff!+ (.-commit first-item) (.-fileChange first-item) true)))))
-    (.onDidAccept quick-pick
+    (p/let [commits (get-commit-history!+ repo)
+            total-commits (count commits)
+            batches (partition-all batch-size commits)
+            total-batches (count batches)
+            _ (do (set! (.-placeholder quick-pick) (str "Processing " total-commits " commits in " total-batches " batches..."))
+                  (set! (.-totalSteps quick-pick) total-batches))]
+
+      (reduce (fn [acc-promise [batch-idx batch]]
+                (p/let [acc acc-promise
+                        _ (set! (.-step quick-pick) (inc batch-idx))
+                        processed-commits (* batch-idx batch-size)
+                        _ (set! (.-placeholder quick-pick)
+                                (str "Processing batch " (inc batch-idx) "/" total-batches
+                                     " (commits " processed-commits "-"
+                                     (min (+ processed-commits batch-size) total-commits) ")"))
+
+                        batch-promises (map (fn [commit]
+                                              (p/let [changes (get-commit-changes!+ repo commit)]
+                                                (map #(format-file-for-quickpick commit %) changes)))
+                                            batch)
+                        batch-results (p/all batch-promises)
+                        flattened-batch (apply concat batch-results)
+                        new-acc (concat acc flattened-batch)]
+
+                  ;; Update items in QuickPick as we go (progressive loading!)
+                  (set! (.-items quick-pick) (into-array new-acc))
+                  new-acc))
+              (p/resolved [])
+              (map-indexed vector batches))
+
+      (set! (.-busy quick-pick) false)
+      (set! (.-step quick-pick) nil)
+      (set! (.-totalSteps quick-pick) nil)
+      (set! (.-placeholder quick-pick) "Fuzzy search commit messages")
+      (set! (.-matchOnDescription quick-pick) true)
+      (set! (.-matchOnDetail quick-pick) true)
+
+      (.onDidChangeActive quick-pick (fn [active-items]
+                                       (let [first-item (first active-items)]
+                                         (when (and first-item (.-fileChange first-item))
+                                           (show-file-diff!+ (.-commit first-item) (.-fileChange first-item) true)))))
+      (.onDidAccept quick-pick
+                    (fn [_e]
+                      (p/let [selected-item (first (.-selectedItems quick-pick))
+                              commit (.-commit selected-item)
+                              file-change (.-fileChange selected-item)]
+                        (when (and commit file-change)
+                          (show-file-diff!+ commit file-change false))
+                        (.dispose quick-pick))))
+      (.onDidHide quick-pick
                   (fn [_e]
-                    (p/let [selected-item (first (.-selectedItems quick-pick))
-                            commit (.-commit selected-item)
-                            file-change (.-fileChange selected-item)]
-                      (when (and commit file-change)
-                        (show-file-diff!+ commit file-change false))
-                      (.dispose quick-pick))))
-    (.onDidHide quick-pick
-                (fn [_e]
-                  (.dispose quick-pick)))
-
-    (.onDidTriggerItemButton quick-pick
-                             (fn [e]
-                               (case (some-> e .-button .-name)
-                                 "copy"
-                                 (vscode/env.clipboard.writeText (.-hash (.-item e)))
-
-                                 "open"
-                                 (p/-> (vscode/workspace.openTextDocument (.-fileUri (.-item e)))
-                                       (vscode/window.showTextDocument (.-fileUri (.-item e)) #{:preview true})))
-                               (.dispose quick-pick)))
-    (.show quick-pick)))
+                    (.dispose quick-pick)))
+      (.onDidTriggerItemButton quick-pick
+                               (fn [e]
+                                 (case (some-> e .-button .-name)
+                                   "copy"
+                                   (vscode/env.clipboard.writeText (.-hash (.-item e)))
+                                   "open"
+                                   (p/-> (vscode/workspace.openTextDocument (.-fileUri (.-item e)))
+                                         (vscode/window.showTextDocument (.-fileUri (.-item e)) #{:preview true})))
+                                 (.dispose quick-pick))))))
 
 (defn ^:export show-git-history!+ []
   (p/catch
