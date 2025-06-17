@@ -50,7 +50,8 @@
         file-uri (.-uri file-change)
         file-path (vscode/workspace.asRelativePath file-uri)
         status (.-status file-change)]
-    #js {:label (str "$(file) " message)
+    #js {:label message
+         :iconPath (vscode/ThemeIcon. "file")
          :description (str file-path)
          :detail (str "$(git-commit) " short-hash " - " author-name " - " formatted-date " Status: " status)
          :commit commit
@@ -124,14 +125,12 @@
                                 (str "Processing batch " (inc batch-idx) "/" total-batches
                                      " (commits " processed-commits "-"
                                      (min (+ processed-commits batch-size) total-commits) ")"))
-
-                        batch-promises (map (fn [commit]
-                                              (p/let [changes (get-commit-changes!+ repo commit)]
-                                                (map #(format-file-for-quickpick commit %) changes)))
-                                            batch)
-                        batch-results (p/all batch-promises)
-                        flattened-batch (apply concat batch-results)
-                        new-acc (concat acc flattened-batch)]
+                        changes-promises (map #(get-commit-changes!+ repo %) batch)
+                        all-changes (p/all changes-promises)
+                        batch-results (->> (map vector batch all-changes)
+                                           (mapcat (fn [[commit changes]]
+                                                     (map #(format-file-for-quickpick commit %) changes))))
+                        new-acc (concat acc batch-results)]
 
                   ;; Update items in QuickPick as we go (progressive loading!)
                   (set! (.-items quick-pick) (into-array new-acc))
