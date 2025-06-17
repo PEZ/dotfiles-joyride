@@ -96,19 +96,28 @@
         (let [parent-hash (first parents)]
           (.diffBetween repo parent-hash hash))))))
 
+
+#_(set! (.-enabled quick-pick) false)
+
+
 (defn show-git-history-search!+ []
   (p/let [repo (get-current-repository!+)
           _ (when-not repo
               (throw (js/Error. "No Git repository found in the current workspace")))
+          quick-pick (vscode/window.createQuickPick)
+          _ (set! (.-busy quick-pick) true)
+          _ (set! (.-title quick-pick) "Git History Search")
+          _ (set! (.-placeholder quick-pick) "Loading commit history... Please wait")
+          _ (.show quick-pick)
           commits (get-commit-history!+ repo)
           all-items-promises (map (fn [commit]
                                     (p/let [changes (get-commit-changes!+ repo commit)]
                                       (map #(format-file-for-quickpick commit %) changes)))
                                   commits)
           all-items-nested (p/all all-items-promises)
-          all-items (apply concat all-items-nested)
-          quick-pick (vscode/window.createQuickPick)]
+          all-items (apply concat all-items-nested)]
 
+    (set! (.-busy quick-pick) false)
     (set! (.-items quick-pick) (into-array all-items))
     (set! (.-title quick-pick) "Git History Search")
     (set! (.-placeHolder quick-pick) "Search commit messages, files, authors, or hashes")
