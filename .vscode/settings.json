@@ -16,9 +16,6 @@
   "zenMode.centerLayout": false,
   "gitlens.gitCommands.sortBy": "name",
   "markdown.preview.typographer": true,
-  "markdown.styles": [
-      "style.css"
-  ],
   "markdown.preview.scrollPreviewWithEditor": false,
   "markdown.preview.scrollEditorWithPreview": false,
   "markdown.preview.markEditorSelection": false,
