@@ -6,15 +6,15 @@
 
 ;; “Install” by by placing this script in ~/.config/joyride/src
 ;; and add something like this to your keybindings.json
-  ;; {
-  ;;   "key": "ctrl+alt+j ctrl+alt+g",
-  ;;   "command": "joyride.runCode",
-  ;;   "args": "(require '[git-fuzzy :as gz] :reload) (gz/show-git-history!+)"
-  ;; },
+;; {
+;;   "key": "ctrl+alt+j ctrl+alt+g",
+;;   "command": "joyride.runCode",
+;;   "args": "(require '[git-fuzzy :as gz] :reload) (gz/show-git-history!+)"
+;; },
 
 ;; vscode.git API
 ;; https://github.com/Microsoft/vscode/blob/main/extensions/git/src/api/git.d.ts
-;; (Ask CoPilot to fetch it to get great help with hacking on the script.)
+;; (Ask Copilot to fetch it to get great help with hacking on the script.)
 
 (def max-entries 5000)
 (def batch-size 250)
@@ -65,7 +65,6 @@
                             :iconPath (vscode/ThemeIcon. "go-to-file")
                             :tooltip "Open file"}]}))
 
-
 (defn show-file-diff!+ [commit file-change preview?]
   (p/let [git-api (get-git-api!+)]
     (when (and git-api commit file-change)
@@ -87,7 +86,7 @@
                                         uri2
                                         title
                                         #js {:preview preview?
-                                                                           :preserveFocus preview?})))))
+                                             :preserveFocus preview?})))))
 
 (defn get-commit-changes!+ [repo commit]
   (when (and repo commit)
