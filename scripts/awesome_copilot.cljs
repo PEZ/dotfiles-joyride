@@ -9,6 +9,16 @@
 (def INDEX-URL "https://raw.githubusercontent.com/PEZ/awesome-copilot/refs/heads/pez/create-index-json/index.json")
 (def CONTENT-BASE-URL "https://raw.githubusercontent.com/github/awesome-copilot/main/")
 
+;; Helper function to get VS Code user directory
+(defn get-vscode-user-dir []
+  (let [app-name (.-appName vscode/env)
+        is-insiders (.includes app-name "Insiders")
+        code-dir-name (if is-insiders "Code - Insiders" "Code")
+        user-home (.. js/process -env -HOME)]
+    (if (= (.-platform js/process) "darwin")
+      (.join path user-home "Library" "Application Support" code-dir-name "User")
+      (.join path user-home ".config" code-dir-name "User"))))
+
 ;; Category definitions with UI metadata
 (def categories
   [{:label "📝 Instructions"
@@ -98,24 +108,33 @@
 
 ;; Install content to global location based on category type
 (defn install-globally [content item category]
-  (let [filename (:filename (:item item))
-        user-home (.. js/process -env -HOME)
-        dir (cond
-              (= category "instructions") (.join path user-home ".vscode" "instructions")
-              (= category "prompts") (.join path user-home ".vscode" "prompts")
-              (= category "chatmodes") (.join path user-home ".vscode" "chatmodes")
-              :else nil)]
-
-    (when dir
+  (p/let [;; Get VS Code user directory
+          vscode-user-dir (get-vscode-user-dir)
+          
+          ;; Get current profile if any - keeping for future reference
+          config (vscode/workspace.getConfiguration)
+          _ (.get config "workbench.profiles.name")
+          
+          ;; Build path based on category
+          dir-path (cond
+                    (= category "instructions") (.join path (.. js/process -env -HOME) ".vscode" "instructions")
+                    (= category "prompts") (.join path vscode-user-dir "prompts")
+                    (= category "chatmodes") (.join path vscode-user-dir "prompts") ;; Yes, chatmodes go in prompts folder
+                    :else nil)
+          
+          ;; Get the filename
+          filename (:filename (:item item))]
+      
+    (when dir-path
       ;; Create directory if it doesn't exist
-      (when-not (.existsSync fs dir)
-        (.mkdirSync fs dir #js {:recursive true}))
+      (when-not (.existsSync fs dir-path)
+        (.mkdirSync fs dir-path #js {:recursive true}))
 
       ;; Write file
-      (let [file-path (.join path dir filename)]
+      (let [file-path (.join path dir-path filename)]
         (.writeFileSync fs file-path content)
         (vscode/window.showInformationMessage
-          (str "Installed " filename " to global profile"))
+          (str "Installed " filename " to " (.-appName vscode/env) " User/prompts directory"))
 
         {:success true :path file-path}))))
 
