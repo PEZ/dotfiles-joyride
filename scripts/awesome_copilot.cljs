@@ -1,3 +1,22 @@
+;; Script for Exploring and installing instructions and prompts from Awesome Copilot
+;; https://github.com/github/awesome-copilot
+;;
+;; Joyride: https://github.com/BetterThanTomorrow/joyride
+;; Install it from the Extensions pane in VS Code
+;;
+;; Install in Joyride as User script:
+;; 1. Select all + Copy
+;; 2. Command Palette: Joyride: Create User Script...
+;;    * Name it 'awesone-copilot'
+;; 3. Select all + Paste
+;;
+;; Use, from any VS Code window:
+;; 1. Command Palette: Joyride: Run User Script...
+;; 2. Select 'awesome_copilot.cljs'
+;;
+;; Hack, make it your own
+;; 1. Command palette: Joyride: Open User Joyride Directory in New Window
+
 (ns awesome-copilot
   (:require ["vscode" :as vscode]
             ["path" :as path]
