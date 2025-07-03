@@ -5,21 +5,19 @@
             [promesa.core :as p]
             [joyride.core :as joyride]))
 
-;; Constants for URLs
 (def INDEX-URL "https://raw.githubusercontent.com/PEZ/awesome-copilot/refs/heads/pez/create-index-json/index.json")
 (def CONTENT-BASE-URL "https://raw.githubusercontent.com/github/awesome-copilot/main/")
 
-;; Helper function to get VS Code user directory
 (defn get-vscode-user-dir []
-  (let [app-name (.-appName vscode/env)
-        is-insiders (.includes app-name "Insiders")
-        code-dir-name (if is-insiders "Code - Insiders" "Code")
-        user-home (.. js/process -env -HOME)]
-    (if (= (.-platform js/process) "darwin")
-      (.join path user-home "Library" "Application Support" code-dir-name "User")
-      (.join path user-home ".config" code-dir-name "User"))))
+  (let [context (joyride/extension-context)
+        global-storage-uri (.-globalStorageUri context)
+        global-storage-path (.-fsPath global-storage-uri)]
+    ;; Get the User directory, which is two levels up from the extension's globalStorage directory
+    ;; The path structure is: User/globalStorage/extension-id
+    (-> global-storage-path
+        path/dirname
+        path/dirname)))
 
-;; Category definitions with UI metadata
 (def categories
   [{:label "📝 Instructions"
     :description "Coding styles and best practices"
@@ -34,7 +32,6 @@
     :detail "Configure how Copilot Chat behaves for different activities"
     :category "chatmodes"}])
 
-;; Action definitions with UI metadata
 (def actions
   [{:label "✨ View Content"
     :description "Open in untitled editor"
@@ -49,21 +46,18 @@
     :detail "Only available in this project"
     :action :workspace}])
 
-;; Fetch and parse the index.json from GitHub
 (defn fetch-index []
   (p/let [response (js/fetch INDEX-URL)
           data (.json response)
           clj-data (js->clj data :keywordize-keys true)]
     clj-data))
 
-;; Fetch content of a specific item by its link
 (defn fetch-content [link]
   (let [content-url (str CONTENT-BASE-URL link)]
     (p/let [response (js/fetch content-url)
             text (.text response)]
       text)))
 
-;; Display the category picker menu
 (defn show-category-picker []
   (p/let [selected (vscode/window.showQuickPick
                      (clj->js categories)
@@ -72,15 +66,14 @@
     (when selected
       (js->clj selected :keywordize-keys true))))
 
-;; Display the item picker menu for a specific category
 (defn show-item-picker [items category-name]
   (p/let [items-js (clj->js
-                     (mapv (fn [item]
-                            {:label (:title item)
-                             :description (:filename item)
-                             :detail (:description item)
-                             :item item})
-                          items))
+                    (map (fn [item]
+                           {:label (:title item)
+                            :description (:filename item)
+                            :detail (:description item)
+                            :item item})
+                         items))
           selected (vscode/window.showQuickPick
                      items-js
                      #js {:placeHolder (str "Select a " category-name " item")
@@ -90,74 +83,72 @@
     (when selected
       (js->clj selected :keywordize-keys true))))
 
-;; Display the action menu for a selected item
 (defn show-action-menu [item]
   (p/let [selected (vscode/window.showQuickPick
                     (clj->js actions)
-                    #js {:placeHolder (str "Action for " (:title (:item item)))
+                    #js {:placeHolder (str "Action for " (-> item :item :title))
                          :ignoreFocusOut true})]
     (when selected
       (js->clj selected :keywordize-keys true))))
 
-;; Open content in untitled editor
 (defn open-in-untitled-editor [content _]
   (p/let [doc (vscode/workspace.openTextDocument #js {:content content
                                                       :language "markdown"})
           _ (vscode/window.showTextDocument doc)]
     {:success true}))
 
-;; Install content to global location based on category type
 (defn install-globally [content item category]
-  (p/let [;; Get VS Code user directory
-          vscode-user-dir (get-vscode-user-dir)
-          
-          ;; Get current profile if any - keeping for future reference
-          config (vscode/workspace.getConfiguration)
-          _ (.get config "workbench.profiles.name")
-          
-          ;; Build path based on category
+  (p/let [vscode-user-dir (get-vscode-user-dir)
           dir-path (cond
-                    (= category "instructions") (.join path (.. js/process -env -HOME) ".vscode" "instructions")
-                    (= category "prompts") (.join path vscode-user-dir "prompts")
-                    (= category "chatmodes") (.join path vscode-user-dir "prompts") ;; Yes, chatmodes go in prompts folder
+                    ;; Instructions go in .vscode/instructions in user home
+                    (= category "instructions")
+                    (.join path (.. js/process -env -HOME) ".vscode" "instructions")
+
+                    ;; Both prompts and chatmodes go in User/prompts folder
+                    (or (= category "prompts") (= category "chatmodes"))
+                    (.join path vscode-user-dir "prompts")
+
+                    ;; Unknown category
                     :else nil)
-          
-          ;; Get the filename
-          filename (:filename (:item item))]
-      
-    (when dir-path
-      ;; Create directory if it doesn't exist
-      (when-not (.existsSync fs dir-path)
-        (.mkdirSync fs dir-path #js {:recursive true}))
 
-      ;; Write file
-      (let [file-path (.join path dir-path filename)]
-        (.writeFileSync fs file-path content)
-        (vscode/window.showInformationMessage
-          (str "Installed " filename " to " (.-appName vscode/env) " User/prompts directory"))
+          filename (-> item :item :filename)]
 
-        {:success true :path file-path}))))
+    (if dir-path
+      (try
+        (when-not (.existsSync fs dir-path)
+          (.mkdirSync fs dir-path #js {:recursive true}))
 
-;; Install content to workspace based on category type
+        (let [file-path (.join path dir-path filename)]
+          (.writeFileSync fs file-path content)
+          (vscode/window.showInformationMessage
+            (str "Installed " filename " to " (.-appName vscode/env) " User/prompts directory"))
+
+          {:success true :path file-path})
+        (catch :default err
+          (vscode/window.showErrorMessage
+            (str "Failed to install " filename ": " (.-message err)))
+          {:success false :error (.-message err)}))
+
+      (do
+        (vscode/window.showErrorMessage
+          (str "Unknown category: " category))
+        {:success false :error (str "Unknown category: " category)}))))
+
 (defn install-to-workspace [content item category]
   (if-let [workspace-folder (first vscode/workspace.workspaceFolders)]
     (let [filename (:filename (:item item))
           workspace-path (-> workspace-folder .-uri .-fsPath)
-
-          ;; Determine directory based on category
-          dir-path (cond
-                     (= category "instructions") (.join path workspace-path ".github" "instructions")
-                     (= category "prompts") (.join path workspace-path ".github" "prompts")
-                     (= category "chatmodes") (.join path workspace-path ".github" "chatmodes")
-                     :else nil)]
+          dir-path (case category
+                     "instructions" (.join path workspace-path ".github" "instructions")
+                     "prompts" (.join path workspace-path ".github" "prompts")
+                     "chatmodes" (.join path workspace-path ".github" "chatmodes")
+                     nil)]
 
       (if dir-path
         (do
-          ;; Create directory if it doesn't exist
           (when-not (.existsSync fs dir-path)
             (.mkdirSync fs dir-path #js {:recursive true}))
 
-          ;; Write file
           (let [file-path (.join path dir-path filename)]
             (.writeFileSync fs file-path content)
             (vscode/window.showInformationMessage
@@ -165,13 +156,11 @@
 
             {:success true :path file-path}))
 
-        ;; Error - unknown category
         (do
           (vscode/window.showErrorMessage
             (str "Unknown category: " category))
           {:success false :error "Unknown category"})))
 
-    ;; Error - no workspace folder
     (do
       (vscode/window.showErrorMessage "No workspace folder open")
       {:success false :error "No workspace folder"})))
@@ -229,18 +218,17 @@
       (vscode/window.showErrorMessage "No workspace folder open")
       {:success false :error "No workspace folder"})))
 
-;; Open file after installation
 (defn open-installed-file [file-path]
   (p/let [uri (vscode/Uri.file file-path)
           doc (vscode/workspace.openTextDocument uri)
           _ (vscode/window.showTextDocument doc)]
     {:success true}))
 
-;; Execute action for a selected item and category
 (defn execute-action [item action-type category]
   (p/let [content (fetch-content (-> item :item :link))]
     (case (keyword action-type)
-      :view (open-in-untitled-editor content (-> item :item :filename))
+      :view
+      (open-in-untitled-editor content (-> item :item :filename))
 
       :global
       (p/let [result (install-globally content item category)]
@@ -272,13 +260,12 @@
             (open-installed-file (:path result)))
           result))
 
-      ;; Default case - unknown action
+      ;; Unknown action
       (do
         (vscode/window.showErrorMessage (str "Unknown action: " action-type))
         {:success false :error "Unknown action"}))))
 
-;; Main command function
-(defn awesome-copilot []
+(defn main []
   (p/catch
     (p/let [index (fetch-index)
             category (show-category-picker)]
@@ -291,11 +278,10 @@
               (when action
                 (execute-action item (:action action) category-name)))))))
 
-    ;; Error handler
     (fn [error]
       (vscode/window.showErrorMessage (str "Error: " (.-message error)))
       (js/console.error "Error in awesome-copilot:" error))))
 
-;; Run the script directly when loaded
+;; Run the script directly when loaded, unless loaded in the REPL
 (when (= (joyride/invoked-script) joyride/*file*)
-  (awesome-copilot))
+  (main))
