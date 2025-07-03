@@ -19,29 +19,35 @@
         path/dirname)))
 
 (def categories
-  [{:label "📝 Instructions"
+  [{:label "Instructions"
+    :iconPath (vscode/ThemeIcon. "list-ordered")
     :description "Coding styles and best practices"
     :detail "Guidelines for generating code that follows specific patterns"
     :category "instructions"}
-   {:label "🔮 Prompts"
+   {:label "Prompts"
+    :iconPath (vscode/ThemeIcon. "chevron-right")
     :description "Task-specific templates"
     :detail "Pre-defined prompts for common tasks like testing, documentation, etc."
     :category "prompts"}
-   {:label "💬 Chatmodes"
+   {:label "Chatmodes"
+    :iconPath (vscode/ThemeIcon. "color-mode")
     :description "Conversation behavior settings"
     :detail "Configure how Copilot Chat behaves for different activities"
     :category "chatmodes"}])
 
 (def actions
-  [{:label "✨ View Content"
+  [{:label "View Content"
+    :iconPath (vscode/ThemeIcon. "preview")
     :description "Open in untitled editor"
     :detail "Preview the markdown content in an editor"
     :action :view}
-   {:label "🌍 Install Globally"
+   {:label "Install Globally"
+    :iconPath (vscode/ThemeIcon. "globe")
     :description "Save to user profile"
     :detail "Available across all your workspaces"
     :action :global}
-   {:label "📁 Install in Workspace"
+   {:label "Install in Workspace"
+    :iconPath (vscode/ThemeIcon. "github-project")
     :description "Save to this workspace only"
     :detail "Only available in this project"
     :action :workspace}])
@@ -183,8 +189,10 @@
         ;; Append mode
         (p/let [choice (vscode/window.showQuickPick
                          (clj->js [{:label "Append"
+                                    :iconPath (vscode/ThemeIcon. "add")
                                     :description "Add to existing instructions"}
                                    {:label "Replace"
+                                    :iconPath (vscode/ThemeIcon. "replace-all")
                                     :description "Overwrite existing instructions"}])
                          #js {:placeHolder "How to install to copilot-instructions.md?"})
                 choice-clj (when choice (js->clj choice :keywordize-keys true))
@@ -242,8 +250,10 @@
       (if (= category "instructions")
         (p/let [choice (vscode/window.showQuickPick
                          (clj->js [{:label "GitHub Instructions Directory"
+                                    :iconPath (vscode/ThemeIcon. "file-directory")
                                     :description ".github/instructions/"}
                                    {:label "Copilot Instructions File"
+                                    :iconPath (vscode/ThemeIcon. "file-code")
                                     :description ".github/copilot-instructions.md"}])
                          #js {:placeHolder "Where to install?"})
                 choice-clj (when choice (js->clj choice :keywordize-keys true))
