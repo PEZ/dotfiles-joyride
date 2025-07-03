@@ -74,6 +74,8 @@
           selected (vscode/window.showQuickPick
                      items-js
                      #js {:placeHolder (str "Select a " category-name " item")
+                          :matchOnDescription true
+                          :matchOnDetail true
                           :ignoreFocusOut true})]
     (when selected
       (js->clj selected :keywordize-keys true))))
@@ -156,7 +158,7 @@
       {:success false :error "No workspace folder"})))
 
 ;; Special handling for instructions to copilot-instructions.md
-(defn install-to-copilot-instructions [content _]
+(defn install-to-copilot-instructions [content item]
   (if-let [workspace-folder (first vscode/workspace.workspaceFolders)]
     (let [workspace-path (-> workspace-folder .-uri .-fsPath)
           github-dir (.join path workspace-path ".github")
@@ -164,7 +166,7 @@
 
       ;; Create .github directory if it doesn't exist
       (when-not (.existsSync fs github-dir)
-        (.mkdirSync fs github-dir))
+        (.mkdirSync fs github-dir #js {:recursive true}))
 
       ;; Check if file already exists for append vs create
       (if (.existsSync fs file-path)
@@ -174,27 +176,27 @@
                                     :description "Add to existing instructions"}
                                    {:label "Replace"
                                     :description "Overwrite existing instructions"}])
-                         #js {:placeHolder "How to install to copilot-instructions.md?"})]
-          (when choice
-            (let [choice-text (.-label (js->clj choice))]
-              (cond
-                (= choice-text "Append")
-                (let [existing-content (.readFileSync fs file-path #js {:encoding "utf-8"})
-                      new-content (str existing-content "\n\n" content)]
-                  (.writeFileSync fs file-path new-content)
-                  (vscode/window.showInformationMessage
-                    "Appended to copilot-instructions.md")
-                  {:success true :path file-path :mode "append"})
+                         #js {:placeHolder "How to install to copilot-instructions.md?"})
+                choice-clj (when choice (js->clj choice :keywordize-keys true))
+                choice-text (when choice-clj (:label choice-clj))]
+          (cond
+            (= choice-text "Append")
+            (let [existing-content (.readFileSync fs file-path #js {:encoding "utf-8"})
+                  new-content (str existing-content "\n\n" content)]
+              (.writeFileSync fs file-path new-content)
+              (vscode/window.showInformationMessage
+                (str "Appended " (-> item :item :filename) " to copilot-instructions.md"))
+              {:success true :path file-path :mode "append"})
 
-                (= choice-text "Replace")
-                (do
-                  (.writeFileSync fs file-path content)
-                  (vscode/window.showInformationMessage
-                    "Replaced copilot-instructions.md")
-                  {:success true :path file-path :mode "replace"})
+            (= choice-text "Replace")
+            (do
+              (.writeFileSync fs file-path content)
+              (vscode/window.showInformationMessage
+                "Replaced copilot-instructions.md")
+              {:success true :path file-path :mode "replace"})
 
-                :else
-                {:success false :error "Cancelled"}))))
+            :else
+            {:success false :error "Cancelled or no choice made"}))
 
         ;; Create new file
         (do
@@ -208,27 +210,48 @@
       (vscode/window.showErrorMessage "No workspace folder open")
       {:success false :error "No workspace folder"})))
 
+;; Open file after installation
+(defn open-installed-file [file-path]
+  (p/let [uri (vscode/Uri.file file-path)
+          doc (vscode/workspace.openTextDocument uri)
+          _ (vscode/window.showTextDocument doc)]
+    {:success true}))
+
 ;; Execute action for a selected item and category
 (defn execute-action [item action-type category]
   (p/let [content (fetch-content (-> item :item :link))]
-    (case action-type
+    (case (keyword action-type)
       :view (open-in-untitled-editor content (-> item :item :filename))
 
       :global
-      (install-globally content item category)
+      (p/let [result (install-globally content item category)]
+        (when (:success result)
+          (open-installed-file (:path result)))
+        result)
 
       :workspace
-      (if (and (= category "instructions")
-               (p/let [choice (vscode/window.showQuickPick
-                                (clj->js [{:label "GitHub Instructions Directory"
-                                           :description ".github/instructions/"}
-                                          {:label "Copilot Instructions File"
-                                           :description ".github/copilot-instructions.md"}])
-                                #js {:placeHolder "Where to install?"})
-                       choice-text (when choice (.-label (js->clj choice)))]
-                 (= choice-text "Copilot Instructions File")))
-        (install-to-copilot-instructions content item)
-        (install-to-workspace content item category))
+      (if (= category "instructions")
+        (p/let [choice (vscode/window.showQuickPick
+                         (clj->js [{:label "GitHub Instructions Directory"
+                                    :description ".github/instructions/"}
+                                   {:label "Copilot Instructions File"
+                                    :description ".github/copilot-instructions.md"}])
+                         #js {:placeHolder "Where to install?"})
+                choice-clj (when choice (js->clj choice :keywordize-keys true))
+                choice-text (when choice-clj (:label choice-clj))]
+          (if (= choice-text "Copilot Instructions File")
+            (p/let [result (install-to-copilot-instructions content item)]
+              (when (:success result)
+                (open-installed-file (:path result)))
+              result)
+            (p/let [result (install-to-workspace content item category)]
+              (when (:success result)
+                (open-installed-file (:path result)))
+              result)))
+        (p/let [result (install-to-workspace content item category)]
+          (when (:success result)
+            (open-installed-file (:path result)))
+          result))
 
       ;; Default case - unknown action
       (do
