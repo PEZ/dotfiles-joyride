@@ -61,7 +61,8 @@
 (defn show-category-picker []
   (p/let [selected (vscode/window.showQuickPick
                      (clj->js categories)
-                     #js {:placeHolder "Select Awesome Copilot category"
+                     #js {:title "Awesome Copilot"
+                          :placeHolder "Select Awesome Copilot category"
                           :ignoreFocusOut true})]
     (when selected
       (js->clj selected :keywordize-keys true))))
@@ -70,6 +71,7 @@
   (p/let [items-js (clj->js
                     (map (fn [item]
                            {:label (:title item)
+                            :iconPath (vscode/ThemeIcon. "copilot")
                             :description (:filename item)
                             :detail (:description item)
                             :item item})
