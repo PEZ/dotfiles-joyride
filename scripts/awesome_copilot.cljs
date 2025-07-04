@@ -5,16 +5,16 @@
 ;; Install it from the Extensions pane in VS Code
 ;;
 ;; Install in Joyride as User script:
-;; 1. Select all + Copy
-;; 2. Command Palette: Joyride: Create User Script...
+;; 1. Select all script code + Copy
+;; 2. In VS Code Command Palette: Joyride: Create User Script...
 ;;    * Name it 'awesone-copilot'
-;; 3. Select all + Paste
+;; 3. In the editor that opens: Select all + Paste
 ;;
 ;; Use, from any VS Code window:
 ;; 1. Command Palette: Joyride: Run User Script...
 ;; 2. Select 'awesome_copilot.cljs'
 ;;
-;; Hack, make it your own
+;; Hack the script, make it your own
 ;; 1. Command palette: Joyride: Open User Joyride Directory in New Window
 
 (ns awesome-copilot
