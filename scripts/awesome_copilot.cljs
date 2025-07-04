@@ -24,7 +24,7 @@
             [promesa.core :as p]
             [joyride.core :as joyride]))
 
-(def INDEX-URL "https://raw.githubusercontent.com/PEZ/awesome-copilot/refs/heads/pez/create-index-json/index.json")
+(def INDEX-URL "https://pez.github.io/awesome-copilot-index/awesome-copilot.json")
 (def CONTENT-BASE-URL "https://raw.githubusercontent.com/github/awesome-copilot/main/")
 
 (defn get-vscode-user-dir []
