@@ -40,7 +40,6 @@ The project uses:
   "generated": "timestamp",
   "cursor-rules": [
     {
-      "title": "Error Handling",
       "description": "Best practices for error handling in TypeScript applications",
       "tech-stack": "Next.js TypeScript",
       "domain": "Error Handling",
@@ -79,7 +78,7 @@ The project uses:
 
 - **Tech-stack extraction**: `nextjs-react-typescript-cursorrules-prompt-file` → `"Next.js TypeScript"`
 - **Domain extraction**: `error-handling-and-validation.mdc` → `"Error Handling"`
-- **Title generation**: Use H1 heading first, then filename-based fallback
+- **Description extraction**: Use H1 heading first, then filename-based fallback for descriptions
 - **Filter files**: Only process `.mdc` and `.mdx` files, ignore `.cursorrules` and `README.md`
 - **Relative paths**: Ensure `link` field contains correct relative path from repository root
 
