@@ -9,11 +9,11 @@ This plan outlines exactly what we're shipping as our initial version - a functi
 ## Understanding the Technologies
 
 ### ✅ Research Phase
-- [x] Cursor Rules Format (MDC/MDX files only)
-  - MDC format with frontmatter metadata (description, globs, alwaysApply)
-  - MDX files from awesome-cursorrules repository
-  - ~~Legacy .cursorrules files~~ (excluded from scope)
-  - Auto-attached, manual, or agent-requested rules
+- [x] Cursor Rules Repository Structure
+  - Each rule in technology-specific directories (e.g., `nextjs-react-typescript-cursorrules-prompt-file/`)
+  - Multiple files per rule: `.cursorrules` (deprecated), `.mdc`/`.mdx` components, `README.md`
+  - Focus on modular `.mdc`/`.mdx` files (conversion targets) vs monolithic `.cursorrules` (deprecated)
+  - Rich metadata in README.md files (author attribution, benefits, synopsis)
 - [x] VS Code Copilot Formats
   - **Instructions**: `.github/copilot-instructions.md` or `.instructions.md` files
   - **Prompts**: `.prompt.md` files in `.github/prompts/`
@@ -27,23 +27,25 @@ This plan outlines exactly what we're shipping as our initial version - a functi
 
 ### ✅ Data Layer
 - [ ] Consume pre-built cursor-rules index (following awesome-copilot pattern)
-  - [ ] Expected data shape: `cursor-rules.json` with flat array of rule objects
-  - [ ] Each rule object contains: `{:id, :title, :description, :tech-stack, :filename, :link}`
-  - [ ] `:link` contains relative path for constructing raw GitHub URL (like awesome-copilot pattern)
-  - [ ] Pre-processing extracts clean titles from directory names (e.g., "nextjs-react-typescript-cursorrules-prompt-file" → "Next.js React TypeScript")
+  - [ ] Expected data shape: `cursor-rules.json` with flat array of component objects
+  - [ ] Each component object contains: `{:id, :title, :description, :tech-stack, :filename, :link, :component-type, :directory}`
+  - [ ] `:component-type` indicates file type: "mdc", "mdx", "readme" (ignore "cursorrules")
+  - [ ] `:link` contains relative path to specific component file (not directory)
+  - [ ] Pre-processing extracts clean titles and combines directory + component info
   - [ ] Content fetched only when user performs action (preview, convert, install)
-  - [ ] Optimized structure for VS Code quick-pick fuzzy search and filtering
+  - [ ] Optimized structure for VS Code quick-pick fuzzy search
 
 ### ✅ User Interface (Joyride-based)
-- [ ] Single flat quick-pick menu for all rules
-  - [ ] Label: Smart composition from title and tech stack extraction
-  - [ ] Description: Use existing description field from index
-  - [ ] Detail: Show filename, rule type, and repository info
-  - [ ] Fuzzy search across all three fields for maximum discoverability
-- [ ] Rule preview interface
-  - [ ] Fetch rule content on-demand from GitHub raw URLs (like awesome-copilot)
-  - [ ] Show extracted metadata from index (title, tech stack, description)
-  - [ ] Display fetched content in preview before conversion
+- [ ] Single flat quick-pick menu for all modular components
+  - [ ] Label: Component title + tech stack (e.g., "Error Handling - Next.js TypeScript")
+  - [ ] Description: Component type and source directory
+  - [ ] Detail: Show filename, component type (.mdc/.mdx), and focus area
+  - [ ] Fuzzy search across all fields for maximum discoverability
+- [ ] Component preview interface
+  - [ ] Fetch component content on-demand from GitHub raw URLs
+  - [ ] Show extracted metadata from index (title, tech stack, component type)
+  - [ ] Display fetched content with frontmatter parsing for .mdc files
+  - [ ] Show README.md context when available
 - [ ] Conversion target selection
   - [ ] Simple format selection: Instructions (default), Prompts, or Chat Modes
   - [ ] Workspace vs User scope selection
@@ -51,16 +53,19 @@ This plan outlines exactly what we're shipping as our initial version - a functi
 
 ### ✅ Conversion Engine
 - [ ] Content fetcher
-  - [ ] Fetch cursor rule content on-demand from GitHub raw URLs
-  - [ ] Basic content validation and cleanup after fetch
-  - [ ] Use extracted tech stack information from index metadata
+  - [ ] Fetch modular component content (.mdc/.mdx files) from GitHub raw URLs
+  - [ ] Parse .mdc frontmatter for metadata (title, description, category)
+  - [ ] Handle .mdx files with enhanced markdown parsing
+  - [ ] Fetch associated README.md for author attribution and context
 - [ ] Format converter
   - [ ] Generate appropriate frontmatter for user-selected Copilot format
-  - [ ] Convert fetched plain text cursor rules while preserving intent
+  - [ ] Convert focused component content while preserving intent and structure
+  - [ ] Combine component content with README metadata (author, benefits)
   - [ ] Add VS Code-specific adaptations and formatting
 - [ ] File generator
   - [ ] Create target files in correct locations (.github/copilot-instructions.md, etc.)
-  - [ ] Handle naming conventions based on rule metadata
+  - [ ] Handle naming conventions based on component metadata and tech stack
+  - [ ] Include original author attribution from README.md
   - [ ] Avoid conflicts with existing files
 
 ### ✅ File Management
@@ -84,9 +89,9 @@ This plan outlines exactly what we're shipping as our initial version - a functi
 
 ### ✅ Data Flow
 - [ ] Load cursor-rules.json index on startup → Parse into searchable structure
-- [ ] User searches flat quick-pick list → Filter and rank results from loaded data
-- [ ] User selects rule → Fetch content and suggest conversion type
-- [ ] User confirms conversion → Generate and install files
+- [ ] User searches flat quick-pick list → Filter and rank results
+- [ ] User selects component → Fetch .mdc/.mdx content and README context
+- [ ] User confirms conversion → Generate and install files with proper attribution
 - [ ] Show success feedback → Option to open created files
 
 ### ✅ Error Handling
@@ -104,25 +109,22 @@ This plan outlines exactly what we're shipping as our initial version - a functi
 - [ ] Show main menu with browse/search options
 
 ### ✅ Browse and Convert Flow
-- [ ] Single flat quick-pick with fuzzy search across all rules
-- [ ] Smart ranking based on search relevance and rule quality
-- [ ] Rule preview with content display from loaded index
+- [ ] Single flat quick-pick with fuzzy search across all modular components
+- [ ] Component preview with content display and README context
 - [ ] Conversion type selection (Instructions default, user chooses)
 - [ ] Target location selection (workspace/user)
-- [ ] Preview generated content with proper frontmatter
+- [ ] Preview generated content with proper frontmatter and attribution
 - [ ] Install confirmation
 - [ ] Success feedback with open file option
 
 ### ✅ Quality of Life Features
 - [ ] Simple format selection with sensible defaults
 - [ ] Duplicate detection (warn if similar files exist)
-- [ ] Batch conversion option (convert multiple rules)
-- [ ] Recent conversions list
 
 ## Validation and Testing
 
 ### ✅ Manual Testing Plan
-- [ ] Test with different cursor rule types from index
+- [ ] Test with different modular component types (.mdc/.mdx) from index
 - [ ] Verify generated file formats match VS Code expectations
 - [ ] Test in workspaces with/without `.github/` folder
 - [ ] Validate flat quick-pick search and filtering functionality
@@ -158,11 +160,11 @@ This plan outlines exactly what we're shipping as our initial version - a functi
 
 ## Next Steps
 1. Create single self-contained cursor_rules_converter.cljs script
-2. Implement flat quick-pick UI with fuzzy search across all awesome-cursorrules
-3. Add rule content fetching and conversion logic
-4. Build file generation and installation workflows
+2. Implement flat quick-pick UI with fuzzy search across all modular components (.mdc/.mdx files)
+3. Add component content fetching with frontmatter parsing and README context
+4. Build file generation and installation workflows with proper attribution
 5. Add comprehensive installation instructions in script header
-6. Manual testing and refinement
+6. Manual testing and refinement with different component types
 7. Documentation and usage examples
 
 **Target completion**: Functional MVP ready for initial use and feedback
