@@ -28,19 +28,22 @@ This plan outlines exactly what we're shipping as our initial version - a functi
 ### ✅ Data Layer
 - [ ] Consume pre-built cursor-rules index (following awesome-copilot pattern)
   - [ ] Expected data shape: `cursor-rules.json` with flat array of component objects
-  - [ ] Each component object contains: `{:id, :title, :description, :tech-stack, :filename, :link, :component-type, :directory}`
+  - [ ] Each component object contains: `{:title, :description, :tech-stack, :domain, :filename, :link, :component-type, :source-directory}`
   - [ ] `:component-type` indicates file type: "mdc", "mdx", "readme" (ignore "cursorrules")
-  - [ ] `:link` contains relative path to specific component file (not directory)
-  - [ ] Pre-processing extracts clean titles and combines directory + component info
+  - [ ] `:link` contains relative path to specific component file for URL construction with base URL
+  - [ ] `:domain` extracted from component title/filename (e.g., "Error Handling", "Component Guidelines")
+  - [ ] `:tech-stack` extracted from directory name (e.g., "Next.js TypeScript", "Python FastAPI")
+  - [ ] Pre-processing extracts clean titles and combines tech-stack + domain for "Tech stack - Domain" labels
   - [ ] Content fetched only when user performs action (preview, convert, install)
-  - [ ] Optimized structure for VS Code quick-pick fuzzy search
+  - [ ] Optimized structure for VS Code quick-pick fuzzy search with memory persistence
 
 ### ✅ User Interface (Joyride-based)
-- [ ] Single flat quick-pick menu for all modular components
-  - [ ] Label: Component title + tech stack (e.g., "Error Handling - Next.js TypeScript")
+- [ ] Single flat quick-pick menu for all modular components (single-select)
+  - [ ] Label format: "Tech stack - Domain" (e.g., "Next.js TypeScript - Error Handling")
   - [ ] Description: Component type and source directory
   - [ ] Detail: Show filename, component type (.mdc/.mdx), and focus area
   - [ ] Fuzzy search across all fields for maximum discoverability
+  - [ ] Uses quick-pick-with-memory pattern (like in awesome-copilot) for recent selections
 - [ ] Component preview interface
   - [ ] Fetch component content on-demand from GitHub raw URLs
   - [ ] Show extracted metadata from index (title, tech stack, component type)
@@ -109,7 +112,8 @@ This plan outlines exactly what we're shipping as our initial version - a functi
 - [ ] Show main menu with browse/search options
 
 ### ✅ Browse and Convert Flow
-- [ ] Single flat quick-pick with fuzzy search across all modular components
+- [ ] Single flat quick-pick with fuzzy search across all modular components (single-select)
+- [ ] Component selection with "Tech stack - Domain" labeling and memory persistence
 - [ ] Component preview with content display and README context
 - [ ] Conversion type selection (Instructions default, user chooses)
 - [ ] Target location selection (workspace/user)
