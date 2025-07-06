@@ -169,4 +169,4 @@ bb download-awesome
 bb generate-index
 ```
 
-The cursor-rules index will be available at: `https://pez.github.io/awesome-copilot-index/cursor-rules.json`
+The cursor-rules index will be available at: `https://pez.github.io/awesome-copilot-index/awesome-cursorrules.json`

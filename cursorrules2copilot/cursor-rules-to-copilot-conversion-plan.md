@@ -26,8 +26,8 @@ This plan outlines exactly what we're shipping as our initial version - a functi
 ## Core Components
 
 ### ✅ Data Layer
-- [ ] Consume pre-built cursor-rules index (following awesome-copilot pattern)
-  - [ ] Expected data shape: `cursor-rules.json` with flat array of component objects
+- [ ] Consume pre-built cursor-rules index from: `https://pez.github.io/awesome-copilot-index/awesome-cursorrules.json`
+  - [ ] Expected data shape: `awesome-cursorrules.json` with flat array of component objects
   - [ ] Each component object contains: `{:description, :tech-stack, :domain, :link, :component-type}`
   - [ ] `:component-type` indicates file type: "mdc", "mdx", "readme" (ignore "cursorrules")
   - [ ] `:link` contains relative path to specific component file for URL construction with base URL
@@ -91,14 +91,14 @@ This plan outlines exactly what we're shipping as our initial version - a functi
   - [ ] Follows awesome_copilot.cljs pattern for maximum usability
 
 ### ✅ Data Flow
-- [ ] Load cursor-rules.json index on startup → Parse into searchable structure
+- [ ] Load awesome-cursorrules.json index on startup → Parse into searchable structure
 - [ ] User searches flat quick-pick list → Filter and rank results
 - [ ] User selects component → Fetch .mdc/.mdx content and README context
 - [ ] User confirms conversion → Generate and install files with proper attribution
 - [ ] Show success feedback → Option to open created files
 
 ### ✅ Error Handling
-- [ ] Missing or corrupted cursor-rules.json file
+- [ ] Missing or corrupted awesome-cursorrules.json file
 - [ ] File system permission issues
 - [ ] Invalid cursor rule formats in index
 - [ ] Workspace folder not found
@@ -108,7 +108,7 @@ This plan outlines exactly what we're shipping as our initial version - a functi
 
 ### ✅ Startup Sequence
 - [ ] Command: "Joyride: Run User Script" → "cursor_rules_converter"
-- [ ] Load cursor-rules.json index from bundled data
+- [ ] Load awesome-cursorrules.json index from https://pez.github.io/awesome-copilot-index/awesome-cursorrules.json
 - [ ] Show main menu with browse/search options
 
 ### ✅ Browse and Convert Flow
