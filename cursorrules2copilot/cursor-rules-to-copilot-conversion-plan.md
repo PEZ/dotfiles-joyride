@@ -28,7 +28,7 @@ This plan outlines exactly what we're shipping as our initial version - a functi
 ### ✅ Data Layer
 - [ ] Consume pre-built cursor-rules index (following awesome-copilot pattern)
   - [ ] Expected data shape: `cursor-rules.json` with flat array of component objects
-  - [ ] Each component object contains: `{:title, :description, :tech-stack, :domain, :filename, :link, :component-type, :source-directory}`
+  - [ ] Each component object contains: `{:title, :description, :tech-stack, :domain, :link, :component-type}`
   - [ ] `:component-type` indicates file type: "mdc", "mdx", "readme" (ignore "cursorrules")
   - [ ] `:link` contains relative path to specific component file for URL construction with base URL
   - [ ] `:domain` extracted from component title/filename (e.g., "Error Handling", "Component Guidelines")
