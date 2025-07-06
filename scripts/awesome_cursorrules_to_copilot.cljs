@@ -7,17 +7,17 @@
 ;; Install in Joyride as User script:
 ;; 1. Select all script code + Copy
 ;; 2. In VS Code Command Palette: Joyride: Create User Script...
-;;    * Name it 'cursor-rules-converter'
+;;    * Name it 'awesome-cursorrules-to-copilot'
 ;; 3. In the editor that opens: Select all + Paste
 ;;
 ;; Use, from any VS Code window:
 ;; 1. Command Palette: Joyride: Run User Script...
-;; 2. Select 'cursor_rules_converter.cljs'
+;; 2. Select 'awesome_cursorrules_to_copilot.cljs'
 ;;
 ;; Hack the script, make it your own
 ;; 1. Command palette: Joyride: Open User Joyride Directory in New Window
 
-(ns cursor-rules-converter
+(ns awesome-cursorrules-to-copilot
   (:require ["vscode" :as vscode]
             ["path" :as path]
             ["fs" :as fs]
@@ -97,7 +97,7 @@
   [{:label "Instructions"
     :iconPath (vscode/ThemeIcon. "list-ordered")
     :description "GitHub Copilot Instructions"
-    :detail "Convert to .github/copilot-instructions.md format"
+    :detail "Convert to .github/instructions/*.md format"
     :format "instructions"}
    {:label "Prompts"
     :iconPath (vscode/ThemeIcon. "chevron-right")
@@ -109,6 +109,24 @@
     :description "GitHub Copilot Chat Modes"
     :detail "Convert to .github/chatmodes/*.chatmode.md format"
     :format "chatmodes"}])
+
+;; Actions - matching awesome_copilot exactly
+(def actions
+  [{:label "View Content"
+    :iconPath (vscode/ThemeIcon. "preview")
+    :description "Open in untitled editor"
+    :detail "Preview the markdown content in an editor"
+    :action :view}
+   {:label "Install Globally"
+    :iconPath (vscode/ThemeIcon. "globe")
+    :description "Save to user profile"
+    :detail "Available across all your workspaces"
+    :action :global}
+   {:label "Install in Workspace"
+    :iconPath (vscode/ThemeIcon. "github-project")
+    :description "Save to this workspace only"
+    :detail "Only available in this project"
+    :action :workspace}])
 
 (defn fetch-index+ []
   (p/let [response (js/fetch INDEX-URL)
@@ -150,7 +168,16 @@
     :match-fn (fn [format-item last-choice] (= (.-format format-item) (name last-choice)))
     :save-fn :format}))
 
-(defn parse-frontmatter 
+(defn show-action-picker+ [component _format]
+  (show-picker-with-memory+
+   actions
+   {:title "Cursor Rules Converter"
+    :placeholder (str "Action for " (:tech-stack component) " - " (:domain component))
+    :preference-key :last-action
+    :match-fn (fn [action-item last-choice] (= (name (.-action action-item)) (name last-choice)))
+    :save-fn :action}))
+
+(defn parse-frontmatter
   "Simple frontmatter parser - extracts YAML frontmatter from markdown content"
   [content]
   (if (.startsWith content "---")
@@ -172,32 +199,14 @@
     {:frontmatter {}
      :content content}))
 
-(defn convert-to-instructions 
+(defn convert-to-instructions
   "Convert cursor rule to GitHub Copilot Instructions format"
   [component _content parsed]
   (let [tech-stack (:tech-stack component)
         domain (:domain component)
         description (:description component)
         rule-content (:content parsed)]
-    
-    (str "# " tech-stack " - " domain "\n\n"
-         description "\n\n"
-         "## Original Source\n"
-         "- **Tech Stack**: " tech-stack "\n"
-         "- **Domain**: " domain "\n"
-         "- **Component Type**: " (:component-type component) "\n"
-         "- **Source**: https://github.com/PatrickJS/awesome-cursorrules\n\n"
-         "## Instructions\n\n"
-         rule-content)))
 
-(defn convert-to-prompt 
-  "Convert cursor rule to GitHub Copilot Prompt format"
-  [component _content parsed]
-  (let [tech-stack (:tech-stack component)
-        domain (:domain component)
-        description (:description component)
-        rule-content (:content parsed)]
-    
     (str "---\n"
          "title: " tech-stack " - " domain "\n"
          "description: " description "\n"
@@ -209,14 +218,33 @@
          "---\n\n"
          rule-content)))
 
-(defn convert-to-chatmode 
+(defn convert-to-prompt
+  "Convert cursor rule to GitHub Copilot Prompt format"
+  [component _content parsed]
+  (let [tech-stack (:tech-stack component)
+        domain (:domain component)
+        description (:description component)
+        rule-content (:content parsed)]
+
+    (str "---\n"
+         "title: " tech-stack " - " domain "\n"
+         "description: " description "\n"
+         "authors:\n"
+         "  - Awesome Cursor Rules Community\n"
+         "tags:\n"
+         "  - " (.toLowerCase (.replace tech-stack " " "-")) "\n"
+         "  - " (.toLowerCase (.replace domain " " "-")) "\n"
+         "---\n\n"
+         rule-content)))
+
+(defn convert-to-chatmode
   "Convert cursor rule to GitHub Copilot Chat Mode format"
   [component _content parsed]
   (let [tech-stack (:tech-stack component)
         domain (:domain component)
         description (:description component)
         rule-content (:content parsed)]
-    
+
     (str "---\n"
          "title: " tech-stack " - " domain "\n"
          "description: " description "\n"
@@ -229,7 +257,7 @@
          "This chat mode applies " tech-stack " best practices for " domain ".\n\n"
          rule-content)))
 
-(defn convert-content 
+(defn convert-content
   "Convert cursor rule content to the specified format"
   [component content format]
   (let [parsed (parse-frontmatter content)]
@@ -239,7 +267,7 @@
       "chatmodes" (convert-to-chatmode component content parsed)
       content))) ; fallback to original content
 
-(defn get-filename 
+(defn get-filename
   "Generate appropriate filename for the converted content"
   [component format]
   (let [tech-stack (-> (:tech-stack component)
@@ -251,70 +279,84 @@
                    (.replace #"[^a-z0-9]+" "-")
                    (.replace #"^-|-$" ""))]
     (case format
-      "instructions" "copilot-instructions.md"
+      "instructions" (str tech-stack "-" domain ".md")
       "prompts" (str tech-stack "-" domain ".prompt.md")
       "chatmodes" (str tech-stack "-" domain ".chatmode.md")
       (str tech-stack "-" domain ".md"))))
 
-(defn install-to-workspace! 
+(defn install-globally!
+  "Install converted content globally to user profile"
+  [content component format]
+  (let [vscode-user-dir (get-vscode-user-dir)
+        dir-path (cond
+                   ;; Instructions go in .vscode/instructions in user home
+                   (= format "instructions")
+                   (.join path (.. js/process -env -HOME) ".vscode" "instructions")
+
+                   ;; Both prompts and chatmodes go in User/prompts folder
+                   (or (= format "prompts") (= format "chatmodes"))
+                   (.join path vscode-user-dir "prompts")
+
+                   ;; Unknown format
+                   :else nil)
+
+        filename (get-filename component format)]
+
+    (if dir-path
+      (try
+        (when-not (.existsSync fs dir-path)
+          (.mkdirSync fs dir-path #js {:recursive true}))
+
+        (let [file-path (.join path dir-path filename)]
+          (.writeFileSync fs file-path content)
+          (vscode/window.showInformationMessage
+           (str "Installed " filename " to " (.-appName vscode/env) " User directory"))
+
+          {:success true :path file-path})
+        (catch :default err
+          (vscode/window.showErrorMessage
+           (str "Failed to install " filename ": " (.-message err)))
+          {:success false :error (.-message err)}))
+
+      (do
+        (vscode/window.showErrorMessage
+         (str "Unknown format: " format))
+        {:success false :error (str "Unknown format: " format)}))))
+
+(defn install-to-workspace!
   "Install converted content to workspace"
   [converted-content component format]
   (if-let [workspace-folder (first vscode/workspace.workspaceFolders)]
-    (let [workspace-path (-> workspace-folder .-uri .-fsPath)
-          filename (get-filename component format)
+    (let [filename (get-filename component format)
+          workspace-path (-> workspace-folder .-uri .-fsPath)
           dir-path (case format
-                     "instructions" (.join path workspace-path ".github")
+                     "instructions" (.join path workspace-path ".github" "instructions")
                      "prompts" (.join path workspace-path ".github" "prompts")
                      "chatmodes" (.join path workspace-path ".github" "chatmodes")
-                     workspace-path)]
+                     nil)]
 
-      ;; Create directory if it doesn't exist
-      (when-not (.existsSync fs dir-path)
-        (.mkdirSync fs dir-path #js {:recursive true}))
+      (if dir-path
+        (do
+          (when-not (.existsSync fs dir-path)
+            (.mkdirSync fs dir-path #js {:recursive true}))
 
-      (let [file-path (.join path dir-path filename)]
-        ;; Handle special case for instructions (might want to append)
-        (if (and (= format "instructions") (.existsSync fs file-path))
-          (p/let [choice (vscode/window.showQuickPick
-                          (clj->js [{:label "Append"
-                                     :iconPath (vscode/ThemeIcon. "add")
-                                     :description "Add to existing instructions"}
-                                    {:label "Replace"
-                                     :iconPath (vscode/ThemeIcon. "replace-all")
-                                     :description "Overwrite existing instructions"}])
-                          #js {:placeHolder "File exists. How to proceed?"})]
-            (when choice
-              (let [choice-text (.-label choice)]
-                (if (= choice-text "Append")
-                  (let [existing-content (.readFileSync fs file-path #js {:encoding "utf-8"})
-                        new-content (str existing-content "\n\n---\n\n" converted-content)]
-                    (.writeFileSync fs file-path new-content)
-                    (vscode/window.showInformationMessage
-                     (str "Appended to " filename))
-                    {:success true :path file-path :mode "append"})
-                  (do
-                    (.writeFileSync fs file-path converted-content)
-                    (vscode/window.showInformationMessage
-                     (str "Replaced " filename))
-                    {:success true :path file-path :mode "replace"})))))
-          
-          ;; Create new file or overwrite
-          (do
+          (let [file-path (.join path dir-path filename)]
             (.writeFileSync fs file-path converted-content)
             (vscode/window.showInformationMessage
-             (str "Created " filename " in " (case format
-                                               "instructions" ".github/"
-                                               "prompts" ".github/prompts/"
-                                               "chatmodes" ".github/chatmodes/"
-                                               "workspace")))
-            {:success true :path file-path :mode "create"}))))
+             (str "Installed " filename " to workspace"))
 
-    ;; Error - no workspace folder
+            {:success true :path file-path}))
+
+        (do
+          (vscode/window.showErrorMessage
+           (str "Unknown format: " format))
+          {:success false :error "Unknown format"})))
+
     (do
       (vscode/window.showErrorMessage "No workspace folder open")
       {:success false :error "No workspace folder"})))
 
-(defn open-file+ 
+(defn open-file+
   "Open the created file in VS Code"
   [file-path]
   (p/let [uri (vscode/Uri.file file-path)
@@ -322,18 +364,13 @@
           _ (vscode/window.showTextDocument doc)]
     {:success true}))
 
-(defn show-preview 
+(defn open-in-untitled-editor+
   "Show a preview of the converted content"
-  [content component format]
-  (let [filename (get-filename component format)
-        preview-content (str ";; Preview of converted content\n"
-                             ";; Target file: " filename "\n"
-                             ";; Format: " format "\n\n"
-                             content)]
-    (p/let [doc (vscode/workspace.openTextDocument #js {:content preview-content
-                                                        :language "markdown"})
-            _ (vscode/window.showTextDocument doc)]
-      {:success true})))
+  [content]
+  (p/let [doc (vscode/workspace.openTextDocument #js {:content content
+                                                      :language "markdown"})
+          _ (vscode/window.showTextDocument doc)]
+    {:success true}))
 
 (defn main []
   (p/catch
@@ -343,29 +380,28 @@
        (p/let [format-choice (show-format-picker+)]
          (when format-choice
            (p/let [content (fetch-component-content+ (-> selected-component :component :link))
-                   converted-content (convert-content (:component selected-component) 
-                                                     content 
-                                                     (:format format-choice))
-                   
+                   converted-content (convert-content (:component selected-component)
+                                                      content
+                                                      (:format format-choice))
+
                    ;; Show action menu
-                   action (vscode/window.showQuickPick
-                           (clj->js [{:label "Preview"
-                                      :iconPath (vscode/ThemeIcon. "preview")
-                                      :description "Show preview in editor"}
-                                     {:label "Install to Workspace"
-                                      :iconPath (vscode/ThemeIcon. "file-add")
-                                      :description "Save to workspace .github directory"}])
-                           #js {:placeHolder "What would you like to do?"})]
-             
+                   action (show-action-picker+ (:component selected-component) (:format format-choice))]
+
              (when action
-               (let [action-text (.-label action)]
-                 (if (= action-text "Preview")
-                   (show-preview converted-content (:component selected-component) (:format format-choice))
-                   (p/let [result (install-to-workspace! converted-content 
-                                                        (:component selected-component) 
-                                                        (:format format-choice))]
-                     (when (:success result)
-                       (open-file+ (:path result))))))))))))
+               (case (keyword (:action action))
+                 :view (open-in-untitled-editor+ converted-content)
+
+                 :global (p/let [result (install-globally! converted-content
+                                                           (:component selected-component)
+                                                           (:format format-choice))]
+                           (when (:success result)
+                             (open-file+ (:path result))))
+
+                 :workspace (p/let [result (install-to-workspace! converted-content
+                                                                  (:component selected-component)
+                                                                  (:format format-choice))]
+                              (when (:success result)
+                                (open-file+ (:path result)))))))))))
 
    (fn [error]
      (vscode/window.showErrorMessage (str "Error in cursor-rules-converter: " (.-message error)))
