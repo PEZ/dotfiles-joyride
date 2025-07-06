@@ -70,13 +70,11 @@
 
     ;; Set active item if we have a saved preference
     (when last-choice
-      (let [active-index (->> items-js
-                              (map-indexed vector)
-                              (filter (fn [[idx item]] (match-fn item last-choice)))
-                              (map first)
-                              first)]
-        (when active-index
-          (set! (.-activeItems picker) #js [(aget items-js active-index)]))))
+      (when-let [active-index (some->> items-js
+                                       (map-indexed vector)
+                                       (some (fn [[idx item]]
+                                               (when (match-fn item last-choice) idx))))]
+        (set! (.-activeItems picker) #js [(aget items-js active-index)])))
 
     ;; Return a promise that handles the user interaction
     (js/Promise.
