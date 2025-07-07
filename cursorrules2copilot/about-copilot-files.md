@@ -1,5 +1,17 @@
 # Understanding VS Code Copilot Files
 
+> **Sources**:
+> - [VS Code Copilot Documentation](https://code.visualstudio.com/docs/copilot/copilot-chat)
+> - [VS Code Copilot Instructions](https://code.visualstudio.com/docs/copilot/copilot-edits-and-chat#_copilot-instructions)
+> - [VS Code Copilot Prompts](https://code.visualstudio.com/docs/copilot/copilot-edits-and-chat#_prompt-files)
+> - [VS Code Copilot Chat Modes](https://code.visualstudio.com/docs/copilot/copilot-edits-and-chat#_chat-modes)
+> - [VS Code Copilot Settings](https://code.visualstudio.com/docs/copilot/copilot-edits-and-chat#_configuration)
+> - [VS Code Settings Reference](https://code.visualstudio.com/docs/getstarted/settings)
+> - [GitHub Copilot Documentation](https://docs.github.com/en/copilot)
+> - [GitHub Copilot Instructions Reference](https://docs.github.com/en/copilot/using-github-copilot/prompt-engineering-for-github-copilot)
+> - [VS Code Copilot Extension](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot)
+> - [awesome-copilot Repository](https://github.com/github/awesome-copilot)
+
 ## Overview
 
 VS Code supports multiple file formats for customizing GitHub Copilot behavior through instructions, prompts, and chat modes. These files provide context and guidance to AI models for specific tasks and coding practices.
@@ -7,6 +19,8 @@ VS Code supports multiple file formats for customizing GitHub Copilot behavior t
 ## File Types and Locations
 
 ### 1. Instructions Files
+
+> **Reference**: [VS Code Copilot Instructions](https://code.visualstudio.com/docs/copilot/copilot-edits-and-chat#_copilot-instructions)
 
 #### `.github/copilot-instructions.md`
 - **Location**: `.github/copilot-instructions.md` in workspace root
@@ -58,6 +72,8 @@ Implement proper error handling with error boundaries.
 
 ### 2. Prompt Files (`.prompt.md`)
 
+> **Reference**: [VS Code Copilot Prompts](https://code.visualstudio.com/docs/copilot/copilot-edits-and-chat#_prompt-files)
+
 - **Location**:
   - Workspace: `.github/prompts/` (default)
   - User: VS Code profile folder
@@ -99,6 +115,8 @@ Variables:
 
 ### 3. Chat Mode Files (`.chatmode.md`)
 
+> **Reference**: [VS Code Copilot Chat Modes](https://code.visualstudio.com/docs/copilot/copilot-edits-and-chat#_chat-modes)
+
 - **Location**:
   - Workspace: `.github/chatmodes/` (default)
   - User: VS Code profile folder
@@ -127,6 +145,8 @@ Focus on architecture and design decisions.
 ```
 
 ## Settings-Based Instructions
+
+> **Reference**: [VS Code Copilot Settings](https://code.visualstudio.com/docs/copilot/copilot-edits-and-chat#_configuration)
 
 ### Configuration in settings.json
 ```json
@@ -168,6 +188,8 @@ Focus on architecture and design decisions.
 - Quick switching between contexts
 
 ## File Management
+
+> **Reference**: [awesome-copilot Repository Examples](https://github.com/github/awesome-copilot)
 
 ### Creation Commands
 - `Chat: New Instructions File`
