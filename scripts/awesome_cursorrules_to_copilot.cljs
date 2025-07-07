@@ -110,7 +110,12 @@
     :iconPath (vscode/ThemeIcon. "color-mode")
     :description "GitHub Copilot Chat Modes"
     :detail "Convert to .github/chatmodes/*.chatmode.md format"
-    :format "chatmodes"}])
+    :format "chatmodes"}
+   {:label "View README"
+    :iconPath (vscode/ThemeIcon. "book")
+    :description "View tech-stack README"
+    :detail "Preview the README file for this tech-stack"
+    :format "view-readme"}])
 
 ;; Actions - matching awesome_copilot exactly
 (def actions
@@ -140,6 +145,19 @@
 (defn fetch-component-content+ [link]
   (let [content-url (str CONTENT-BASE-URL link)]
     (p/let [response (js/fetch content-url)
+            text (.text response)]
+      text)))
+
+(defn fetch-readme-content+ [component]
+  (let [;; Extract the directory name from the component link
+        link (:link component)
+        ;; Get the directory part (e.g., "rules/nextjs-typescript-tailwind-cursorrules-prompt-file/")
+        directory (-> link
+                      (string/split #"/")
+                      (->> (take 2))
+                      (->> (string/join "/")))
+        readme-url (str CONTENT-BASE-URL directory "/README.md")]
+    (p/let [response (js/fetch readme-url)
             text (.text response)]
       text)))
 
@@ -388,29 +406,35 @@
      (when selected-component
        (p/let [format-choice (show-format-picker+)]
          (when format-choice
-           (p/let [content (fetch-component-content+ (-> selected-component :component :link))
-                   converted-content (convert-content (:component selected-component)
-                                                      content
-                                                      (:format format-choice))
+           (if (= (:format format-choice) "view-readme")
+             ;; If user chose to view README, fetch and display it directly
+             (p/let [readme-content (fetch-readme-content+ (:component selected-component))]
+               (open-in-untitled-editor+ readme-content))
+             
+             ;; Otherwise, proceed with the normal conversion flow
+             (p/let [content (fetch-component-content+ (-> selected-component :component :link))
+                     converted-content (convert-content (:component selected-component)
+                                                        content
+                                                        (:format format-choice))
 
-                   ;; Show action menu
-                   action (show-action-picker+ (:component selected-component) (:format format-choice))]
+                     ;; Show action menu
+                     action (show-action-picker+ (:component selected-component) (:format format-choice))]
 
-             (when action
-               (case (keyword (:action action))
-                 :view (open-in-untitled-editor+ converted-content)
+               (when action
+                 (case (keyword (:action action))
+                   :view (open-in-untitled-editor+ converted-content)
 
-                 :global (p/let [result (install-globally! converted-content
-                                                           (:component selected-component)
-                                                           (:format format-choice))]
-                           (when (:success result)
-                             (open-file+ (:path result))))
+                   :global (p/let [result (install-globally! converted-content
+                                                             (:component selected-component)
+                                                             (:format format-choice))]
+                             (when (:success result)
+                               (open-file+ (:path result))))
 
-                 :workspace (p/let [result (install-to-workspace! converted-content
-                                                                  (:component selected-component)
-                                                                  (:format format-choice))]
-                              (when (:success result)
-                                (open-file+ (:path result)))))))))))
+                   :workspace (p/let [result (install-to-workspace! converted-content
+                                                                    (:component selected-component)
+                                                                    (:format format-choice))]
+                                (when (:success result)
+                                  (open-file+ (:path result))))))))))))
 
    (fn [error]
      (vscode/window.showErrorMessage (str "Error in cursor-rules-converter: " (.-message error)))
