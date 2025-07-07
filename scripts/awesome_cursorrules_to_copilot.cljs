@@ -280,13 +280,13 @@
   "Generate appropriate filename for the converted content"
   [component format]
   (let [tech-stack (-> (:tech-stack component)
-                       (.toLowerCase)
-                       (.replace #"[^a-z0-9]+" "-")
-                       (.replace #"^-|-$" ""))
+                       (string/lower-case)
+                       (string/replace #"[^a-z0-9]" "-")
+                       (string/replace #"^-|-$" ""))
         domain (-> (:domain component)
-                   (.toLowerCase)
-                   (.replace #"[^a-z0-9]+" "-")
-                   (.replace #"^-|-$" ""))]
+                   (string/lower-case)
+                   (string/replace #"[^a-z0-9]+" "-")
+                   (string/replace #"^-|-$" ""))]
     (case format
       "instructions" (str tech-stack "-" domain ".md")
       "prompts" (str tech-stack "-" domain ".prompt.md")
@@ -300,11 +300,11 @@
         dir-path (cond
                    ;; Instructions go in .vscode/instructions in user home
                    (= format "instructions")
-                   (.join path (.. js/process -env -HOME) ".vscode" "instructions")
+                   (path/join js/process.env.HOME ".vscode" "instructions")
 
                    ;; Both prompts and chatmodes go in User/prompts folder
                    (or (= format "prompts") (= format "chatmodes"))
-                   (.join path vscode-user-dir "prompts")
+                   (path/join vscode-user-dir "prompts")
 
                    ;; Unknown format
                    :else nil)
@@ -313,13 +313,13 @@
 
     (if dir-path
       (try
-        (when-not (.existsSync fs dir-path)
-          (.mkdirSync fs dir-path #js {:recursive true}))
+        (when-not (fs/existsSync dir-path)
+          (fs/mkdirSync dir-path #js {:recursive true}))
 
-        (let [file-path (.join path dir-path filename)]
-          (.writeFileSync fs file-path content)
+        (let [file-path (path/join dir-path filename)]
+          (fs/writeFileSync file-path content)
           (vscode/window.showInformationMessage
-           (str "Installed " filename " to " (.-appName vscode/env) " User directory"))
+           (str "Installed " filename " to " vscode/env.appName " User directory"))
 
           {:success true :path file-path})
         (catch :default err
@@ -339,18 +339,18 @@
     (let [filename (get-filename component format)
           workspace-path (-> workspace-folder .-uri .-fsPath)
           dir-path (case format
-                     "instructions" (.join path workspace-path ".github" "instructions")
-                     "prompts" (.join path workspace-path ".github" "prompts")
-                     "chatmodes" (.join path workspace-path ".github" "chatmodes")
+                     "instructions" (path/join workspace-path ".github" "instructions")
+                     "prompts" (path/join workspace-path ".github" "prompts")
+                     "chatmodes" (path/join workspace-path ".github" "chatmodes")
                      nil)]
 
       (if dir-path
         (do
-          (when-not (.existsSync fs dir-path)
-            (.mkdirSync fs dir-path #js {:recursive true}))
+          (when-not (fs/existsSync dir-path)
+            (fs/mkdirSync dir-path #js {:recursive true}))
 
-          (let [file-path (.join path dir-path filename)]
-            (.writeFileSync fs file-path converted-content)
+          (let [file-path (path/join dir-path filename)]
+            (fs/writeFileSync file-path converted-content)
             (vscode/window.showInformationMessage
              (str "Installed " filename " to workspace"))
 
