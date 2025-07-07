@@ -18,11 +18,13 @@
 ;; 1. Command palette: Joyride: Open User Joyride Directory in New Window
 
 (ns awesome-cursorrules-to-copilot
-  (:require ["vscode" :as vscode]
-            ["path" :as path]
-            ["fs" :as fs]
-            [promesa.core :as p]
-            [joyride.core :as joyride]))
+  (:require
+   ["fs" :as fs]
+   ["path" :as path]
+   ["vscode" :as vscode]
+   [clojure.string :as string]
+   [joyride.core :as joyride]
+   [promesa.core :as p]))
 
 (def INDEX-URL "https://pez.github.io/awesome-copilot-index/awesome-cursorrules.json")
 (def CONTENT-BASE-URL "https://raw.githubusercontent.com/PatrickJS/awesome-cursorrules/main/")
@@ -178,44 +180,61 @@
     :save-fn :action}))
 
 (defn parse-frontmatter
-  "Simple frontmatter parser - extracts YAML frontmatter from markdown content"
+  "Parse a cursorrules file into {:content ..., :frontmatter {...}}
+   where frontmatter values are kept as raw strings (verbatim strategy)"
   [content]
-  (if (.startsWith content "---")
-    (let [parts (.split content "---")
-          frontmatter-lines (when (> (count parts) 2)
-                              (.split (get parts 1) "\n"))
-          content-part (when (> (count parts) 2)
-                         (.join (.slice parts 2) "---"))
-          frontmatter (reduce (fn [acc line]
-                                (let [trimmed (.trim line)]
-                                  (if-not (empty? trimmed)
-                                    (let [[key value] (.split trimmed ": ")]
-                                      (assoc acc (keyword (.trim key)) (.trim value)))
-                                    acc)))
-                              {}
-                              frontmatter-lines)]
-      {:frontmatter frontmatter
-       :content (.trim content-part)})
-    {:frontmatter {}
-     :content content}))
+  (if-let [frontmatter-match (re-find #"(?s)^---\s*\n(.*?)\n---\s*\n?(.*)" content)]
+    (let [frontmatter-text (second frontmatter-match)
+          body-text (string/trim (nth frontmatter-match 2))
+          lines (string/split-lines frontmatter-text)
+          ;; Parse frontmatter handling multi-line values
+          frontmatter-map (loop [lines lines
+                                 acc {}
+                                 current-key nil
+                                 current-value ""]
+                            (if (empty? lines)
+                              ;; Final key-value pair
+                              (if current-key
+                                (assoc acc current-key (string/trim current-value))
+                                acc)
+                              (let [line (first lines)
+                                    remaining (rest lines)]
+                                (if-let [key-match (re-find #"^([^:]+):\s*(.*)$" line)]
+                                  ;; New key found
+                                  (let [new-key (keyword (string/trim (second key-match)))
+                                        new-value (string/trim (nth key-match 2))
+                                        ;; Save previous key-value if exists
+                                        updated-acc (if current-key
+                                                      (assoc acc current-key (string/trim current-value))
+                                                      acc)]
+                                    (recur remaining updated-acc new-key new-value))
+                                  ;; Continuation line (indented or blank)
+                                  (if current-key
+                                    (recur remaining acc current-key
+                                           (str current-value "\n" line))
+                                    (recur remaining acc current-key current-value))))))]
+      {:content body-text
+       :frontmatter frontmatter-map})
+    ;; No frontmatter found
+    {:content content
+     :frontmatter {}}))
 
 (defn convert-to-instructions
   "Convert cursor rule to GitHub Copilot Instructions format"
-  [component _content parsed]
+  [component parsed]
   (let [tech-stack (:tech-stack component)
         domain (:domain component)
         description (:description component)
-        rule-content (:content parsed)]
+        rule-content (:content parsed)
+        frontmatter (:frontmatter parsed)
+        apply-to (:globs frontmatter)]
 
     (str "---\n"
-         "title: " tech-stack " - " domain "\n"
          "description: " description "\n"
-         "authors:\n"
-         "  - Awesome Cursor Rules Community\n"
-         "tags:\n"
-         "  - " (.toLowerCase (.replace tech-stack " " "-")) "\n"
-         "  - " (.toLowerCase (.replace domain " " "-")) "\n"
+         (when apply-to
+           (str "applyTo: " apply-to "\n"))
          "---\n\n"
+         "# " tech-stack " - " domain "\n\n"
          rule-content)))
 
 (defn convert-to-prompt
@@ -227,14 +246,9 @@
         rule-content (:content parsed)]
 
     (str "---\n"
-         "title: " tech-stack " - " domain "\n"
          "description: " description "\n"
-         "authors:\n"
-         "  - Awesome Cursor Rules Community\n"
-         "tags:\n"
-         "  - " (.toLowerCase (.replace tech-stack " " "-")) "\n"
-         "  - " (.toLowerCase (.replace domain " " "-")) "\n"
          "---\n\n"
+         "# " tech-stack " - " domain "\n\n"
          rule-content)))
 
 (defn convert-to-chatmode
@@ -246,14 +260,9 @@
         rule-content (:content parsed)]
 
     (str "---\n"
-         "title: " tech-stack " - " domain "\n"
          "description: " description "\n"
-         "behavior: |\n"
-         "  " (.replace rule-content "\n" "\n  ") "\n"
-         "tags:\n"
-         "  - " (.toLowerCase (.replace tech-stack " " "-")) "\n"
-         "  - " (.toLowerCase (.replace domain " " "-")) "\n"
          "---\n\n"
+         "# " tech-stack " - " domain "\n\n"
          "This chat mode applies " tech-stack " best practices for " domain ".\n\n"
          rule-content)))
 
@@ -262,7 +271,7 @@
   [component content format]
   (let [parsed (parse-frontmatter content)]
     (case format
-      "instructions" (convert-to-instructions component content parsed)
+      "instructions" (convert-to-instructions component parsed)
       "prompts" (convert-to-prompt component content parsed)
       "chatmodes" (convert-to-chatmode component content parsed)
       content))) ; fallback to original content
