@@ -111,6 +111,11 @@
     :description "GitHub Copilot Chat Modes"
     :detail "Convert to .github/chatmodes/*.chatmode.md format"
     :format "chatmodes"}
+   {:label "View Content"
+    :iconPath (vscode/ThemeIcon. "preview")
+    :description "View cursor rule content"
+    :detail "Preview the rule content in an editor"
+    :format "view-content"}
    {:label "View README"
     :iconPath (vscode/ThemeIcon. "book")
     :description "View tech-stack README"
@@ -119,12 +124,7 @@
 
 ;; Actions - matching awesome_copilot exactly
 (def actions
-  [{:label "View Content"
-    :iconPath (vscode/ThemeIcon. "preview")
-    :description "Open in untitled editor"
-    :detail "Preview the markdown content in an editor"
-    :action :view}
-   {:label "Install Globally"
+  [{:label "Install Globally"
     :iconPath (vscode/ThemeIcon. "globe")
     :description "Save to user profile"
     :detail "Available across all your workspaces"
@@ -406,11 +406,18 @@
      (when selected-component
        (p/let [format-choice (show-format-picker+)]
          (when format-choice
-           (if (= (:format format-choice) "view-readme")
+           (cond
+             (= (:format format-choice) "view-readme")
              ;; If user chose to view README, fetch and display it directly
              (p/let [readme-content (fetch-readme-content+ (:component selected-component))]
                (open-in-untitled-editor+ readme-content))
-             
+
+             (= (:format format-choice) "view-content")
+             ;; If user chose to view content, fetch and display it directly
+             (p/let [content (fetch-component-content+ (-> selected-component :component :link))]
+               (open-in-untitled-editor+ content))
+
+             :else
              ;; Otherwise, proceed with the normal conversion flow
              (p/let [content (fetch-component-content+ (-> selected-component :component :link))
                      converted-content (convert-content (:component selected-component)
@@ -422,8 +429,6 @@
 
                (when action
                  (case (keyword (:action action))
-                   :view (open-in-untitled-editor+ converted-content)
-
                    :global (p/let [result (install-globally! converted-content
                                                              (:component selected-component)
                                                              (:format format-choice))]
