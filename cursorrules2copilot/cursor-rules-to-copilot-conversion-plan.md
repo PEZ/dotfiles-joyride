@@ -1,13 +1,4 @@
-# Cursor Rules to Copilot Convers### ✅ Frontmatter and Glob Pattern Handling
-- [ ] **Parse Cursor rule metadata**: Extract `.mdc` frontmatter fields like `description`, `globs`, `alwaysApply`
-- [ ] **Map to VS Code Instructions**: Convert glob patterns to natural language scope descriptions
-  - Example: `globs: ["**/*.ts", "**/*.tsx"]` → "Use these patterns for TypeScript and React files"
-  - Instructions are repository-wide by default, no frontmatter `applyTo` patterns needed
-- [ ] **Map to VS Code Prompts**: Use original rule structure for prompt templates
-  - Prompt files can reference specific files using `#file:path` syntax
-  - Include original glob information as part of prompt context
-- [ ] **Handle missing globs**: When no globs specified, create general-purpose instructions
-- [ ] **Preserve rule intent**: Maintain original author's scope and application guidanceoject Plan
+# Cursor Rules to Copilot Conversion Project Plan
 
 ## Project Overview
 A Joyride-based VS Code extension to browse, search, and convert Cursor rules from the awesome-cursorrules repository to GitHub Copilot instructions, prompts, and chat modes.
@@ -72,9 +63,9 @@ This plan outlines exactly what we're shipping as our initial version - a functi
   - [ ] Display fetched content with frontmatter parsing for .mdc files
   - [ ] Show README.md context when available
 - [ ] Conversion target selection
-  - [ ] Simple format selection: Instructions (default) or Prompts
-  - [ ] Repository-wide instructions vs task-specific prompts explanation
-  - [ ] Preview generated content based on user's format choice
+  - [ ] Simple format selection: Instructions (default), Prompts, or Chat Modes
+  - [ ] Workspace vs User scope selection
+  - [ ] Preview generated frontmatter and content based on user's format choice
 
 ### ✅ Conversion Engine
 - [ ] Content fetcher
@@ -83,31 +74,27 @@ This plan outlines exactly what we're shipping as our initial version - a functi
   - [ ] Handle .mdx files with enhanced markdown parsing
   - [ ] Fetch associated README.md for author attribution and context
 - [ ] Format converter
-  - [ ] **Instructions**: Generate plain markdown with natural language scope guidance from original globs
-    - Example: "When working with TypeScript files, always use strict mode"
-    - Include tech stack context from original rule domain
-    - Repository-wide application by default (no frontmatter needed)
-  - [ ] **Prompts**: Generate frontmatter with descriptive titles and file references
-    - Use original globs to suggest relevant file patterns in prompt context
-    - Support `#file:path` syntax for specific file references
+  - [ ] **Instructions**: Generate frontmatter with `description` and `applyTo` (only if globs exist in source)
+  - [ ] **Prompts**: Generate frontmatter with `mode`, `tools`, and `description`
+  - [ ] **Chat Modes**: Generate frontmatter with `description` and `tools` array
   - [ ] Convert focused component content while preserving intent and structure
-  - [ ] **Glob Pattern Translation**: Convert Cursor glob patterns to VS Code natural language guidance
+  - [ ] **Glob Pattern Preservation**: Copy existing glob patterns from `.mdc` frontmatter to `applyTo` field
   - [ ] Combine component content with README metadata (author, benefits)
   - [ ] Add VS Code-specific adaptations and formatting
 - [ ] File generator
-  - [ ] Create target files in correct locations (`.github/copilot-instructions.md` or `.github/prompts/`)
-  - [ ] Handle naming conventions: instructions are single file, prompts use descriptive names
+  - [ ] Create target files in correct locations (.github/instructions/, .github/prompts/, .github/chatmodes/)
+  - [ ] Handle naming conventions based on component metadata and tech stack
   - [ ] Include original author attribution from README.md
   - [ ] Avoid conflicts with existing files
 
 ### ✅ File Management
 - [ ] Workspace integration
   - [ ] Detect `.github/` folder or create if needed
-  - [ ] Handle different target locations (root for instructions, prompts/ subfolder for prompts)
+  - [ ] Handle different target directories (instructions/, prompts/, chatmodes/)
   - [ ] Respect VS Code Copilot settings and file conventions
 - [ ] Installation workflow
-  - [ ] Show preview before installation with generated content and natural language scope
-  - [ ] Explain how instructions apply repository-wide vs prompts for specific tasks
+  - [ ] Show preview before installation with generated frontmatter (including `applyTo` patterns when available)
+  - [ ] Indicate when rules require manual application (no `applyTo` patterns)
   - [ ] Confirmation dialogs
   - [ ] Success feedback with file paths
 
@@ -145,8 +132,9 @@ This plan outlines exactly what we're shipping as our initial version - a functi
 - [ ] Single flat quick-pick with fuzzy search across all modular components (single-select)
 - [ ] Component selection with "Tech stack - Domain" labeling and memory persistence
 - [ ] Component preview with content display and README context
-- [ ] Conversion type selection (Instructions default, Prompts alternative)
-- [ ] Preview generated content with proper natural language scope guidance and attribution
+- [ ] Conversion type selection (Instructions default, user chooses)
+- [ ] Target location selection (workspace/user)
+- [ ] Preview generated content with proper frontmatter and attribution
 - [ ] Install confirmation
 - [ ] Success feedback with open file option
 
