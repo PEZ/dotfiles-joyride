@@ -172,13 +172,6 @@
             text (.text response)]
       text)))
 
-(defn prepare-component-for-display [component]
-  {:label (str (:tech-stack component) " - " (:domain component))
-   :iconPath (vscode/ThemeIcon. "list-ordered")
-   :description (str "Cursor Rule " (:component-type component) " component")
-   :detail (:description component)
-   :component component})
-
 ;; Function to find local cursor rules files
 (defn find-local-cursor-rules+ []
   (p/let [files (vscode/workspace.findFiles ".cursor/rules/**/*.mdc")]
@@ -241,7 +234,6 @@
     {:content content
      :frontmatter {}}))
 
-;; Function to parse local cursor rules file
 (defn parse-local-cursor-rule [file-path]
   (let [content (fs/readFileSync file-path "utf8")
         parsed (parse-text content)
@@ -251,10 +243,26 @@
      :domain (:domain filename-metadata)
      :description description
      :component-type "local"
-     :link file-path  ; Use full path for local files
+     :link file-path
      :source "local"}))
 
-;; Function to load all local cursor rules
+(defn extract-rule-path [component]
+  (let [link (:link component)]
+    (if-let [match (re-find #"rules/(.+)$" link)]
+      (second match)
+      link)))
+
+(defn prepare-component-for-display [component]
+  (let [rule-path (extract-rule-path component)
+        is-local? (= (:source component) "local")
+        icon (if is-local? "file-code" "cloud")
+        source-info (if is-local? "Local" "Remote")]
+    {:label (str (:tech-stack component) " - " (:domain component))
+     :iconPath (vscode/ThemeIcon. icon)
+     :description (str rule-path " • " source-info " Cursor Rule")
+     :detail (:description component)
+     :component component}))
+
 (defn load-local-cursor-rules+ []
   (p/let [file-paths (vscode/workspace.findFiles ".cursor/rules/**/*.mdc")]
     (map (fn [file-uri]
@@ -262,23 +270,9 @@
              (parse-local-cursor-rule file-path)))
          file-paths)))
 
-;; Function to prepare components for display with sections
 (defn prepare-components-for-display [local-rules remote-rules]
-  (let [local-items (map (fn [component]
-                          {:label (str (:tech-stack component) " - " (:domain component))
-                           :iconPath (vscode/ThemeIcon. "file-code")
-                           :description "Local Cursor Rule"
-                           :detail (:description component)
-                           :component component})
-                        local-rules)
-        remote-items (map (fn [component]
-                           {:label (str (:tech-stack component) " - " (:domain component))
-                            :iconPath (vscode/ThemeIcon. "cloud")
-                            :description "Remote Cursor Rule"
-                            :detail (:description component)
-                            :component component})
-                         remote-rules)]
-    (concat local-items remote-items)))
+  (let [all-components (concat local-rules remote-rules)]
+    (map prepare-component-for-display all-components)))
 
 ;; Component picker function that combines local and remote
 (defn show-component-picker+ []
