@@ -1,5 +1,6 @@
 ;; Script for Converting Cursor Rules to GitHub Copilot Instructions
-;; Based on: https://github.com/PatrickJS/awesome-cursorrules
+;; Finds local cursor rules, as well as from Awesome Cursor Rules:
+;; https://github.com/PatrickJS/awesome-cursorrules
 ;;
 ;; Joyride: https://github.com/BetterThanTomorrow/joyride
 ;; Install it from the Extensions pane in VS Code
@@ -162,11 +163,6 @@
     (p/let [response (js/fetch readme-url)
             text (.text response)]
       text)))
-
-;; Function to find local cursor rules files
-(defn find-local-cursor-rules+ []
-  (p/let [files (vscode/workspace.findFiles ".cursor/rules/**/*.mdc")]
-    (map #(.-fsPath %) files)))
 
 (defn extract-rule-path [component]
   (let [link (:link component)]
