@@ -142,22 +142,13 @@
     ;; Extract the actual rules from the cursor-rules key
     (get clj-data :cursor-rules)))
 
-;; Unified content fetching function
 (defn fetch-content+ [component]
   (if (= (:source component) "local")
-    ;; For local files, read directly from filesystem
     (p/resolved (fs/readFileSync (:link component) "utf8"))
-    ;; For remote files, fetch from URL
     (let [content-url (str content-base-url (:link component))]
       (p/let [response (js/fetch content-url)
               text (.text response)]
         text))))
-
-(defn fetch-component-content+ [link]
-  (let [content-url (str content-base-url link)]
-    (p/let [response (js/fetch content-url)
-            text (.text response)]
-      text)))
 
 (defn fetch-readme-content+ [component]
   (let [;; Extract the directory name from the component link
@@ -274,8 +265,7 @@
   (let [all-components (concat local-rules remote-rules)]
     (map prepare-component-for-display all-components)))
 
-;; Component picker function that combines local and remote
-(defn show-component-picker+ []
+(defn- show-component-picker+ []
   (p/let [local-rules (load-local-cursor-rules+)
           remote-rules (fetch-index+)]
     (let [remote-with-source (map #(assoc % :source "remote") remote-rules)
