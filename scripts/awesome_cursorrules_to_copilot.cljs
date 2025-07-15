@@ -168,14 +168,20 @@
   (p/let [files (vscode/workspace.findFiles ".cursor/rules/**/*.mdc")]
     (map #(.-fsPath %) files)))
 
+(defn extract-rule-path [component]
+  (let [link (:link component)]
+    (if-let [match (re-find #"rules/(.+)$" link)]
+      (second match)
+      link)))
+
 ;; Function to extract tech stack and domain from filename
 (defn extract-metadata-from-filename [file-path]
-  (let [filename (path/basename file-path ".mdc")
-        parts (string/split filename #"-")]
+  (let [rule-path (extract-rule-path {:link file-path})
+        parts (string/split rule-path #"[/-]")]
     (if (> (count parts) 1)
       {:tech-stack (string/join " " (take 2 parts))
        :domain (string/join " " (drop 2 parts))}
-      {:tech-stack filename
+      {:tech-stack (string/replace rule-path #"/" "-")
        :domain "General"})))
 
 (defn parse-frontmatter
@@ -237,12 +243,6 @@
      :link file-path
      :source "local"}))
 
-(defn extract-rule-path [component]
-  (let [link (:link component)]
-    (if-let [match (re-find #"rules/(.+)$" link)]
-      (second match)
-      link)))
-
 (defn prepare-component-for-display [component]
   (let [rule-path (extract-rule-path component)
         is-local? (= (:source component) "local")
@@ -250,6 +250,7 @@
         source-info (if is-local? "Local" "Remote")]
     {:label (str (:tech-stack component) " - " (:domain component))
      :iconPath (vscode/ThemeIcon. icon)
+     :rule-path rule-path
      :description (str rule-path " • " source-info " Cursor Rule")
      :detail (:description component)
      :component component}))
