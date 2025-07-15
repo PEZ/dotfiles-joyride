@@ -265,7 +265,7 @@
 ;; Function to prepare components for display with sections
 (defn prepare-components-for-display [local-rules remote-rules]
   (let [local-items (map (fn [component]
-                          {:label (str "📁 " (:tech-stack component) " - " (:domain component))
+                          {:label (str (:tech-stack component) " - " (:domain component))
                            :iconPath (vscode/ThemeIcon. "file-code")
                            :description "Local Cursor Rule"
                            :detail (:description component)
