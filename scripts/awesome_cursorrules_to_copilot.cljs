@@ -142,6 +142,17 @@
     ;; Extract the actual rules from the cursor-rules key
     (get clj-data :cursor-rules)))
 
+;; Unified content fetching function
+(defn fetch-content+ [component]
+  (if (= (:source component) "local")
+    ;; For local files, read directly from filesystem
+    (p/resolved (fs/readFileSync (:link component) "utf8"))
+    ;; For remote files, fetch from URL
+    (let [content-url (str content-base-url (:link component))]
+      (p/let [response (js/fetch content-url)
+              text (.text response)]
+        text))))
+
 (defn fetch-component-content+ [link]
   (let [content-url (str content-base-url link)]
     (p/let [response (js/fetch content-url)
@@ -168,34 +179,20 @@
    :detail (:description component)
    :component component})
 
-(defn show-component-picker+ [components]
-  (let [prepared-components (map prepare-component-for-display components)]
-    (show-picker-with-memory+
-     prepared-components
-     {:title "Awesome Cursor Rules → Copilot Converter"
-      :placeholder "Select a cursor rule component to convert"
-      :preference-key :last-component
-      :match-fn (fn [item last-choice]
-                  (= (-> item .-component .-link) (:link last-choice)))
-      :save-fn (fn [selected-clj] (-> selected-clj :component))})))
+;; Function to find local cursor rules files
+(defn find-local-cursor-rules+ []
+  (p/let [files (vscode/workspace.findFiles ".cursor/rules/**/*.mdc")]
+    (map #(.-fsPath %) files)))
 
-(defn show-format-picker+ []
-  (show-picker-with-memory+
-   conversion-targets
-   {:title "Cursor Rules Converter"
-    :placeholder "Select output format"
-    :preference-key :last-format
-    :match-fn (fn [format-item last-choice] (= (.-format format-item) (name last-choice)))
-    :save-fn :format}))
-
-(defn show-action-picker+ [component _format]
-  (show-picker-with-memory+
-   actions
-   {:title "Cursor Rules Converter"
-    :placeholder (str "Action for " (:tech-stack component) " - " (:domain component))
-    :preference-key :last-action
-    :match-fn (fn [action-item last-choice] (= (name (.-action action-item)) (name last-choice)))
-    :save-fn :action}))
+;; Function to extract tech stack and domain from filename
+(defn extract-metadata-from-filename [file-path]
+  (let [filename (path/basename file-path ".mdc")
+        parts (string/split filename #"-")]
+    (if (> (count parts) 1)
+      {:tech-stack (string/join " " (take 2 parts))
+       :domain (string/join " " (drop 2 parts))}
+      {:tech-stack filename
+       :domain "General"})))
 
 (defn parse-frontmatter
   "Parses frontmatter text (lines between --- delimiters) into a map.
@@ -243,6 +240,78 @@
     ;; No frontmatter delimiters found; treat entire input as content
     {:content content
      :frontmatter {}}))
+
+;; Function to parse local cursor rules file
+(defn parse-local-cursor-rule [file-path]
+  (let [content (fs/readFileSync file-path "utf8")
+        parsed (parse-text content)
+        filename-metadata (extract-metadata-from-filename file-path)
+        description (get-in parsed [:frontmatter :description] "Local cursor rule")]
+    {:tech-stack (:tech-stack filename-metadata)
+     :domain (:domain filename-metadata)
+     :description description
+     :component-type "local"
+     :link file-path  ; Use full path for local files
+     :source "local"}))
+
+;; Function to load all local cursor rules
+(defn load-local-cursor-rules+ []
+  (p/let [file-paths (vscode/workspace.findFiles ".cursor/rules/**/*.mdc")]
+    (map (fn [file-uri]
+           (let [file-path (.-fsPath file-uri)]
+             (parse-local-cursor-rule file-path)))
+         file-paths)))
+
+;; Function to prepare components for display with sections
+(defn prepare-components-for-display [local-rules remote-rules]
+  (let [local-items (map (fn [component]
+                          {:label (str "📁 " (:tech-stack component) " - " (:domain component))
+                           :iconPath (vscode/ThemeIcon. "file-code")
+                           :description "Local Cursor Rule"
+                           :detail (:description component)
+                           :component component})
+                        local-rules)
+        remote-items (map (fn [component]
+                           {:label (str (:tech-stack component) " - " (:domain component))
+                            :iconPath (vscode/ThemeIcon. "cloud")
+                            :description "Remote Cursor Rule"
+                            :detail (:description component)
+                            :component component})
+                         remote-rules)]
+    (concat local-items remote-items)))
+
+;; Component picker function that combines local and remote
+(defn show-component-picker+ []
+  (p/let [local-rules (load-local-cursor-rules+)
+          remote-rules (fetch-index+)]
+    (let [remote-with-source (map #(assoc % :source "remote") remote-rules)
+          prepared-components (prepare-components-for-display local-rules remote-with-source)]
+      (show-picker-with-memory+
+       prepared-components
+       {:title "Awesome Cursor Rules → Copilot Converter"
+        :placeholder "Select a cursor rule component to convert (📁 = Local, ☁ = Remote)"
+        :preference-key :last-component
+        :match-fn (fn [item last-choice]
+                    (= (-> item .-component .-link) (:link last-choice)))
+        :save-fn (fn [selected-clj] (-> selected-clj :component))}))))
+
+(defn show-format-picker+ []
+  (show-picker-with-memory+
+   conversion-targets
+   {:title "Cursor Rules Converter"
+    :placeholder "Select output format"
+    :preference-key :last-format
+    :match-fn (fn [format-item last-choice] (= (.-format format-item) (name last-choice)))
+    :save-fn :format}))
+
+(defn show-action-picker+ [component _format]
+  (show-picker-with-memory+
+   actions
+   {:title "Cursor Rules Converter"
+    :placeholder (str "Action for " (:tech-stack component) " - " (:domain component))
+    :preference-key :last-action
+    :match-fn (fn [action-item last-choice] (= (name (.-action action-item)) (name last-choice)))
+    :save-fn :action}))
 
 (defn convert-to-instructions
   "Convert cursor rule to GitHub Copilot Instructions format"
@@ -408,25 +477,28 @@
 
 (defn main []
   (p/catch
-   (p/let [components (fetch-index+)
-           selected-component (show-component-picker+ components)]
+   (p/let [selected-component (show-component-picker+)]
      (when selected-component
        (p/let [format-choice (show-format-picker+)]
          (when format-choice
            (cond
              (= (:format format-choice) "view-readme")
-             ;; If user chose to view README, fetch and display it directly
-             (p/let [readme-content (fetch-readme-content+ (:component selected-component))]
-               (open-in-untitled-editor+ readme-content))
+             ;; For local files, show the file content instead of README
+             (if (= (:source (:component selected-component)) "local")
+               (p/let [content (fetch-content+ (:component selected-component))]
+                 (open-in-untitled-editor+ content))
+               ;; For remote files, fetch README as before
+               (p/let [readme-content (fetch-readme-content+ (:component selected-component))]
+                 (open-in-untitled-editor+ readme-content)))
 
              (= (:format format-choice) "view-content")
-             ;; If user chose to view content, fetch and display it directly
-             (p/let [content (fetch-component-content+ (-> selected-component :component :link))]
+             ;; Use unified content fetching
+             (p/let [content (fetch-content+ (:component selected-component))]
                (open-in-untitled-editor+ content))
 
              :else
              ;; Otherwise, proceed with the normal conversion flow
-             (p/let [content (fetch-component-content+ (-> selected-component :component :link))
+             (p/let [content (fetch-content+ (:component selected-component))
                      converted-content (convert-content (:component selected-component)
                                                         content
                                                         (:format format-choice))
