@@ -32,11 +32,11 @@ Unlike traditional note apps that require you to choose folders and categories, 
 
 **Lightning-Fast Capture**: Hit your hotkey, type your thought, press Enter. The input box stays focused until you're done—no context switching, no mental overhead.
 
-**Intelligent Processing**: Our AI agent reads your note alongside rich context—current file, workspace state, time patterns, and your personal note organization instructions—then decides the perfect place and format for storage.
+**Intelligent Processing**: Our AI agent reads your note alongside rich context—current file, workspace state, and your personal note organization instructions—then decides the perfect place and format for storage.
 
 **Adaptive Organization**: Notes are stored as individual files with smart frontmatter (tags, categories, relationships) in a flat structure that's both human-readable and AI-navigable. No complex hierarchies to maintain.
 
-**Effortless Retrieval**: Fuzzy search through all notes with instant preview, filter by tags/categories, or let the AI surface relevant notes based on your current work context.
+**Effortless Retrieval**: Browse all notes with fuzzy search, filter by tags/categories, or discover related notes with AI-powered suggestions.
 
 ### Customer Quotes
 
@@ -46,11 +46,18 @@ Unlike traditional note apps that require you to choose folders and categories, 
 *"The AI actually understands that my 'TODO: refactor auth' note while looking at user.cljs should be categorized with security tasks, not random todos. It's like having a personal knowledge management assistant."*
 — Alex Rodriguez, Full-Stack Developer
 
+*"Having both human and Copilot Chat interfaces means I can capture thoughts directly or have AI help me process complex ideas. The original note is always preserved too."*
+— Jamie Park, DevOps Engineer
+
 ### Special Features for Deep Thinkers
 
 **Ask-Me Mode**: Prefix any note with `/ask-me` and the AI will intelligently interview you to flesh out incomplete thoughts. Perfect for capturing seed ideas that need development.
 
-**Seasonal Intelligence**: Notes jotted during crunch time get different organization treatment than weekend exploration notes. The AI learns your work rhythms.
+**Dual Interfaces**: Use the human interface for quick capture, or call functions directly from Copilot Chat for AI-assisted note processing with custom instructions.
+
+**Related Notes Discovery**: AI-powered discovery of related notes with convenient access from the notes browser.
+
+**Original Preservation**: Your unprocessed thoughts are always preserved in the note metadata, even after AI organization.
 
 **Project Context**: Workspace-specific notes stay with projects, while personal insights flow to your global knowledge base—automatically, without you thinking about it.
 
@@ -78,7 +85,7 @@ A: The flat file structure with frontmatter means you and Copilot can always man
 A: Only if you use a local model.
 
 **Q: Can I customize the organization logic?**
-A: Yes! Edit your `.joyride/notes/.instructions.md` file to teach the AI your preferred organization patterns. Also, this is a Joyride script, just change anything you want about it.
+A: Yes! Edit your `.joyride/notes/notes-instructions.md` file to teach the AI your preferred organization patterns. Also, this is a Joyride script, just change anything you want about it.
 
 ### Technical Details
 

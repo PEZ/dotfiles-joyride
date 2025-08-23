@@ -96,18 +96,17 @@ The context map contains information easily computable without AI:
 
 Each note is a standalone markdown file with YAML frontmatter:
 
-; FEEDBACK: I think we can wait with trying to handle urgency in this system. Mostly important for the system prompt writing (to not include it, then users may include that they want urgency to be considered in the custom instruction files.)
 ```markdown
 ---
 title: "Fix authentication timeout bug"
 date: "2025-08-23T14:30:00Z"
 tags: ["bug", "authentication", "timeout"]
-categories: ["work", "urgent"]
+categories: ["work"]
 workspace: "my-app"
 related-files: ["src/auth/core.clj", "test/auth/core_test.clj"]
-priority: "high"
 status: "active"
 context: "debugging session"
+original-note: "Auth timeout bug. /ask-me This might be related to the Redis configuration we changed last week?"
 ---
 
 # Auth timeout issue
@@ -119,9 +118,10 @@ Noticed this while testing the login flow. Need to check:
 - Redis TTL settings
 - Environment variable loading
 
-; FEEDBACK: Not sure what /ask-me does in the final note. But it reminds me that we may want to save the original/unprocessed note in the frontmatter
-/ask-me This might be related to the Redis configuration we changed last week?
+Investigation needed regarding recent Redis configuration changes.
 ```
+
+**Note**: The `/ask-me` command triggers AI follow-up questions during processing but is removed from the final note content. The original unprocessed note is preserved in the `original-note` frontmatter field.
 
 ## Core Functions
 
@@ -130,11 +130,13 @@ Noticed this while testing the login flow. Need to check:
 ```clojure
 (defn open-note-input! []
   "Shows persistent input box for human note capture")
-
-; FEEDBACK: I don't understand this please discuss it with me
-(defn register-commands! []
-  "Registers VS Code commands for note management")
 ```
+
+**User Invocation**: Since Joyride doesn't support command registration with manifests, users can invoke functions through:
+- REPL calls (for development/testing)
+- Keyboard shortcuts in keybindings.json calling `joyride.runCode`
+- User scripts for custom workflows
+- Status bar buttons or custom UI elements
 
 ### 2. Context Gathering
 
@@ -161,17 +163,16 @@ Noticed this while testing the login flow. Need to check:
 (defn jot-this-down! [note context]
   "Main processing function - calls AI agent with note and context")
 
-; FEEDNACK: I think this is better to just include in the system prompt?
-(defn detect-special-commands [note]
-  "Detects /ask-me and other special syntax")
-
 (defn call-ai-agent! [note context]
   "Makes AI API call with constructed prompt")
 
-; FEEDBACK: Maybe just instruct the AI to create the file(s) and return the path(s). Then handle-ai-response can just display the file to the user in preview mode.
 (defn handle-ai-response [response context]
-  "Processes AI response, creates files, may trigger follow-up questions")
+  "Processes AI response, creates files, displays in preview mode")
 ```
+
+**Special Commands**: `/ask-me` and other syntax is handled within the AI system prompt rather than pre-processing.
+
+**AI Response Flow**: AI agent creates the note file(s) and returns file path(s). The response handler displays the created file in VS Code preview mode.
 
 ### 4. Note Management
 
@@ -181,30 +182,31 @@ Noticed this while testing the login flow. Need to check:
 
 (defn generate-filename [note-data]
   "Creates filename: YYYY-MM-DD-slug.md")
-
-; FEDDBACK: We haven't quite discussed updating notes, but I doubt it is a function like this. Rather a task we lay at the feet of the AI agent?
-(defn update-note-metadata! [file-path new-metadata]
-  "Updates frontmatter of existing note")
 ```
 
-### 4. Search and Retrieval
+**Note Updates**: Note modification and metadata updates are delegated to AI agent tasks rather than specific functions.
+
+### 5. Search and Retrieval
 
 ```clojure
-; FEEDBACK: This could be called `show-notes-list!` and then it is the user who can fuzzy seearch it becayse we have been smart in how we populate and configure the quick-pick menu.
-(defn fuzzy-search-notes []
-  "Implements QuickPick-based fuzzy search like git-fuzzy")
+(defn show-notes-list! []
+  "Shows QuickPick menu with all notes, tags, and categories for navigation")
 
-; FEEDBACK: Yes, this is a good idea. Maybe it should be that the `show-notes-list!` menu starts with items Tags and Categories, and these menu items opens the list filterd by tags/category.
 (defn get-notes-by-tag [tag]
   "Returns all notes with specific tag")
 
 (defn get-notes-by-category [category]
   "Returns all notes in category")
 
-; FEEDBACK: AWesome idea!!! This can be a button on the menu item for the note.
 (defn get-related-notes [context]
   "AI-powered: find notes related to current context")
 ```
+
+**Enhanced UX Design:**
+- `show-notes-list!` creates smart QuickPick with fuzzy search enabled
+- Menu starts with "Tags" and "Categories" items that filter the list when selected
+- Each note item includes "Related Notes" button that calls `get-related-notes`
+- Intelligent search configuration allows fuzzy matching on title, content, and tags
 
 ### 5. Analysis and Summarization
 
@@ -239,24 +241,25 @@ Noticed this while testing the login flow. Need to check:
 - Add custom instructions to `:processing-instructions` field
 - Call `jot-this-down!` with note and augmented context
 
-### Fuzzy Search Interface
+### Notes List Interface
 
 **Based on git-fuzzy pattern:**
 - Use `vscode/window.createQuickPick`
 - Load all notes with formatted display
 - Enable fuzzy matching on title, content, tags
 - Preview functionality on selection
-- Action buttons for edit/delete/copy ; FEEDBACK: And related notes!
+- Action buttons for edit/delete/copy/related notes
 
 ### Search Result Format
 
 ```clojure
 {:label "Fix authentication timeout bug"
  :description "$(tag) bug authentication timeout"
- :detail "2025-08-23 - work/urgent - my-app workspace"
+ :detail "2025-08-23 - work - my-app workspace"
  :file-path "/path/to/note.md"
  :buttons [{:name "edit" :iconPath "edit" :tooltip "Edit note"}
-           {:name "copy" :iconPath "copy" :tooltip "Copy content"}]}
+           {:name "copy" :iconPath "copy" :tooltip "Copy content"}
+           {:name "related" :iconPath "references" :tooltip "Find related notes"}]}
 ```
 
 ## AI Agent System Prompt
@@ -265,10 +268,10 @@ The AI agent receives context-aware instructions for intelligent note organizati
 
 1. **Role Definition**: "You are a contextual note organization assistant"
 2. **Primary Goals**: Organize notes intelligently, maintain consistency, ask clarifying questions when needed
-3. **Context Utilization**: Use minimal temporal info and instruct AI to derive semantic meaning (time-of-day → work focus, season → planning cycles)
+3. **Context Utilization**: Use minimal temporal info to derive semantic meaning (time-of-day → work focus, season → planning cycles)
 4. **Organization Principles**: File naming, frontmatter standards, tag/category strategies
-5. **Special Commands**: How to handle `/ask-me` and future commands
-6. **Human Escalation**: When to use `joyride_request_human_input` tool
+5. **Special Commands**: Handle `/ask-me` to trigger follow-up questions using `joyride_request_human_input` tool
+6. **Human Escalation**: When to use `joyride_request_human_input` tool for guidance
 
 ## Implementation Phases
 
@@ -278,9 +281,9 @@ The AI agent receives context-aware instructions for intelligent note organizati
 - [ ] Simple AI processing (without special commands)
 
 ### Phase 2: User Interface
-- [ ] Jot-this-down command registration ; FEEDBACK: I don't think we will register commands really, This is just a function.
 - [ ] Input box implementation with persistence
-- [ ] Basic fuzzy search interface
+- [ ] Basic notes list interface
+- [ ] User invocation methods (keybindings, scripts)
 
 ### Phase 3: Advanced Features
 - [ ] `/ask-me` command processing
@@ -296,7 +299,8 @@ The AI agent receives context-aware instructions for intelligent note organizati
 
 ### Workspace Instructions Template (.joyride/notes/notes-instructions.md)
 
-; FEEDBACK: I think this highlights a distinction needed between what goes into the system prompt. So the author of custom instructions needs to know what the system prompt has, and the custom instruction mainly complement that? Also they should provide contextual things, like how to categorize and tag in this particulat workspace.
+**Purpose**: Complements the system prompt with workspace-specific organization guidance.
+
 ```markdown
 # Workspace Note Organization Instructions
 
@@ -305,7 +309,7 @@ This is a [project type] project focused on [main purpose].
 
 ## Organization Preferences
 - Use tags for: technical concepts, bug types, feature areas
-- Use categories for: priority levels, work phases, note types
+- Use categories for: work phases, note types (avoid urgency unless specifically needed)
 - File naming: prefer descriptive slugs over generic names
 
 ## Special Considerations
@@ -323,6 +327,13 @@ This is a [project type] project focused on [main purpose].
 
 ```markdown
 # Global Note Organization Instructions
+
+## About Me
+[Personal context for the AI agent to understand the human]
+- Role: [job title, responsibilities]
+- Interests: [technical interests, learning goals]
+- Work style: [preferences for organization, communication]
+- Context: [current projects, focus areas]
 
 ## Personal Organization Style
 [User's preferred organization patterns]
@@ -355,14 +366,3 @@ This is a [project type] project focused on [main purpose].
 - Unit tests for context gathering functions
 - Integration tests for AI agent interactions
 - Manual testing for UI responsiveness and focus behavior
-
-
-; FEEDBACK: We can remove future ideas and add them as notes later, dog feeding style =) But maybe we need an out of scope section? You can ask me about that when working with the updates of this doc.
-## Future Enhancements
-
-- **Cross-Reference Discovery**: Automatically link related notes
-- **Smart Templates**: Context-based note templates
-- **Export/Sync**: Integration with external note systems
-- **Analytics**: Personal productivity insights from note patterns
-- **Voice Input**: Quick voice-to-text note capture
-- **Mobile Companion**: Sync with mobile quick-capture apps
