@@ -31,7 +31,9 @@
   ; In the deault workspace activate script for the User project we open the README
   (p/let [workspace-folder (first vscode/workspace.workspaceFolders)
           readme-path (vscode/Uri.joinPath (.-uri workspace-folder) "/README.md")]
-    (vscode/commands.executeCommand "markdown.showPreview" readme-path)))
+    (vscode/commands.executeCommand "markdown.showPreview" readme-path))
+
+  (vscode/commands.executeCommand "calva.startJoyrideReplAndConnect" "joyride"))
 
 (when (= (joyride/invoked-script) joyride/*file*)
   (main))

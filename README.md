@@ -1,8 +1,8 @@
 # Welcome to Joyride! 🎸
 
-Joyride lets you script VS Code using ClojureScript. This is your user Joyride
-directory where you can create scripts that make VS Code even better, tailored
-to you and your workflows.
+This is your user Joyride directory where you can create scripts that are globally available across all VS Code windows on your computer. Use it to make VS Code suit you even better.
+
+![Joyride Logo](https://raw.githubusercontent.com/BetterThanTomorrow/joyride/master/assets/joyride-logo.png)
 
 ## Some Important Distinctions/Terms
 
@@ -10,8 +10,8 @@ to you and your workflows.
   run from the **Joyride: Run User Script...** menu.
 - A **Joyride Source file** is a file in the `src` subdirectory. It can be library
   functions for **Scripts**, and can also expose functions that you can call
-  from keyboard shortcut bindings, using `joyride.runCode` command.
-- **User** scripts and source files. Code in this directory, that can be accessed
+  from keyboard shortcut bindings, using the `joyride.runCode` command.
+- **User** scripts and source files. Code in this directory that can be accessed
   and run from the Joyride **User** commands. User code is global to all VS Code
   windows.
 - **Workspace** scripts and source files. Code in the `./joyride` subdirectory of
@@ -23,11 +23,13 @@ to you and your workflows.
   1. `<workspace-root>/.joyride/scripts`
   1. `<user-home>/.config/joyride/src`
   1. `<user-home>/.config/joyride/scripts`
+- Note that this project has both workspace and user content:
+  - **Workspace** content (in the [.joyride](.joyride/) directory), relevant only to this project
+  - **User** content (in the [scripts](scripts/), and [src](src/) directories), relevant to all projects you open with VS Code
 
 ## Getting Started
 
-You probably will want to have this project under source control and on GitHub
-or wherever you have your git repositories.
+0. You probably want to have this project under source control.
 
 ### 1. Create Your First Script
 Use VS Code commands to create your first Joyride scripts:
@@ -40,9 +42,10 @@ Use VS Code commands to create your first Joyride scripts:
 
 1. **Get the script**: Copy from [Awesome Copilot Joyride Script](https://pez.github.io/awesome-copilot-index/awesome-copilot-script)
 2. **Install in Joyride**:
-   - Command Palette: `Joyride: Create User Script...`
-   - Name it: `awesome-copilot`
-   - Paste the script code
+   1. Command Palette: `Joyride: Create User Script...`
+   2. Name it: `awesome-copilot` (**NB: It's important that you name it exactly this, because reasons.**)
+   3. Paste the script code
+   4. Save the file
 3. **Use the script**:
    1. Command Palette: `Joyride: Run User Script...`
    2. Select: `awesome_copilot.cljs`
@@ -50,12 +53,12 @@ Use VS Code commands to create your first Joyride scripts:
 
 #### 1.c Install the example `git-fuzzy` search function/command
 
-The `git-fuzzy` script is a simple way to search through your Git commit history using a fuzzy search. It will open previews highlight the changes as you seacrh and naviaget the results. It is a super fast way to find changes.
+The `git-fuzzy` script is a simple way to search through your Git commit history using a fuzzy search. It will open previews and highlight the changes as you search and navigate the results. It is a super fast way to find changes.
 
 1. Copy the code from [Joyride Example: git_fuzzy.cljs](https://raw.githubusercontent.com/BetterThanTomorrow/joyride/refs/heads/master/examples/.joyride/src/git_fuzzy.cljs)
 1. Run the VS Code command: <kbd>Joyride: Create User Source File...</kbd>
     1. Enter `git-fuzzy` in the input box that pops up, and submit
-1. In the editor that opens, **Select All** and paste the code your copied.
+1. In the editor that opens, **Select All** and paste the code you copied.
 1. Configure a keyboard shortcut:
   ```json
   {
@@ -65,13 +68,11 @@ The `git-fuzzy` script is a simple way to search through your Git commit history
   },
   ```
 
-If you use the keyboard shortcut in this project it will either:
+Open some project – with a somewhat populated git repository – in another VS Code window, and use the keyboard shortcut from there. Because, if you try it in this project it will either:
 1. Show an error (if you haven't initialized this project for Git yet)
-1. Be bording (because you don't have many commits)
+1. Be boring (because you don't have many commits)
 
-So, open some other project in a VS Code window, and try it from there.
-
-The code for **git-fuzzy** is pretty simple and could probably have plenty of more features. Like supporting to search all git repos in a multi-folder workspace. Make the script your own by hackig away on it. You can ask CoPilot for help, modern Claude models are pretty good with Joyride.
+The code for **git-fuzzy** is pretty simple and could probably have plenty of more features. Like supporting to search all git repos in a multi-folder workspace. Make the script your own by hacking away on it. You can ask CoPilot for help, Sonnet 4 is pretty good with Joyride!
 
 ### 2. Install Calva (Recommended)
 For the best Joyride development experience, install the Calva extension:

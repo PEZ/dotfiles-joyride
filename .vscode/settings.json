@@ -24,4 +24,5 @@
   "markdown.preview.doubleClickToSwitchToEditor": false,
   "calva.showCalvaSaysOnStart": false,
   "calva.clojureLspVersion": "latest",
+  "calva.autoOpenInspector": false,
 }
