@@ -349,8 +349,8 @@
                    (p/let [choice (show-resolution-menu!+ selected-conflict)]
                      (if choice
                        (p/let [_ (resolve-conflict!+ selected-conflict choice)]
-                         (vscode/window.showInformationMessage (str "Resolved: " (:prompt-sync.conflict/filename selected-conflict)))
-                         (handle-conflicts (remove #(= % selected-conflict) remaining-conflicts)))
+                         (do (vscode/window.showInformationMessage (str "Resolved: " (:prompt-sync.conflict/filename selected-conflict)))
+                             (handle-conflicts (remove #(= % selected-conflict) remaining-conflicts))))
                        ;; User cancelled resolution menu
                        (p/resolved (do (vscode/window.showInformationMessage "Prompt sync cancelled")
                                        :cancelled))))
