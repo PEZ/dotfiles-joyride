@@ -200,20 +200,6 @@
         sorted-files (sort-by :prompt-sync.file/filename all-files)]
     (assoc sync-result :prompt-sync.result/all-files sorted-files)))
 
-(defn create-conflict-picker-item
-  "Creates QuickPick item for conflict with appropriate icon"
-  [{:prompt-sync.conflict/keys [filename type]}]
-  (let [icon (case type
-               :prompt-sync.file/instruction (vscode/ThemeIcon. "list-ordered")
-               :prompt-sync.file/prompt (vscode/ThemeIcon. "chevron-right")
-               :prompt-sync.file/chatmode (vscode/ThemeIcon. "color-mode")
-               (vscode/ThemeIcon. "diff"))]
-    #js {:label filename
-         :iconPath icon
-         :description (str (name type) " • has conflicts")
-         :detail "Select to choose resolution"
-         :conflict #js {:filename filename
-                       :type type}}))
 
 (defn show-diff-preview!+
   "Opens VS Code diff editor for conflict preview with default positioning"
@@ -227,45 +213,6 @@
                                     title
                                     #js {:preview true
                                          :preserveFocus true})))
-
-(defn show-conflict-picker!+
-  "Shows QuickPick for conflict selection with live diff preview"
-  [{:prompt-sync.result/keys [conflicts]}]
-  (if (empty? conflicts)
-    (p/resolved nil)
-    (let [items (map create-conflict-picker-item conflicts)
-          picker (vscode/window.createQuickPick)]
-
-      (set! (.-items picker) (into-array items))
-      (set! (.-title picker) "Prompt Sync - Resolve Conflicts")
-      (set! (.-placeholder picker) "Select a file to resolve conflicts")
-      (set! (.-ignoreFocusOut picker) true)
-
-      ;; Live diff preview on active item change
-      (.onDidChangeActive picker
-                          (fn [active-items]
-                            (when-let [first-item (first active-items)]
-                              (let [conflict-data (.-conflict first-item)
-                                    filename (.-filename conflict-data)
-                                    conflict-info (first (filter #(= (:prompt-sync.conflict/filename %) filename) conflicts))]
-                                (when conflict-info
-                                  (show-diff-preview!+ conflict-info))))))
-
-      (js/Promise.
-       (fn [resolve _reject]
-         (.onDidAccept picker
-                       (fn []
-                         (let [selected (first (.-selectedItems picker))]
-                           (.hide picker)
-                           (when selected
-                             (let [conflict-data (.-conflict selected)
-                                   filename (.-filename conflict-data)
-                                   conflict-info (first (filter #(= (:prompt-sync.conflict/filename %) filename) conflicts))]
-                               (resolve conflict-info))))))
-         (.onDidHide picker
-                     (fn []
-                       (resolve nil)))
-         (.show picker))))))
 
 (defn get-file-icon
   "Gets appropriate VS Code icon for file type"
