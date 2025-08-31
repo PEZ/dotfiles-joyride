@@ -354,8 +354,10 @@
                (p/resolved (do (vscode/window.showInformationMessage "Prompt sync completed!")
                                :completed))
                (p/let [selected-conflict (show-conflict-picker!+ {:prompt-sync.result/conflicts remaining-conflicts})]
+                 (println "🔍 Selected conflict:" (when selected-conflict (:prompt-sync.conflict/filename selected-conflict)))
                  (if selected-conflict
                    (p/let [choice (show-resolution-menu!+ selected-conflict)]
+                     (println "🎯 User choice:" choice)
                      (if choice
                        (p/let [_ (resolve-conflict!+ selected-conflict choice)
                                _ (do (vscode/window.showInformationMessage (str "Resolved: " (:prompt-sync.conflict/filename selected-conflict)))
