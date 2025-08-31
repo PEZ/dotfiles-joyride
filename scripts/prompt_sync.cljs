@@ -216,6 +216,7 @@
 (defn show-resolution-menu!+
   "Shows resolution options menu"
   [{:prompt-sync.conflict/keys [filename]}]
+  (println "📋 show-resolution-menu!+ called for:" filename)
   (let [actions [{:label "Choose Stable"
                   :iconPath (vscode/ThemeIcon. "arrow-left")
                   :description "Copy stable version to insiders"
@@ -233,35 +234,38 @@
          #js {:placeHolder (str "How to resolve: " filename)
               :ignoreFocusOut true})
         (.then (fn [choice]
+                 (println "📋 User selected:" (when choice (.-label choice)) "for" filename)
                  (when choice
                    (keyword (.-action choice))))))))
 
 (defn resolve-conflict!+
-  "Executes the chosen resolution action"
+  "Executes the chosen resolution action, returns result data"
   [conflict choice]
   (println "🔧 resolve-conflict!+ called with:")
   (println "  Choice:" choice)
   (println "  Conflict filename:" (:prompt-sync.conflict/filename conflict))
-  (let [{:prompt-sync.conflict/keys [stable-file insiders-file]} conflict]
+  (let [{:prompt-sync.conflict/keys [stable-file insiders-file filename]} conflict]
     (println "  Stable file URI:" (:prompt-sync.file/uri stable-file))
     (println "  Insiders file URI:" (:prompt-sync.file/uri insiders-file))
     (case choice
       :prompt-sync.action/choose-stable
       (do (println "  → Copying stable to insiders")
-          (copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri stable-file)
-                        :prompt-sync/target-uri (:prompt-sync.file/uri insiders-file)}))
+          (p/let [_ (copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri stable-file)
+                                  :prompt-sync/target-uri (:prompt-sync.file/uri insiders-file)})]
+            {:action :choose-stable :filename filename :success true}))
 
       :prompt-sync.action/choose-insiders
       (do (println "  → Copying insiders to stable")
-          (copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri insiders-file)
-                        :prompt-sync/target-uri (:prompt-sync.file/uri stable-file)}))
+          (p/let [_ (copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri insiders-file)
+                                  :prompt-sync/target-uri (:prompt-sync.file/uri stable-file)})]
+            {:action :choose-insiders :filename filename :success true}))
 
       :prompt-sync.action/skip
       (do (println "  → Skipping")
-          (p/resolved :skipped))
+          (p/resolved {:action :skip :filename filename :success true}))
 
       (do (println "  → Cancelled")
-          (p/resolved :cancelled)))))
+          (p/resolved {:action :cancelled :filename filename :success false})))))
 
 (defn create-test-environment!+
   "Creates test directories and sample files for safe testing"
@@ -359,10 +363,10 @@
                    (p/let [choice (show-resolution-menu!+ selected-conflict)]
                      (println "🎯 User choice:" choice)
                      (if choice
-                       (p/let [_ (resolve-conflict!+ selected-conflict choice)
-                               _ (do (vscode/window.showInformationMessage (str "Resolved: " (:prompt-sync.conflict/filename selected-conflict)))
-                                     nil)]
-                         (handle-conflicts (remove #(= % selected-conflict) remaining-conflicts)))
+                       (p/let [resolution-result (resolve-conflict!+ selected-conflict choice)]
+                         (println "🎯 Resolution result:" resolution-result)
+                         (do (vscode/window.showInformationMessage (str "Resolved: " (:prompt-sync.conflict/filename selected-conflict)))
+                             (handle-conflicts (remove #(= % selected-conflict) remaining-conflicts))))
                        ;; User cancelled resolution menu
                        (p/resolved (do (vscode/window.showInformationMessage "Prompt sync cancelled")
                                        :cancelled))))
