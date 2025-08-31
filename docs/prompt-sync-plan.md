@@ -39,24 +39,31 @@ This tool is perfect for developers who work with both VS Code stable and inside
 ### Data Structures
 
 ```clojure
-;; File metadata structure
-{:path "/full/path/to/file"
- :relative-path "filename.md"
- :content "file content string"
- :source :stable/:insiders
- :type :instruction/:prompt/:chatmode}
+;; File metadata structure (using domain namespaced keywords)
+{:prompt-sync.file/name "filename.md"
+ :prompt-sync.file/path "/full/path/to/file"
+ :prompt-sync.file/uri #vscode/Uri
+ :prompt-sync.file/content "file content string"
+ :prompt-sync.file/source :prompt-sync.source/stable
+ :prompt-sync.file/type :prompt-sync.file/instruction}
 
 ;; Sync result structure
-{:missing-in-stable [file-info...]
- :missing-in-insiders [file-info...]
- :conflicts [conflict-info...]
- :identical [file-info...]}
+{:prompt-sync.result/missing-in-stable [file-info...]
+ :prompt-sync.result/missing-in-insiders [file-info...]
+ :prompt-sync.result/conflicts [conflict-info...]
+ :prompt-sync.result/identical [file-info...]}
 
 ;; Conflict info structure
-{:filename "example.md"
- :stable-file file-info
- :insiders-file file-info
- :type :instruction/:prompt/:chatmode}
+{:prompt-sync.conflict/filename "example.md"
+ :prompt-sync.conflict/stable-file file-info
+ :prompt-sync.conflict/insiders-file file-info
+ :prompt-sync.conflict/type :prompt-sync.file/instruction}
+
+;; Directory configuration
+{:prompt-sync/stable-dir "/path/to/stable/prompts"
+ :prompt-sync/insiders-dir "/path/to/insiders/prompts"
+ :prompt-sync/current-is-insiders? false
+ :prompt-sync/test-mode? false}
 ```
 
 ### Implementation Phases
@@ -150,21 +157,27 @@ This tool is perfect for developers who work with both VS Code stable and inside
         path/dirname
         path/dirname)))
 
-(defn get-user-prompts-dirs []
-  "Returns map with stable and insiders prompt directory paths"
-  (let [current-user-dir (get-vscode-user-dir)
-        is-insiders? (.includes current-user-dir "Insiders")
-
-        stable-dir (if is-insiders?
-                     (.replace current-user-dir "Code - Insiders" "Code")
-                     current-user-dir)
-        insiders-dir (if is-insiders?
-                       current-user-dir
-                       (.replace current-user-dir "Code" "Code - Insiders"))]
-
-    {:stable (path/join stable-dir "prompts")
-     :insiders (path/join insiders-dir "prompts")
-     :current-is-insiders is-insiders?}))
+(defn get-user-prompts-dirs
+  "Returns configuration map with stable and insiders prompt directory paths"
+  ([] (get-user-prompts-dirs {}))
+  ([{:prompt-sync/keys [test-mode?] :or {test-mode? false}}]
+   (if test-mode?
+     {:prompt-sync/stable-dir "/tmp/prompt-sync-test/stable/prompts"
+      :prompt-sync/insiders-dir "/tmp/prompt-sync-test/insiders/prompts"
+      :prompt-sync/current-is-insiders? false
+      :prompt-sync/test-mode? true}
+     (let [current-user-dir (get-vscode-user-dir)
+           is-insiders? (.includes current-user-dir "Insiders")
+           stable-dir (if is-insiders?
+                        (.replace current-user-dir "Code - Insiders" "Code")
+                        current-user-dir)
+           insiders-dir (if is-insiders?
+                          current-user-dir
+                          (.replace current-user-dir "Code" "Code - Insiders"))]
+       {:prompt-sync/stable-dir (path/join stable-dir "prompts")
+        :prompt-sync/insiders-dir (path/join insiders-dir "prompts")
+        :prompt-sync/current-is-insiders? is-insiders?
+        :prompt-sync/test-mode? false}))))
 ```
 
 ### Step 3: File Classification and Scanning (using workspace.fs)
@@ -173,14 +186,13 @@ This tool is perfect for developers who work with both VS Code stable and inside
 (defn classify-file-type [filename]
   "Determines file type from filename for appropriate icon"
   (cond
-    (.includes filename "instruction") :instruction
-    (.includes filename "chatmode") :chatmode
-    :else :prompt))
+    (.includes filename "instruction") :prompt-sync.file/instruction
+    (.includes filename "chatmode") :prompt-sync.file/chatmode
+    :else :prompt-sync.file/prompt))
 
-(defn scan-directory!+ [dir-path]
+(defn scan-directory!+ [{:prompt-sync/keys [dir-path]}]
   "Scans directory for .md files using workspace.fs, returns promise"
-  (let [dir-uri (vscode/Uri.file dir-path)
-        decoder (js/TextDecoder.)]
+  (let [dir-uri (vscode/Uri.file dir-path)]
     (-> (vscode/workspace.fs.readDirectory dir-uri)
         (.then (fn [entries]
                  (->> entries
@@ -189,10 +201,10 @@ This tool is perfect for developers who work with both VS Code stable and inside
                                 (and (= type 1) ; file type
                                      (.endsWith name ".md"))))
                       (map (fn [[filename _]]
-                             {:filename filename
-                              :path (path/join dir-path filename)
-                              :uri (vscode/Uri.file (path/join dir-path filename))
-                              :type (classify-file-type filename)})))))
+                             {:prompt-sync.file/name filename
+                              :prompt-sync.file/path (path/join dir-path filename)
+                              :prompt-sync.file/uri (vscode/Uri.file (path/join dir-path filename))
+                              :prompt-sync.file/type (classify-file-type filename)})))))
         (.catch (fn [err]
                   (if (= (.-code err) "FileNotFound")
                     [] ; Return empty array if directory doesn't exist
@@ -200,29 +212,32 @@ This tool is perfect for developers who work with both VS Code stable and inside
 
 (defn load-file-content!+ [file-info]
   "Loads file content using workspace.fs, returns promise with updated file-info"
-  (let [decoder (js/TextDecoder.)]
-    (-> (vscode/workspace.fs.readFile (:uri file-info))
+  (let [decoder (js/TextDecoder.)
+        {:prompt-sync.file/keys [uri]} file-info]
+    (-> (vscode/workspace.fs.readFile uri)
         (.then (fn [uint8array]
-                 (assoc file-info :content (.decode decoder uint8array))))
+                 (assoc file-info :prompt-sync.file/content (.decode decoder uint8array))))
         (.catch (fn [err]
-                  (assoc file-info :content nil :error (.-message err)))))))
+                  (assoc file-info
+                         :prompt-sync.file/content nil
+                         :prompt-sync.file/error (.-message err)))))))
 ```
 
 ### Step 4: File Comparison Logic
 
 ```clojure
-(defn compare-directories!+ [stable-dir insiders-dir]
+(defn compare-directories!+ [{:prompt-sync/keys [stable-dir insiders-dir]}]
   "Compares two directories and categorizes files, returns promise"
-  (p/let [stable-files (scan-directory!+ stable-dir)
-          insiders-files (scan-directory!+ insiders-dir)
+  (p/let [stable-files (scan-directory!+ {:prompt-sync/dir-path stable-dir})
+          insiders-files (scan-directory!+ {:prompt-sync/dir-path insiders-dir})
 
           ;; Load content for all files
           stable-with-content (p/all (map load-file-content!+ stable-files))
           insiders-with-content (p/all (map load-file-content!+ insiders-files))
 
           ;; Create lookup maps by filename
-          stable-map (into {} (map (fn [f] [(:filename f) f]) stable-with-content))
-          insiders-map (into {} (map (fn [f] [(:filename f) f]) insiders-with-content))
+          stable-map (into {} (map (fn [f] [(:prompt-sync.file/name f) f]) stable-with-content))
+          insiders-map (into {} (map (fn [f] [(:prompt-sync.file/name f) f]) insiders-with-content))
 
           all-filenames (set (concat (keys stable-map) (keys insiders-map)))]
 
@@ -232,51 +247,52 @@ This tool is perfect for developers who work with both VS Code stable and inside
                 (cond
                   ;; File only in stable
                   (and stable-file (not insiders-file))
-                  (update result :missing-in-insiders conj stable-file)
+                  (update result :prompt-sync.result/missing-in-insiders conj stable-file)
 
                   ;; File only in insiders
                   (and insiders-file (not stable-file))
-                  (update result :missing-in-stable conj insiders-file)
+                  (update result :prompt-sync.result/missing-in-stable conj insiders-file)
 
                   ;; File in both - check content
                   (and stable-file insiders-file)
-                  (if (= (:content stable-file) (:content insiders-file))
-                    (update result :identical conj {:filename filename
-                                                   :stable-file stable-file
-                                                   :insiders-file insiders-file})
-                    (update result :conflicts conj {:filename filename
-                                                   :stable-file stable-file
-                                                   :insiders-file insiders-file
-                                                   :type (:type stable-file)})))))
-            {:missing-in-stable []
-             :missing-in-insiders []
-             :conflicts []
-             :identical []}
+                  (if (= (:prompt-sync.file/content stable-file) (:prompt-sync.file/content insiders-file))
+                    (update result :prompt-sync.result/identical conj
+                            {:prompt-sync.conflict/filename filename
+                             :prompt-sync.conflict/stable-file stable-file
+                             :prompt-sync.conflict/insiders-file insiders-file})
+                    (update result :prompt-sync.result/conflicts conj
+                            {:prompt-sync.conflict/filename filename
+                             :prompt-sync.conflict/stable-file stable-file
+                             :prompt-sync.conflict/insiders-file insiders-file
+                             :prompt-sync.conflict/type (:prompt-sync.file/type stable-file)})))))
+            {:prompt-sync.result/missing-in-stable []
+             :prompt-sync.result/missing-in-insiders []
+             :prompt-sync.result/conflicts []
+             :prompt-sync.result/identical []}
             all-filenames)))
 ```
 
 ### Step 5: QuickPick UI (pattern from git-fuzzy and awesome-copilot)
 
 ```clojure
-(defn create-conflict-picker-item [conflict]
+(defn create-conflict-picker-item [{:prompt-sync.conflict/keys [filename type]}]
   "Creates QuickPick item for conflict with appropriate icon"
-  (let [{:keys [filename type]} conflict
-        icon (case type
-               :instruction (vscode/ThemeIcon. "list-ordered")
-               :prompt (vscode/ThemeIcon. "chevron-right")
-               :chatmode (vscode/ThemeIcon. "color-mode")
+  (let [icon (case type
+               :prompt-sync.file/instruction (vscode/ThemeIcon. "list-ordered")
+               :prompt-sync.file/prompt (vscode/ThemeIcon. "chevron-right")
+               :prompt-sync.file/chatmode (vscode/ThemeIcon. "color-mode")
                (vscode/ThemeIcon. "diff"))]
     #js {:label filename
          :iconPath icon
          :description (str (name type) " • has conflicts")
          :detail "Select to view diff and choose resolution"
-         :conflict conflict}))
+         :conflict {:prompt-sync.conflict/filename filename
+                    :prompt-sync.conflict/type type}}))
 
-(defn show-diff-preview!+ [conflict]
+(defn show-diff-preview!+ [{:prompt-sync.conflict/keys [stable-file insiders-file filename]}]
   "Opens VS Code diff editor for conflict preview"
-  (let [{:keys [stable-file insiders-file filename]} conflict
-        stable-uri (:uri stable-file)
-        insiders-uri (:uri insiders-file)
+  (let [stable-uri (:prompt-sync.file/uri stable-file)
+        insiders-uri (:prompt-sync.file/uri insiders-file)
         title (str "Diff: " filename " (Stable ↔ Insiders)")]
     (vscode/commands.executeCommand "vscode.diff"
                                     stable-uri
@@ -285,7 +301,7 @@ This tool is perfect for developers who work with both VS Code stable and inside
                                     #js {:preview true
                                          :preserveFocus true})))
 
-(defn show-conflict-picker!+ [conflicts]
+(defn show-conflict-picker!+ [{:prompt-sync.result/keys [conflicts]}]
   "Shows QuickPick for conflict selection with live diff preview"
   (if (empty? conflicts)
     (p/resolved nil)
@@ -319,28 +335,28 @@ This tool is perfect for developers who work with both VS Code stable and inside
 ### Step 6: Resolution Actions
 
 ```clojure
-(defn show-resolution-menu!+ [conflict]
+(defn show-resolution-menu!+ [{:prompt-sync.conflict/keys [filename]}]
   "Shows resolution options menu"
   (let [actions [{:label "Choose Stable"
                   :iconPath (vscode/ThemeIcon. "arrow-left")
                   :description "Copy stable version to insiders"
-                  :action :choose-stable}
+                  :action :prompt-sync.action/choose-stable}
                  {:label "Choose Insiders"
                   :iconPath (vscode/ThemeIcon. "arrow-right")
                   :description "Copy insiders version to stable"
-                  :action :choose-insiders}
+                  :action :prompt-sync.action/choose-insiders}
                  {:label "Skip"
                   :iconPath (vscode/ThemeIcon. "close")
                   :description "Leave both files as-is"
-                  :action :skip}]]
+                  :action :prompt-sync.action/skip}]]
     (-> (vscode/window.showQuickPick
          (clj->js actions)
-         #js {:placeHolder (str "How to resolve: " (:filename conflict))})
+         #js {:placeHolder (str "How to resolve: " filename)})
         (.then (fn [choice]
                  (when choice
                    (keyword (.-action choice))))))))
 
-(defn copy-file!+ [source-uri target-uri]
+(defn copy-file!+ [{:prompt-sync/keys [source-uri target-uri]}]
   "Copies file using workspace.fs"
   (-> (vscode/workspace.fs.readFile source-uri)
       (.then (fn [content]
@@ -348,64 +364,82 @@ This tool is perfect for developers who work with both VS Code stable and inside
 
 (defn resolve-conflict!+ [conflict choice]
   "Executes the chosen resolution action"
-  (case choice
-    :choose-stable
-    (copy-file!+ (get-in conflict [:stable-file :uri])
-                 (get-in conflict [:insiders-file :uri]))
+  (let [{:prompt-sync.conflict/keys [stable-file insiders-file]} conflict]
+    (case choice
+      :prompt-sync.action/choose-stable
+      (copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri stable-file)
+                    :prompt-sync/target-uri (:prompt-sync.file/uri insiders-file)})
 
-    :choose-insiders
-    (copy-file!+ (get-in conflict [:insiders-file :uri])
-                 (get-in conflict [:stable-file :uri]))
+      :prompt-sync.action/choose-insiders
+      (copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri insiders-file)
+                    :prompt-sync/target-uri (:prompt-sync.file/uri stable-file)})
 
-    :skip
-    (p/resolved :skipped)
+      :prompt-sync.action/skip
+      (p/resolved :skipped)
 
-    (p/resolved :cancelled)))
+      (p/resolved :cancelled))))
 ```
 
 ### Step 7: Main Orchestration
 
 ```clojure
-(defn sync-prompts!+ []
+(defn sync-prompts!+
   "Main entry point - orchestrates the entire sync process"
-  (p/let [dirs (get-user-prompts-dirs)
-          _ (vscode/window.showInformationMessage "Starting prompt sync...")
+  ([] (sync-prompts!+ {}))
+  ([{:prompt-sync/keys [test-mode?] :or {test-mode? false}}]
+   (p/let [dirs (get-user-prompts-dirs {:prompt-sync/test-mode? test-mode?})
+           {:prompt-sync/keys [stable-dir insiders-dir test-mode?]} dirs
 
-          sync-result (compare-directories!+ (:stable dirs) (:insiders dirs))
+           _ (if test-mode?
+               (vscode/window.showInformationMessage "🧪 TEST MODE: Using /tmp directories")
+               (vscode/window.showInformationMessage "Starting prompt sync..."))
 
-          ;; Copy missing files automatically
-          _ (when (seq (:missing-in-stable sync-result))
-              (p/all (map #(copy-file!+ (:uri %)
-                                        (vscode/Uri.file
-                                         (path/join (:stable dirs) (:filename %))))
-                          (:missing-in-stable sync-result))))
+           sync-result (compare-directories!+ {:prompt-sync/stable-dir stable-dir
+                                               :prompt-sync/insiders-dir insiders-dir})
 
-          _ (when (seq (:missing-in-insiders sync-result))
-              (p/all (map #(copy-file!+ (:uri %)
-                                        (vscode/Uri.file
-                                         (path/join (:insiders dirs) (:filename %))))
-                          (:missing-in-insiders sync-result))))]
+           {:prompt-sync.result/keys [missing-in-stable missing-in-insiders conflicts]} sync-result
 
-    ;; Handle conflicts in a loop
-    (loop [remaining-conflicts (:conflicts sync-result)]
-      (if (empty? remaining-conflicts)
-        (vscode/window.showInformationMessage "Prompt sync completed!")
-        (p/let [selected-conflict (show-conflict-picker!+ remaining-conflicts)]
-          (if selected-conflict
-            (p/let [choice (show-resolution-menu!+ selected-conflict)
-                    _ (when choice (resolve-conflict!+ selected-conflict choice))
-                    resolved-conflicts (if choice #{selected-conflict} #{})]
-              (recur (remove resolved-conflicts remaining-conflicts)))
-            ;; User cancelled
-            (vscode/window.showInformationMessage "Prompt sync cancelled")))))))
+           ;; Copy missing files automatically
+           _ (when (seq missing-in-stable)
+               (p/all (map #(copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri %)
+                                          :prompt-sync/target-uri (vscode/Uri.file
+                                                                   (path/join stable-dir (:prompt-sync.file/name %)))})
+                           missing-in-stable)))
+
+           _ (when (seq missing-in-insiders)
+               (p/all (map #(copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri %)
+                                          :prompt-sync/target-uri (vscode/Uri.file
+                                                                   (path/join insiders-dir (:prompt-sync.file/name %)))})
+                           missing-in-insiders)))]
+
+     ;; Handle conflicts in a loop
+     (loop [remaining-conflicts conflicts]
+       (if (empty? remaining-conflicts)
+         (vscode/window.showInformationMessage "Prompt sync completed!")
+         (p/let [selected-conflict (show-conflict-picker!+ {:prompt-sync.result/conflicts remaining-conflicts})]
+           (if selected-conflict
+             (p/let [choice (show-resolution-menu!+ selected-conflict)
+                     _ (when choice (resolve-conflict!+ selected-conflict choice))
+                     resolved-conflicts (if choice #{selected-conflict} #{})]
+               (recur (remove resolved-conflicts remaining-conflicts)))
+             ;; User cancelled
+             (vscode/window.showInformationMessage "Prompt sync cancelled"))))))))
 
 ;; Export for use
 (defn ^:export main []
   (p/catch
-   (sync-prompts!+)
+   (sync-prompts!+ {:prompt-sync/test-mode? false})
    (fn [error]
      (vscode/window.showErrorMessage (str "Sync error: " (.-message error)))
      (js/console.error "Prompt sync error:" error))))
+
+(defn ^:export main-test []
+  "Entry point for test mode - uses /tmp directories"
+  (p/catch
+   (sync-prompts!+ {:prompt-sync/test-mode? true})
+   (fn [error]
+     (vscode/window.showErrorMessage (str "Test sync error: " (.-message error)))
+     (js/console.error "Test prompt sync error:" error))))
 
 ;; Auto-run when script is invoked
 (when (= (joyride/invoked-script) joyride/*file*)
@@ -473,21 +507,24 @@ The implementing agent should:
 ### Quick REPL Testing Commands
 
 ```clojure
-;; Test directory detection
-(def dirs (get-user-prompts-dirs))
-(println "Stable:" (:stable dirs))
-(println "Insiders:" (:insiders dirs))
+;; Test directory detection with options map
+(def dirs (get-user-prompts-dirs {:prompt-sync/test-mode? false}))
+(let [{:prompt-sync/keys [stable-dir insiders-dir]} dirs]
+  (println "Stable:" stable-dir)
+  (println "Insiders:" insiders-dir))
 
-;; Test file scanning
-(-> (scan-directory!+ (:insiders dirs))
+;; Test file scanning with domain keywords
+(-> (scan-directory!+ {:prompt-sync/dir-path (:prompt-sync/insiders-dir dirs)})
     (.then (fn [files]
              (println "Found" (count files) "files")
-             (doseq [f files] (println "  " (:filename f) "(" (name (:type f)) ")")))))
+             (doseq [{:prompt-sync.file/keys [name type]} files]
+               (println "  " name "(" (name type) ")")))))
 
-;; Test single file loading
-(def test-file {:uri (vscode/Uri.file "/path/to/test.md")})
+;; Test single file loading with domain keywords
+(def test-file {:prompt-sync.file/uri (vscode/Uri.file "/path/to/test.md")})
 (-> (load-file-content!+ test-file)
-    (.then (fn [result] (println "Content length:" (count (:content result))))))
+    (.then (fn [{:prompt-sync.file/keys [content]}]
+             (println "Content length:" (count content)))))
 
 ;; Test workspace.fs text encoding
 (let [encoder (js/TextEncoder.)
@@ -496,6 +533,14 @@ The implementing agent should:
       encoded (.encode encoder text)
       decoded (.decode decoder encoded)]
   (println "Encoding works:" (= text decoded)))
+
+;; Test comparison with options map
+(def config {:prompt-sync/stable-dir "/tmp/test-stable"
+             :prompt-sync/insiders-dir "/tmp/test-insiders"})
+(-> (compare-directories!+ config)
+    (.then (fn [{:prompt-sync.result/keys [conflicts missing-in-stable]}]
+             (println "Conflicts:" (count conflicts))
+             (println "Missing in stable:" (count missing-in-stable)))))
 ```
 
 ### Error Handling Patterns (tested)
