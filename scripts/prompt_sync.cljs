@@ -146,6 +146,45 @@
     {:copied-from-stable (count missing-in-stable)
      :copied-from-insiders (count missing-in-insiders)}))
 
+(defn enhance-sync-result
+  "Adds unified all-files view to sync result for UI consumption"
+  [sync-result]
+  (let [{:prompt-sync.result/keys [conflicts missing-in-stable missing-in-insiders identical]} sync-result
+        all-files (concat
+                   ;; Conflicts
+                   (map (fn [{:prompt-sync.conflict/keys [filename stable-file insiders-file type]}]
+                          {:prompt-sync.file/filename filename
+                           :prompt-sync.file/status :conflict
+                           :prompt-sync.file/type type
+                           :prompt-sync.file/stable-file stable-file
+                           :prompt-sync.file/insiders-file insiders-file})
+                        conflicts)
+                   ;; Identical files
+                   (map (fn [{:prompt-sync.conflict/keys [filename stable-file insiders-file]}]
+                          {:prompt-sync.file/filename filename
+                           :prompt-sync.file/status :identical
+                           :prompt-sync.file/type (:prompt-sync.file/type stable-file)
+                           :prompt-sync.file/stable-file stable-file
+                           :prompt-sync.file/insiders-file insiders-file})
+                        identical)
+                   ;; Missing in insiders (copied from stable)
+                   (map (fn [stable-file]
+                          {:prompt-sync.file/filename (:prompt-sync.file/name stable-file)
+                           :prompt-sync.file/status :copied-to-insiders
+                           :prompt-sync.file/type (:prompt-sync.file/type stable-file)
+                           :prompt-sync.file/stable-file stable-file
+                           :prompt-sync.file/insiders-file nil})
+                        missing-in-insiders)
+                   ;; Missing in stable (copied from insiders)
+                   (map (fn [insiders-file]
+                          {:prompt-sync.file/filename (:prompt-sync.file/name insiders-file)
+                           :prompt-sync.file/status :copied-to-stable
+                           :prompt-sync.file/type (:prompt-sync.file/type insiders-file)
+                           :prompt-sync.file/stable-file nil
+                           :prompt-sync.file/insiders-file insiders-file})
+                        missing-in-stable))]
+    (assoc sync-result :prompt-sync.result/all-files all-files)))
+
 (defn create-conflict-picker-item
   "Creates QuickPick item for conflict with appropriate icon"
   [{:prompt-sync.conflict/keys [filename type]}]
@@ -157,7 +196,7 @@
     #js {:label filename
          :iconPath icon
          :description (str (name type) " • has conflicts")
-         :detail "Select to view diff and choose resolution"
+         :detail "Select to choose resolution"
          :conflict #js {:filename filename
                        :type type}}))
 
@@ -208,6 +247,97 @@
                                    filename (.-filename conflict-data)
                                    conflict-info (first (filter #(= (:prompt-sync.conflict/filename %) filename) conflicts))]
                                (resolve conflict-info))))))
+         (.onDidHide picker
+                     (fn []
+                       (resolve nil)))
+         (.show picker))))))
+
+(defn get-file-icon
+  "Gets appropriate VS Code icon for file type"
+  [file-type]
+  (case file-type
+    :prompt-sync.file/instruction (vscode/ThemeIcon. "list-ordered")
+    :prompt-sync.file/prompt (vscode/ThemeIcon. "chevron-right")
+    :prompt-sync.file/chatmode (vscode/ThemeIcon. "color-mode")
+    (vscode/ThemeIcon. "diff")))
+
+(defn create-all-files-picker-item
+  "Creates QuickPick item for any file type with appropriate description"
+  [{:prompt-sync.file/keys [filename status type] :as file-info}]
+  (let [icon (get-file-icon type)
+        description (case status
+                      :conflict (str (name type) " • has conflicts")
+                      :identical "identical"
+                      :copied-to-insiders "Stable → Insiders"
+                      :copied-to-stable "Insiders → Stable"
+                      (str (name type) " • " (name status)))
+        detail (case status
+                 :conflict "Select to choose resolution"
+                 "Preview only")]
+    #js {:label filename
+         :iconPath icon
+         :description description
+         :detail detail
+         :fileInfo #js {:filename filename
+                        :status (name status)
+                        :type (name type)
+                        :isConflict (= status :conflict)}}))
+
+(defn show-file-preview!+
+  "Shows file preview for non-conflict files"
+  [{:prompt-sync.file/keys [filename status stable-file insiders-file]}]
+  (let [file-to-preview (or stable-file insiders-file)
+        uri (:prompt-sync.file/uri file-to-preview)]
+    (when uri
+      (vscode/commands.executeCommand "vscode.open" uri #js {:preview true
+                                                            :preserveFocus true}))))
+
+(defn show-all-files-picker!+
+  "Shows QuickPick for all files with appropriate preview and selection behavior"
+  [{:prompt-sync.result/keys [all-files conflicts]}]
+  (if (empty? all-files)
+    (p/resolved nil)
+    (let [items (map create-all-files-picker-item all-files)
+          picker (vscode/window.createQuickPick)]
+
+      (set! (.-items picker) (into-array items))
+      (set! (.-title picker) "Prompt Sync - All Files")
+      (set! (.-placeholder picker) "Select conflicts to resolve, others for preview")
+      (set! (.-ignoreFocusOut picker) true)
+
+      ;; Live preview on active item change
+      (.onDidChangeActive picker
+                          (fn [active-items]
+                            (when-let [first-item (first active-items)]
+                              (let [file-info (.-fileInfo first-item)
+                                    filename (.-filename file-info)
+                                    is-conflict (.-isConflict file-info)]
+                                (if is-conflict
+                                  ;; Show diff for conflicts
+                                  (let [conflict-info (first (filter #(= (:prompt-sync.conflict/filename %) filename) conflicts))]
+                                    (when conflict-info
+                                      (show-diff-preview!+ conflict-info)))
+                                  ;; Show simple preview for non-conflicts
+                                  (let [file-data (first (filter #(= (:prompt-sync.file/filename %) filename) all-files))]
+                                    (when file-data
+                                      (show-file-preview!+ file-data))))))))
+
+      (js/Promise.
+       (fn [resolve _reject]
+         (.onDidAccept picker
+                       (fn []
+                         (let [selected (first (.-selectedItems picker))]
+                           (when selected
+                             (let [file-info (.-fileInfo selected)
+                                   is-conflict (.-isConflict file-info)]
+                               (if is-conflict
+                                 ;; Return conflict data for resolution
+                                 (let [filename (.-filename file-info)
+                                       conflict-info (first (filter #(= (:prompt-sync.conflict/filename %) filename) conflicts))]
+                                   (.hide picker)
+                                   (resolve conflict-info))
+                                 ;; For non-conflicts, keep picker open (don't resolve)
+                                 (println "📁 Preview only:" (.-filename file-info))))))))
          (.onDidHide picker
                      (fn []
                        (resolve nil)))
@@ -357,11 +487,11 @@
   "Main entry point - orchestrates the entire sync process"
   ([] (sync-prompts!+ {}))
   ([{:prompt-sync/keys [test-mode?]}]
-   (letfn [(handle-conflicts [remaining-conflicts]
+   (letfn [(handle-conflicts [remaining-conflicts enhanced-sync-result]
              (if (empty? remaining-conflicts)
                (p/resolved (do (vscode/window.showInformationMessage "Prompt sync completed!")
                                :completed))
-               (p/let [selected-conflict (show-conflict-picker!+ {:prompt-sync.result/conflicts remaining-conflicts})]
+               (p/let [selected-conflict (show-all-files-picker!+ enhanced-sync-result)]
                  (println "🔍 Selected conflict:" (when selected-conflict (:prompt-sync.conflict/filename selected-conflict)))
                  (if selected-conflict
                    (p/let [choice (show-resolution-menu!+ selected-conflict)]
@@ -370,7 +500,10 @@
                        (p/let [resolution-result (resolve-conflict!+ selected-conflict choice)]
                          (println "🎯 Resolution result:" resolution-result)
                          (do (vscode/window.showInformationMessage (str "Resolved: " (:prompt-sync.conflict/filename selected-conflict)))
-                             (handle-conflicts (remove #(= % selected-conflict) remaining-conflicts))))
+                             ;; Update the enhanced result to remove resolved conflict
+                             (let [updated-conflicts (remove #(= % selected-conflict) remaining-conflicts)
+                                   updated-enhanced (assoc enhanced-sync-result :prompt-sync.result/conflicts updated-conflicts)]
+                               (handle-conflicts updated-conflicts (enhance-sync-result updated-enhanced)))))
                        ;; User cancelled resolution menu
                        (p/resolved (do (vscode/window.showInformationMessage "Prompt sync cancelled")
                                        :cancelled))))
@@ -403,10 +536,13 @@
              _ (do (vscode/window.showInformationMessage
                     (str "Auto-copied: " (:copied-from-stable copy-summary) " from stable, "
                          (:copied-from-insiders copy-summary) " from insiders"))
-                   nil)]
+                   nil)
 
-       ;; Handle conflicts using letfn recursion instead of loop/recur
-       (handle-conflicts conflicts)))))
+             ;; Enhance sync result for UI after copying
+             enhanced-result (enhance-sync-result sync-result)]
+
+       ;; Handle conflicts using enhanced picker
+       (handle-conflicts conflicts enhanced-result)))))
 
 ;; Export for use (disabled until we're ready making sure the test mode works )
 (defn ^:export main-disabled []
