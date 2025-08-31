@@ -6,7 +6,7 @@
 ;; This is an example Joyride User Script. You run it using the
 ;; command: *Joyride: Run User Script* and select this script
 ;; from the menu. Or you can bind a keyboard shortcut that
-;; runs it. See the README at:
+;; runs it. See the README at: 
 ;;    https://github.com/BetterThanTomorrow/joyride/
 ;; for how to do that. (And more)
 
@@ -38,10 +38,8 @@
       (* 4)
       (+ 1)
       inc)
-  (last (reductions + 1N (range 10000000)))
 
-  (vscode/window.showInformationMessage (str "Hello, answer: " (+ (* 4 10) 1 1)) ())
-  )
+  (vscode/window.showInformationMessage (str "Hello, answer: " (+ (* 4 10) 1 1)) ()))
 
 ;; When loading this file in the REPL, using the command:
 ;;   *Calva: Load Current File and Dependencies*
