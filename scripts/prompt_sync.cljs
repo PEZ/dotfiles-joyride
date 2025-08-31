@@ -220,29 +220,33 @@
   (let [actions [{:label "Choose Stable"
                   :iconPath (vscode/ThemeIcon. "arrow-left")
                   :description "Copy stable version to insiders"
-                  :action :prompt-sync.action/choose-stable}
+                  :action "prompt-sync.action/choose-stable"}
                  {:label "Choose Insiders"
                   :iconPath (vscode/ThemeIcon. "arrow-right")
                   :description "Copy insiders version to stable"
-                  :action :prompt-sync.action/choose-insiders}
+                  :action "prompt-sync.action/choose-insiders"}
                  {:label "Skip"
                   :iconPath (vscode/ThemeIcon. "close")
                   :description "Leave both files as-is"
-                  :action :prompt-sync.action/skip}]]
+                  :action "prompt-sync.action/skip"}]]
     (-> (vscode/window.showQuickPick
          (clj->js actions)
          #js {:placeHolder (str "How to resolve: " filename)
               :ignoreFocusOut true})
         (.then (fn [choice]
                  (println "📋 User selected:" (when choice (.-label choice)) "for" filename)
+                 (println "📋 Raw action string:" (when choice (.-action choice)))
                  (when choice
-                   (keyword (.-action choice))))))))
+                   (let [action-keyword (keyword (.-action choice))]
+                     (println "📋 Action as keyword:" action-keyword)
+                     action-keyword)))))))
 
 (defn resolve-conflict!+
   "Executes the chosen resolution action, returns result data"
   [conflict choice]
   (println "🔧 resolve-conflict!+ called with:")
   (println "  Choice:" choice)
+  (println "  Choice type:" (type choice))
   (println "  Conflict filename:" (:prompt-sync.conflict/filename conflict))
   (let [{:prompt-sync.conflict/keys [stable-file insiders-file filename]} conflict]
     (println "  Stable file URI:" (:prompt-sync.file/uri stable-file))
