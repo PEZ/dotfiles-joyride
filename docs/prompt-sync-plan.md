@@ -190,6 +190,12 @@ This tool is perfect for developers who work with both VS Code stable and inside
 ### Step 3: File Classification and Scanning (using workspace.fs)
 
 ```clojure
+(defn log-message! [{:prompt-sync/keys [test-mode? show-ui?]} message]
+  "Logs message to console and optionally shows UI popup when show-ui? is provided and true"
+  (println message "\n") ; Joyride println has a bug where it doesn't actually add a newline...
+  (when show-ui?
+    (vscode/window.showInformationMessage message)))
+
 (defn classify-file-type [filename]
   "Determines file type from filename for appropriate icon"
   (cond
@@ -335,10 +341,9 @@ This tool is perfect for developers who work with both VS Code stable and inside
                        (resolve nil)))
          (.show picker))))))
 
-(defn show-resolution-menu!+ [{:keys [conflict] :as context}]
+(defn show-resolution-menu!+ [{:keys [conflict] :prompt-sync/keys [test-mode?]}]
   "Shows resolution options menu"
   (let [{:prompt-sync.conflict/keys [filename]} conflict
-        {:prompt-sync/keys [test-mode?]} context
         actions [{:label "Choose Stable"
                   :iconPath (vscode/ThemeIcon. "arrow-left")
                   :description "Copy stable version to insiders"
@@ -434,10 +439,9 @@ This tool is perfect for developers who work with both VS Code stable and inside
       (.then (fn [content]
                (vscode/workspace.fs.writeFile target-uri content)))))
 
-(defn resolve-conflict!+ [{:keys [conflict choice] :as context}]
+(defn resolve-conflict!+ [{:keys [conflict choice] :prompt-sync/keys [test-mode?]}]
   "Executes the chosen resolution action"
-  (let [{:prompt-sync.conflict/keys [stable-file insiders-file filename]} conflict
-        {:prompt-sync/keys [test-mode?]} context]
+  (let [{:prompt-sync.conflict/keys [stable-file insiders-file filename]} conflict]
     (when test-mode?
       (println "🔧 Resolving conflict for:" filename "with choice:" choice))
     (case choice
@@ -470,7 +474,8 @@ This tool is perfect for developers who work with both VS Code stable and inside
 ```clojure
 (defn copy-missing-files!+
   "Copies missing files automatically, returns summary"
-  [{:prompt-sync.result/keys [missing-in-stable missing-in-insiders]} {:prompt-sync/keys [stable-dir insiders-dir]}]
+  [{:prompt-sync.result/keys [missing-in-stable missing-in-insiders]
+    :prompt-sync/keys [stable-dir insiders-dir]}]
   (p/let [_ (p/all (map #(copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri %)
                                       :prompt-sync/target-uri (vscode/Uri.file
                                                                (path/join stable-dir (:prompt-sync.file/name %)))})
@@ -487,31 +492,31 @@ This tool is perfect for developers who work with both VS Code stable and inside
   ([] (sync-prompts!+ {}))
   ([{:prompt-sync/keys [test-mode?] :or {test-mode? false}}]
    ;; Use letfn recursion instead of loop/recur for async control flow
-   (letfn [(handle-conflicts [remaining-conflicts]
+   (letfn [(handle-conflicts [dirs remaining-conflicts]
              (if (empty? remaining-conflicts)
-               (p/resolved (do (vscode/window.showInformationMessage "Prompt sync completed!")
+               (p/resolved (do (log-message! dirs "Prompt sync completed successfully")
                                :completed))
                (p/let [selected-conflict (show-conflict-picker!+ {:prompt-sync.result/conflicts remaining-conflicts})]
                  (if selected-conflict
                    (p/let [choice (show-resolution-menu!+ (merge dirs {:conflict selected-conflict}))]
                      (if choice
                        (p/let [resolution-result (resolve-conflict!+ (merge dirs {:conflict selected-conflict :choice choice}))]
-                         (do (vscode/window.showInformationMessage (str "Resolved: " (:prompt-sync.conflict/filename selected-conflict)))
-                             (handle-conflicts (remove #(= % selected-conflict) remaining-conflicts))))
+                         (do (log-message! dirs (str "Resolved conflict: " (:prompt-sync.conflict/filename selected-conflict)))
+                             (handle-conflicts dirs (remove #(= % selected-conflict) remaining-conflicts))))
                        ;; User cancelled resolution menu
-                       (p/resolved (do (vscode/window.showInformationMessage "Prompt sync cancelled")
+                       (p/resolved (do (log-message! dirs "Prompt sync cancelled by user")
                                        :cancelled))))
                    ;; User cancelled conflict picker
-                   (p/resolved (do (vscode/window.showInformationMessage "Prompt sync cancelled")
+                   (p/resolved (do (log-message! dirs "Prompt sync cancelled by user")
                                    :cancelled))))))]
 
      (p/let [dirs (get-user-prompts-dirs {:prompt-sync/test-mode? test-mode?})
              {:prompt-sync/keys [stable-dir insiders-dir test-mode?]} dirs
 
              _ (if test-mode?
-                 (do (vscode/window.showInformationMessage "🧪 TEST MODE: Using /tmp directories")
+                 (do (log-message! (assoc dirs :prompt-sync/show-ui? true) "🧪 TEST MODE: Using /tmp directories")
                      nil)
-                 (do (vscode/window.showInformationMessage "Starting prompt sync...")
+                 (do (log-message! dirs "Starting prompt sync between stable and insiders...")
                      nil))
 
              ;; Create test environment if in test mode
@@ -525,11 +530,10 @@ This tool is perfect for developers who work with both VS Code stable and inside
              {:prompt-sync.result/keys [conflicts]} sync-result
 
              ;; Copy missing files automatically
-             copy-summary (copy-missing-files!+ sync-result dirs)
+             copy-summary (copy-missing-files!+ (merge sync-result dirs))
 
-             _ (do (vscode/window.showInformationMessage
-                    (str "Auto-copied: " (:copied-from-stable copy-summary) " from stable, "
-                         (:copied-from-insiders copy-summary) " from insiders"))
+             _ (do (log-message! dirs (str "Auto-copied " (:copied-from-stable copy-summary) " files from stable, "
+                                       (:copied-from-insiders copy-summary) " files from insiders"))
                    nil)]
 
        ;; Handle conflicts using letfn recursion
