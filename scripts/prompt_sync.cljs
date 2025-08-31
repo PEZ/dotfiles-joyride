@@ -101,11 +101,13 @@
                 (cond
                   ;; File only in stable
                   (and stable-file (not insiders-file))
-                  (update result :prompt-sync.result/missing-in-insiders conj stable-file)
+                  (update result :prompt-sync.result/missing-in-insiders conj
+                          (assoc stable-file :prompt-sync.file/copy-direction :copied-to-insiders))
 
                   ;; File only in insiders
                   (and insiders-file (not stable-file))
-                  (update result :prompt-sync.result/missing-in-stable conj insiders-file)
+                  (update result :prompt-sync.result/missing-in-stable conj
+                          (assoc insiders-file :prompt-sync.file/copy-direction :copied-to-stable))
 
                   ;; File in both - check content
                   (and stable-file insiders-file)
@@ -149,7 +151,10 @@
 (defn enhance-sync-result
   "Adds unified all-files view to sync result for UI consumption"
   [sync-result]
-  (let [{:prompt-sync.result/keys [conflicts missing-in-stable missing-in-insiders identical]} sync-result
+  (let [{:prompt-sync.result/keys [conflicts missing-in-stable missing-in-insiders identical resolved]} sync-result
+        ;; Track filenames that were copied to exclude them from identical list
+        copied-filenames (set (concat (map :prompt-sync.file/name missing-in-insiders)
+                                     (map :prompt-sync.file/name missing-in-stable)))
         all-files (concat
                    ;; Conflicts
                    (map (fn [{:prompt-sync.conflict/keys [filename stable-file insiders-file type]}]
@@ -159,18 +164,18 @@
                            :prompt-sync.file/stable-file stable-file
                            :prompt-sync.file/insiders-file insiders-file})
                         conflicts)
-                   ;; Identical files
-                   (map (fn [{:prompt-sync.conflict/keys [filename stable-file insiders-file]}]
+                   ;; Resolved conflicts
+                   (map (fn [{:prompt-sync.resolved/keys [filename stable-file insiders-file type action]}]
                           {:prompt-sync.file/filename filename
-                           :prompt-sync.file/status :identical
-                           :prompt-sync.file/type (:prompt-sync.file/type stable-file)
+                           :prompt-sync.file/status action  ; :resolved-to-stable, :resolved-to-insiders, :resolution-skipped
+                           :prompt-sync.file/type type
                            :prompt-sync.file/stable-file stable-file
                            :prompt-sync.file/insiders-file insiders-file})
-                        identical)
+                        (or resolved []))
                    ;; Missing in insiders (copied from stable)
                    (map (fn [stable-file]
                           {:prompt-sync.file/filename (:prompt-sync.file/name stable-file)
-                           :prompt-sync.file/status :copied-to-insiders
+                           :prompt-sync.file/status (:prompt-sync.file/copy-direction stable-file)
                            :prompt-sync.file/type (:prompt-sync.file/type stable-file)
                            :prompt-sync.file/stable-file stable-file
                            :prompt-sync.file/insiders-file nil})
@@ -178,12 +183,22 @@
                    ;; Missing in stable (copied from insiders)
                    (map (fn [insiders-file]
                           {:prompt-sync.file/filename (:prompt-sync.file/name insiders-file)
-                           :prompt-sync.file/status :copied-to-stable
+                           :prompt-sync.file/status (:prompt-sync.file/copy-direction insiders-file)
                            :prompt-sync.file/type (:prompt-sync.file/type insiders-file)
                            :prompt-sync.file/stable-file nil
                            :prompt-sync.file/insiders-file insiders-file})
-                        missing-in-stable))]
-    (assoc sync-result :prompt-sync.result/all-files all-files)))
+                        missing-in-stable)
+                   ;; Identical files (exclude files that were copied)
+                   (map (fn [{:prompt-sync.conflict/keys [filename stable-file insiders-file]}]
+                          {:prompt-sync.file/filename filename
+                           :prompt-sync.file/status :identical
+                           :prompt-sync.file/type (:prompt-sync.file/type stable-file)
+                           :prompt-sync.file/stable-file stable-file
+                           :prompt-sync.file/insiders-file insiders-file})
+                        (remove #(copied-filenames (:prompt-sync.conflict/filename %)) identical)))
+        ;; Sort all files by filename to maintain consistent order
+        sorted-files (sort-by :prompt-sync.file/filename all-files)]
+    (assoc sync-result :prompt-sync.result/all-files sorted-files)))
 
 (defn create-conflict-picker-item
   "Creates QuickPick item for conflict with appropriate icon"
@@ -263,16 +278,20 @@
 
 (defn create-all-files-picker-item
   "Creates QuickPick item for any file type with appropriate description"
-  [{:prompt-sync.file/keys [filename status type] :as file-info}]
+  [{:prompt-sync.file/keys [filename status type]}]
   (let [icon (get-file-icon type)
         description (case status
                       :conflict (str (name type) " • has conflicts")
                       :identical "identical"
                       :copied-to-insiders "Stable → Insiders"
                       :copied-to-stable "Insiders → Stable"
+                      :resolved-to-stable "resolved • chose Stable"
+                      :resolved-to-insiders "resolved • chose Insiders"
+                      :resolution-skipped "resolved • skipped"
                       (str (name type) " • " (name status)))
         detail (case status
                  :conflict "Select to choose resolution"
+                 (:resolved-to-stable :resolved-to-insiders :resolution-skipped) "Resolution complete"
                  "Preview only")]
     #js {:label filename
          :iconPath icon
@@ -500,9 +519,21 @@
                        (p/let [resolution-result (resolve-conflict!+ selected-conflict choice)]
                          (println "🎯 Resolution result:" resolution-result)
                          (do (vscode/window.showInformationMessage (str "Resolved: " (:prompt-sync.conflict/filename selected-conflict)))
-                             ;; Update the enhanced result to remove resolved conflict
+                             ;; Update the enhanced result to remove resolved conflict and add to resolved list
                              (let [updated-conflicts (remove #(= % selected-conflict) remaining-conflicts)
-                                   updated-enhanced (assoc enhanced-sync-result :prompt-sync.result/conflicts updated-conflicts)]
+                                   resolution-status (case choice
+                                                       :prompt-sync.action/choose-stable :resolved-to-stable
+                                                       :prompt-sync.action/choose-insiders :resolved-to-insiders
+                                                       :prompt-sync.action/skip :resolution-skipped)
+                                   resolved-entry {:prompt-sync.resolved/filename (:prompt-sync.conflict/filename selected-conflict)
+                                                  :prompt-sync.resolved/stable-file (:prompt-sync.conflict/stable-file selected-conflict)
+                                                  :prompt-sync.resolved/insiders-file (:prompt-sync.conflict/insiders-file selected-conflict)
+                                                  :prompt-sync.resolved/type (:prompt-sync.conflict/type selected-conflict)
+                                                  :prompt-sync.resolved/action resolution-status}
+                                   existing-resolved (get enhanced-sync-result :prompt-sync.result/resolved [])
+                                   updated-enhanced (-> enhanced-sync-result
+                                                       (assoc :prompt-sync.result/conflicts updated-conflicts)
+                                                       (assoc :prompt-sync.result/resolved (conj existing-resolved resolved-entry)))]
                                (handle-conflicts updated-conflicts (enhance-sync-result updated-enhanced)))))
                        ;; User cancelled resolution menu
                        (p/resolved (do (vscode/window.showInformationMessage "Prompt sync cancelled")
