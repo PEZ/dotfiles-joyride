@@ -335,9 +335,11 @@ This tool is perfect for developers who work with both VS Code stable and inside
                        (resolve nil)))
          (.show picker))))))
 
-(defn show-resolution-menu!+ [{:prompt-sync.conflict/keys [filename]}]
+(defn show-resolution-menu!+ [{:keys [conflict] :as context}]
   "Shows resolution options menu"
-  (let [actions [{:label "Choose Stable"
+  (let [{:prompt-sync.conflict/keys [filename]} conflict
+        {:prompt-sync/keys [test-mode?]} context
+        actions [{:label "Choose Stable"
                   :iconPath (vscode/ThemeIcon. "arrow-left")
                   :description "Copy stable version to insiders"
                   :action "prompt-sync.action/choose-stable"}
@@ -355,6 +357,8 @@ This tool is perfect for developers who work with both VS Code stable and inside
               :ignoreFocusOut true})
         (.then (fn [choice]
                  (when choice
+                   (when test-mode?
+                     (println "📋 User selected:" (.-label choice) "for" filename))
                    (keyword (.-action choice))))))))
 
 (defn show-diff-preview!+ [{:prompt-sync.conflict/keys [stable-file insiders-file filename]}]
@@ -430,22 +434,30 @@ This tool is perfect for developers who work with both VS Code stable and inside
       (.then (fn [content]
                (vscode/workspace.fs.writeFile target-uri content)))))
 
-(defn resolve-conflict!+ [conflict choice]
+(defn resolve-conflict!+ [{:keys [conflict choice] :as context}]
   "Executes the chosen resolution action"
-  (let [{:prompt-sync.conflict/keys [stable-file insiders-file]} conflict]
+  (let [{:prompt-sync.conflict/keys [stable-file insiders-file filename]} conflict
+        {:prompt-sync/keys [test-mode?]} context]
+    (when test-mode?
+      (println "🔧 Resolving conflict for:" filename "with choice:" choice))
     (case choice
       :prompt-sync.action/choose-stable
-      (copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri stable-file)
-                    :prompt-sync/target-uri (:prompt-sync.file/uri insiders-file)})
+      (do (println "Copying stable version to insiders:" filename)
+          (copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri stable-file)
+                        :prompt-sync/target-uri (:prompt-sync.file/uri insiders-file)}))
 
       :prompt-sync.action/choose-insiders
-      (copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri insiders-file)
-                    :prompt-sync/target-uri (:prompt-sync.file/uri stable-file)})
+      (do (println "Copying insiders version to stable:" filename)
+          (copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri insiders-file)
+                        :prompt-sync/target-uri (:prompt-sync.file/uri stable-file)}))
 
       :prompt-sync.action/skip
-      (p/resolved :skipped)
+      (do (println "Skipping conflict resolution for:" filename)
+          (p/resolved :skipped))
 
-      (p/resolved :cancelled))))
+      (do (when test-mode?
+            (println "Conflict resolution cancelled for:" filename))
+          (p/resolved :cancelled)))))
 ```
 
 ### Step 7: Main Orchestration
@@ -481,9 +493,9 @@ This tool is perfect for developers who work with both VS Code stable and inside
                                :completed))
                (p/let [selected-conflict (show-conflict-picker!+ {:prompt-sync.result/conflicts remaining-conflicts})]
                  (if selected-conflict
-                   (p/let [choice (show-resolution-menu!+ selected-conflict)]
+                   (p/let [choice (show-resolution-menu!+ (merge dirs {:conflict selected-conflict}))]
                      (if choice
-                       (p/let [resolution-result (resolve-conflict!+ selected-conflict choice)]
+                       (p/let [resolution-result (resolve-conflict!+ (merge dirs {:conflict selected-conflict :choice choice}))]
                          (do (vscode/window.showInformationMessage (str "Resolved: " (:prompt-sync.conflict/filename selected-conflict)))
                              (handle-conflicts (remove #(= % selected-conflict) remaining-conflicts))))
                        ;; User cancelled resolution menu
