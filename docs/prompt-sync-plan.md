@@ -59,6 +59,13 @@ This tool is perfect for developers who work with both VS Code stable and inside
  :prompt-sync.conflict/insiders-file file-info
  :prompt-sync.conflict/type :prompt-sync.file/instruction}
 
+;; QuickPick item with embedded conflict data
+{:label "filename.md"
+ :iconPath #js ThemeIcon
+ :description "instruction • has conflicts"
+ :detail "Select to view diff and choose resolution"
+ :conflict #js {:filename "filename.md" :type :prompt-sync.file/instruction}}
+
 ;; Directory configuration
 {:prompt-sync/stable-dir "/path/to/stable/prompts"
  :prompt-sync/insiders-dir "/path/to/insiders/prompts"
@@ -275,8 +282,9 @@ This tool is perfect for developers who work with both VS Code stable and inside
 ### Step 5: QuickPick UI (pattern from git-fuzzy and awesome-copilot)
 
 ```clojure
-(defn create-conflict-picker-item [{:prompt-sync.conflict/keys [filename type]}]
+(defn create-conflict-picker-item
   "Creates QuickPick item for conflict with appropriate icon"
+  [{:prompt-sync.conflict/keys [filename type]}]
   (let [icon (case type
                :prompt-sync.file/instruction (vscode/ThemeIcon. "list-ordered")
                :prompt-sync.file/prompt (vscode/ThemeIcon. "chevron-right")
@@ -286,8 +294,68 @@ This tool is perfect for developers who work with both VS Code stable and inside
          :iconPath icon
          :description (str (name type) " • has conflicts")
          :detail "Select to view diff and choose resolution"
-         :conflict {:prompt-sync.conflict/filename filename
-                    :prompt-sync.conflict/type type}}))
+         :conflict #js {:filename filename
+                       :type type}}))
+
+(defn show-conflict-picker!+ [{:prompt-sync.result/keys [conflicts]}]
+  "Shows QuickPick for conflict selection with live diff preview"
+  (if (empty? conflicts)
+    (p/resolved nil)
+    (let [items (map create-conflict-picker-item conflicts)
+          picker (vscode/window.createQuickPick)]
+
+      (set! (.-items picker) (into-array items))
+      (set! (.-title picker) "Prompt Sync - Resolve Conflicts")
+      (set! (.-placeholder picker) "Select a file to resolve conflicts")
+      (set! (.-ignoreFocusOut picker) true)
+
+      ;; Live diff preview on active item change
+      (.onDidChangeActive picker
+                          (fn [active-items]
+                            (when-let [first-item (first active-items)]
+                              (let [conflict-data (.-conflict first-item)
+                                    filename (.-filename conflict-data)
+                                    conflict-info (first (filter #(= (:prompt-sync.conflict/filename %) filename) conflicts))]
+                                (when conflict-info
+                                  (show-diff-preview!+ conflict-info))))))
+
+      (js/Promise.
+       (fn [resolve _reject]
+         (.onDidAccept picker
+                       (fn []
+                         (let [selected (first (.-selectedItems picker))]
+                           (.hide picker)
+                           (when selected
+                             (let [conflict-data (.-conflict selected)
+                                   filename (.-filename conflict-data)
+                                   conflict-info (first (filter #(= (:prompt-sync.conflict/filename %) filename) conflicts))]
+                               (resolve conflict-info))))))
+         (.onDidHide picker
+                     (fn []
+                       (resolve nil)))
+         (.show picker))))))
+
+(defn show-resolution-menu!+ [{:prompt-sync.conflict/keys [filename]}]
+  "Shows resolution options menu"
+  (let [actions [{:label "Choose Stable"
+                  :iconPath (vscode/ThemeIcon. "arrow-left")
+                  :description "Copy stable version to insiders"
+                  :action "prompt-sync.action/choose-stable"}
+                 {:label "Choose Insiders"
+                  :iconPath (vscode/ThemeIcon. "arrow-right")
+                  :description "Copy insiders version to stable"
+                  :action "prompt-sync.action/choose-insiders"}
+                 {:label "Skip"
+                  :iconPath (vscode/ThemeIcon. "close")
+                  :description "Leave both files as-is"
+                  :action "prompt-sync.action/skip"}]]
+    (-> (vscode/window.showQuickPick
+         (clj->js actions)
+         #js {:placeHolder (str "How to resolve: " filename)
+              :ignoreFocusOut true})
+        (.then (fn [choice]
+                 (when choice
+                   (keyword (.-action choice))))))))
 
 (defn show-diff-preview!+ [{:prompt-sync.conflict/keys [stable-file insiders-file filename]}]
   "Opens VS Code diff editor for conflict preview"
@@ -409,22 +477,30 @@ This tool is perfect for developers who work with both VS Code stable and inside
    ;; Use letfn recursion instead of loop/recur for async control flow
    (letfn [(handle-conflicts [remaining-conflicts]
              (if (empty? remaining-conflicts)
-               (p/resolved (vscode/window.showInformationMessage "Prompt sync completed!"))
+               (p/resolved (do (vscode/window.showInformationMessage "Prompt sync completed!")
+                               :completed))
                (p/let [selected-conflict (show-conflict-picker!+ {:prompt-sync.result/conflicts remaining-conflicts})]
                  (if selected-conflict
-                   (p/let [choice (show-resolution-menu!+ selected-conflict)
-                           _ (when choice (resolve-conflict!+ selected-conflict choice))
-                           resolved-conflicts (if choice #{selected-conflict} #{})]
-                     (handle-conflicts (remove resolved-conflicts remaining-conflicts)))
-                   ;; User cancelled
-                   (p/resolved (vscode/window.showInformationMessage "Prompt sync cancelled"))))))]
+                   (p/let [choice (show-resolution-menu!+ selected-conflict)]
+                     (if choice
+                       (p/let [resolution-result (resolve-conflict!+ selected-conflict choice)]
+                         (do (vscode/window.showInformationMessage (str "Resolved: " (:prompt-sync.conflict/filename selected-conflict)))
+                             (handle-conflicts (remove #(= % selected-conflict) remaining-conflicts))))
+                       ;; User cancelled resolution menu
+                       (p/resolved (do (vscode/window.showInformationMessage "Prompt sync cancelled")
+                                       :cancelled))))
+                   ;; User cancelled conflict picker
+                   (p/resolved (do (vscode/window.showInformationMessage "Prompt sync cancelled")
+                                   :cancelled))))))]
 
      (p/let [dirs (get-user-prompts-dirs {:prompt-sync/test-mode? test-mode?})
              {:prompt-sync/keys [stable-dir insiders-dir test-mode?]} dirs
 
              _ (if test-mode?
-                 (vscode/window.showInformationMessage "🧪 TEST MODE: Using /tmp directories")
-                 (vscode/window.showInformationMessage "Starting prompt sync..."))
+                 (do (vscode/window.showInformationMessage "🧪 TEST MODE: Using /tmp directories")
+                     nil)
+                 (do (vscode/window.showInformationMessage "Starting prompt sync...")
+                     nil))
 
              ;; Create test environment if in test mode
              _ (when test-mode?
@@ -439,9 +515,10 @@ This tool is perfect for developers who work with both VS Code stable and inside
              ;; Copy missing files automatically
              copy-summary (copy-missing-files!+ sync-result dirs)
 
-             _ (vscode/window.showInformationMessage
-                (str "Auto-copied: " (:copied-from-stable copy-summary) " from stable, "
-                     (:copied-from-insiders copy-summary) " from insiders"))]
+             _ (do (vscode/window.showInformationMessage
+                    (str "Auto-copied: " (:copied-from-stable copy-summary) " from stable, "
+                         (:copied-from-insiders copy-summary) " from insiders"))
+                   nil)]
 
        ;; Handle conflicts using letfn recursion
        (handle-conflicts conflicts)))))
@@ -485,7 +562,7 @@ This project will be developed using Joyride's REPL-driven development capabilit
 - **UI workflow testing** through complete sync scenarios
 - **Error handling validation** with deliberate failure conditions
 
-## Critical Implementation Considerations
+### Critical Implementation Considerations
 
 ### Async Control Flow Patterns
 
@@ -508,6 +585,36 @@ This project will be developed using Joyride's REPL-driven development capabilit
             (p/let [result (async-operation (first items))]
               (process-items (rest items)))))]
   (process-items remaining-items))
+```
+
+### Information Message Handling
+
+**CRITICAL: Assign information messages to `nil` when used in promise chains** to prevent return value issues:
+
+```clojure
+;; ✅ CORRECT - in let bindings
+_ (if test-mode?
+    (do (vscode/window.showInformationMessage "🧪 TEST MODE: Using /tmp directories")
+        nil)
+    (do (vscode/window.showInformationMessage "Starting prompt sync...")
+        nil))
+
+;; ✅ CORRECT - in promise resolution
+(p/resolved (do (vscode/window.showInformationMessage "Prompt sync completed!")
+                :completed))
+```
+
+### QuickPick Data Flow
+
+**Use JS objects for menu data** since they pass through VS Code API boundaries:
+
+```clojure
+;; Embed conflict data as JS object in QuickPick items
+:conflict #js {:filename filename :type type}
+
+;; Convert action strings to keywords for case matching
+:action "prompt-sync.action/choose-stable"  ; String in menu
+(keyword (.-action choice))                 ; Convert to keyword for case
 ```
 
 ### Test Environment Setup
@@ -716,9 +823,15 @@ To avoid any risks to your actual prompt files during development and testing, u
   (let [encoder (js/TextEncoder.)
         files [{:name "identical.prompt.md"
                 :content "# Identical\nThis file is the same in both"}
-               {:name "conflict.instruction.md"
-                :stable-content "# Stable Version\nThis is from stable"
-                :insiders-content "# Insiders Version\nThis is from insiders"}
+               {:name "conflict1.instruction.md"
+                :stable-content "# Stable Version - Instruction\nThis is from stable"
+                :insiders-content "# Insiders Version - Instruction\nThis is from insiders"}
+               {:name "conflict2.prompt.md"
+                :stable-content "# Stable Prompt\nYou are a stable assistant."
+                :insiders-content "# Insiders Prompt\nYou are an experimental assistant."}
+               {:name "conflict3.chatmode.md"
+                :stable-content "# Stable Chat Mode\ntemperature: 0.3"
+                :insiders-content "# Insiders Chat Mode\ntemperature: 0.8"}
                {:name "stable-only.chatmode.md"
                 :content "# Stable Only\nThis file only exists in stable"
                 :location :stable-only}
@@ -729,15 +842,15 @@ To avoid any risks to your actual prompt files during development and testing, u
     (p/all
      (for [file files]
        (cond
-         ;; Identical files - create in both directories
-         (:content file)
+         ;; Identical files - create in both directories (has :content, no :location)
+         (and (:content file) (not (:location file)))
          (let [content (.encode encoder (:content file))
                stable-uri (vscode/Uri.file (path/join (:stable dirs) (:name file)))
                insiders-uri (vscode/Uri.file (path/join (:insiders dirs) (:name file)))]
            (-> (vscode/workspace.fs.writeFile stable-uri content)
                (.then (fn [_] (vscode/workspace.fs.writeFile insiders-uri content)))))
 
-         ;; Conflict files - create different versions
+         ;; Conflict files - create different versions (has :stable-content and :insiders-content)
          (:stable-content file)
          (let [stable-content (.encode encoder (:stable-content file))
                insiders-content (.encode encoder (:insiders-content file))
@@ -746,7 +859,7 @@ To avoid any risks to your actual prompt files during development and testing, u
            (-> (vscode/workspace.fs.writeFile stable-uri stable-content)
                (.then (fn [_] (vscode/workspace.fs.writeFile insiders-uri insiders-content)))))
 
-         ;; Single location files
+         ;; Single location files - CRITICAL: Only create in specified location
          (= (:location file) :stable-only)
          (let [content (.encode encoder (:content file))
                stable-uri (vscode/Uri.file (path/join (:stable dirs) (:name file)))]
