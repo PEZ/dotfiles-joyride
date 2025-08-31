@@ -162,7 +162,7 @@
                        :type type}}))
 
 (defn show-diff-preview!+
-  "Opens VS Code diff editor for conflict preview"
+  "Opens VS Code diff editor for conflict preview with default positioning"
   [{:prompt-sync.conflict/keys [stable-file insiders-file filename]}]
   (let [stable-uri (:prompt-sync.file/uri stable-file)
         insiders-uri (:prompt-sync.file/uri insiders-file)
@@ -273,9 +273,18 @@
   (let [encoder (js/TextEncoder.)
         files [{:name "identical.prompt.md"
                 :content "# Identical\nThis file is the same in both"}
-               {:name "conflict.instruction.md"
-                :stable-content "# Stable Version\nThis is from stable"
-                :insiders-content "# Insiders Version\nThis is from insiders"}
+               {:name "conflict1.instruction.md"
+                :stable-content "# Stable Version - Instruction\nThis is from stable\n## Instructions\n- Use stable approach\n- Follow stable patterns"
+                :insiders-content "# Insiders Version - Instruction\nThis is from insiders\n## Instructions\n- Use insiders approach\n- Follow insiders patterns"}
+               {:name "conflict2.prompt.md"
+                :stable-content "# Stable Prompt\nYou are a stable assistant.\n\n## Rules\n- Be conservative\n- Follow stable guidelines"
+                :insiders-content "# Insiders Prompt\nYou are an experimental assistant.\n\n## Rules\n- Be innovative\n- Try new approaches"}
+               {:name "conflict3.chatmode.md"
+                :stable-content "# Stable Chat Mode\nconversational: true\ntemperature: 0.3\n\n## Description\nStable conversation mode"
+                :insiders-content "# Insiders Chat Mode\nconversational: true\ntemperature: 0.8\n\n## Description\nExperimental conversation mode"}
+               {:name "conflict4.instruction.md"
+                :stable-content "# Another Stable Instruction\nThese are stable coding guidelines.\n\n- Always use stable APIs\n- Avoid experimental features"
+                :insiders-content "# Another Insiders Instruction\nThese are experimental coding guidelines.\n\n- Try new APIs\n- Embrace experimental features"}
                {:name "stable-only.chatmode.md"
                 :content "# Stable Only\nThis file only exists in stable"
                 :location :stable-only}
