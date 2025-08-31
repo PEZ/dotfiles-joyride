@@ -203,7 +203,11 @@
                        (fn []
                          (let [selected (first (.-selectedItems picker))]
                            (.hide picker)
-                           (resolve (when selected (.-conflict selected))))))
+                           (when selected
+                             (let [conflict-data (.-conflict selected)
+                                   filename (.-filename conflict-data)
+                                   conflict-info (first (filter #(= (:prompt-sync.conflict/filename %) filename) conflicts))]
+                               (resolve conflict-info))))))
          (.onDidHide picker
                      (fn []
                        (resolve nil)))
@@ -226,7 +230,8 @@
                   :action :prompt-sync.action/skip}]]
     (-> (vscode/window.showQuickPick
          (clj->js actions)
-         #js {:placeHolder (str "How to resolve: " filename)})
+         #js {:placeHolder (str "How to resolve: " filename)
+              :ignoreFocusOut true})
         (.then (fn [choice]
                  (when choice
                    (keyword (.-action choice))))))))
