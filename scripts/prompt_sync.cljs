@@ -18,7 +18,7 @@
 (defn get-user-prompts-dirs
   "Returns configuration map with stable and insiders prompt directory paths"
   ([] (get-user-prompts-dirs {}))
-  ([{:prompt-sync/keys [test-mode?] :or {test-mode? false}}]
+  ([{:prompt-sync/keys [test-mode?]}]
    (if test-mode?
      {:prompt-sync/stable-dir "/tmp/prompt-sync-test/stable/prompts"
       :prompt-sync/insiders-dir "/tmp/prompt-sync-test/insiders/prompts"
@@ -356,7 +356,7 @@
 (defn sync-prompts!+
   "Main entry point - orchestrates the entire sync process"
   ([] (sync-prompts!+ {}))
-  ([{:prompt-sync/keys [test-mode?] :or {test-mode? false}}]
+  ([{:prompt-sync/keys [test-mode?]}]
    (letfn [(handle-conflicts [remaining-conflicts]
              (if (empty? remaining-conflicts)
                (p/resolved (do (vscode/window.showInformationMessage "Prompt sync completed!")
