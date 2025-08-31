@@ -158,8 +158,8 @@
          :iconPath icon
          :description (str (name type) " • has conflicts")
          :detail "Select to view diff and choose resolution"
-         :conflict {:prompt-sync.conflict/filename filename
-                    :prompt-sync.conflict/type type}}))
+         :conflict #js {:filename filename
+                       :type type}}))
 
 (defn show-diff-preview!+
   "Opens VS Code diff editor for conflict preview"
@@ -191,7 +191,11 @@
       (.onDidChangeActive picker
                           (fn [active-items]
                             (when-let [first-item (first active-items)]
-                              (show-diff-preview!+ (.-conflict first-item)))))
+                              (let [conflict-data (.-conflict first-item)
+                                    filename (.-filename conflict-data)
+                                    conflict-info (first (filter #(= (:prompt-sync.conflict/filename %) filename) conflicts))]
+                                (when conflict-info
+                                  (show-diff-preview!+ conflict-info))))))
 
       (js/Promise.
        (fn [resolve _reject]
@@ -245,41 +249,130 @@
 
       (p/resolved :cancelled))))
 
+(defn create-test-environment!+
+  "Creates test directories and sample files for safe testing"
+  []
+  (let [test-base "/tmp/prompt-sync-test"
+        test-stable (path/join test-base "stable" "prompts")
+        test-insiders (path/join test-base "insiders" "prompts")
+        base-uri (vscode/Uri.file test-base)
+        stable-uri (vscode/Uri.file test-stable)
+        insiders-uri (vscode/Uri.file test-insiders)]
+    (-> (vscode/workspace.fs.createDirectory base-uri)
+        (.then (fn [_] (vscode/workspace.fs.createDirectory stable-uri)))
+        (.then (fn [_] (vscode/workspace.fs.createDirectory insiders-uri)))
+        (.then (fn [_]
+                 (println "Created test environment:")
+                 (println "Stable:" test-stable)
+                 (println "Insiders:" test-insiders)
+                 {:stable test-stable :insiders test-insiders})))))
+
+(defn populate-test-files!+
+  "Creates sample test files for different sync scenarios"
+  [dirs]
+  (let [encoder (js/TextEncoder.)
+        files [{:name "identical.prompt.md"
+                :content "# Identical\nThis file is the same in both"}
+               {:name "conflict.instruction.md"
+                :stable-content "# Stable Version\nThis is from stable"
+                :insiders-content "# Insiders Version\nThis is from insiders"}
+               {:name "stable-only.chatmode.md"
+                :content "# Stable Only\nThis file only exists in stable"
+                :location :stable-only}
+               {:name "insiders-only.prompt.md"
+                :content "# Insiders Only\nThis file only exists in insiders"
+                :location :insiders-only}]]
+
+    (p/all
+     (for [file files]
+       (cond
+         ;; Identical files - create in both directories (has :content, no :location)
+         (and (:content file) (not (:location file)))
+         (let [content (.encode encoder (:content file))
+               stable-uri (vscode/Uri.file (path/join (:stable dirs) (:name file)))
+               insiders-uri (vscode/Uri.file (path/join (:insiders dirs) (:name file)))]
+           (-> (vscode/workspace.fs.writeFile stable-uri content)
+               (.then (fn [_] (vscode/workspace.fs.writeFile insiders-uri content)))))
+
+         ;; Conflict files - create different versions (has :stable-content and :insiders-content)
+         (:stable-content file)
+         (let [stable-content (.encode encoder (:stable-content file))
+               insiders-content (.encode encoder (:insiders-content file))
+               stable-uri (vscode/Uri.file (path/join (:stable dirs) (:name file)))
+               insiders-uri (vscode/Uri.file (path/join (:insiders dirs) (:name file)))]
+           (-> (vscode/workspace.fs.writeFile stable-uri stable-content)
+               (.then (fn [_] (vscode/workspace.fs.writeFile insiders-uri insiders-content)))))
+
+         ;; Single location files - only create in specified location
+         (= (:location file) :stable-only)
+         (let [content (.encode encoder (:content file))
+               stable-uri (vscode/Uri.file (path/join (:stable dirs) (:name file)))]
+           (vscode/workspace.fs.writeFile stable-uri content))
+
+         (= (:location file) :insiders-only)
+         (let [content (.encode encoder (:content file))
+               insiders-uri (vscode/Uri.file (path/join (:insiders dirs) (:name file)))]
+           (vscode/workspace.fs.writeFile insiders-uri content)))))))
+
+(defn cleanup-test-environment!+
+  "Removes test environment when done"
+  []
+  (let [test-base-uri (vscode/Uri.file "/tmp/prompt-sync-test")]
+    (-> (vscode/workspace.fs.delete test-base-uri #js {:recursive true :useTrash false})
+        (.then (fn [_] (println "Cleaned up test environment")))
+        (.catch (fn [err] (println "Cleanup error:" (.-message err)))))))
+
 (defn sync-prompts!+
   "Main entry point - orchestrates the entire sync process"
   ([] (sync-prompts!+ {}))
   ([{:prompt-sync/keys [test-mode?] :or {test-mode? false}}]
-   (p/let [dirs (get-user-prompts-dirs {:prompt-sync/test-mode? test-mode?})
-           {:prompt-sync/keys [stable-dir insiders-dir test-mode?]} dirs
+   (letfn [(handle-conflicts [remaining-conflicts]
+             (if (empty? remaining-conflicts)
+               (p/resolved (do (vscode/window.showInformationMessage "Prompt sync completed!")
+                               :completed))
+               (p/let [selected-conflict (show-conflict-picker!+ {:prompt-sync.result/conflicts remaining-conflicts})]
+                 (if selected-conflict
+                   (p/let [choice (show-resolution-menu!+ selected-conflict)]
+                     (if choice
+                       (p/let [_ (resolve-conflict!+ selected-conflict choice)]
+                         (vscode/window.showInformationMessage (str "Resolved: " (:prompt-sync.conflict/filename selected-conflict)))
+                         (handle-conflicts (remove #(= % selected-conflict) remaining-conflicts)))
+                       ;; User cancelled resolution menu
+                       (p/resolved (do (vscode/window.showInformationMessage "Prompt sync cancelled")
+                                       :cancelled))))
+                   ;; User cancelled conflict picker
+                   (p/resolved (do (vscode/window.showInformationMessage "Prompt sync cancelled")
+                                   :cancelled))))))]
 
-           _ (if test-mode?
-               (vscode/window.showInformationMessage "🧪 TEST MODE: Using /tmp directories")
-               (vscode/window.showInformationMessage "Starting prompt sync..."))
+     (p/let [dirs (get-user-prompts-dirs {:prompt-sync/test-mode? test-mode?})
+             {:prompt-sync/keys [stable-dir insiders-dir test-mode?]} dirs
 
-           sync-result (compare-directories!+ {:prompt-sync/stable-dir stable-dir
-                                               :prompt-sync/insiders-dir insiders-dir})
+             _ (if test-mode?
+                 (do (vscode/window.showInformationMessage "🧪 TEST MODE: Using /tmp directories")
+                     nil)
+                 (do (vscode/window.showInformationMessage "Starting prompt sync...")
+                     nil))
 
-           {:prompt-sync.result/keys [conflicts]} sync-result
+             ;; Create test environment if in test mode
+             _ (when test-mode?
+                 (p/let [test-dirs (create-test-environment!+)]
+                   (populate-test-files!+ test-dirs)))
 
-           ;; Copy missing files automatically
-           copy-summary (copy-missing-files!+ sync-result dirs)
+             sync-result (compare-directories!+ {:prompt-sync/stable-dir stable-dir
+                                                 :prompt-sync/insiders-dir insiders-dir})
 
-           _ (vscode/window.showInformationMessage
-              (str "Auto-copied: " (:copied-from-stable copy-summary) " from stable, "
-                   (:copied-from-insiders copy-summary) " from insiders"))]
+             {:prompt-sync.result/keys [conflicts]} sync-result
 
-     ;; Handle conflicts in a loop
-     (loop [remaining-conflicts conflicts]
-       (if (empty? remaining-conflicts)
-         (vscode/window.showInformationMessage "Prompt sync completed!")
-         (p/let [selected-conflict (show-conflict-picker!+ {:prompt-sync.result/conflicts remaining-conflicts})]
-           (if selected-conflict
-             (p/let [choice (show-resolution-menu!+ selected-conflict)
-                     _ (when choice (resolve-conflict!+ selected-conflict choice))
-                     resolved-conflicts (if choice #{selected-conflict} #{})]
-               (recur (remove resolved-conflicts remaining-conflicts)))
-             ;; User cancelled
-             (vscode/window.showInformationMessage "Prompt sync cancelled"))))))))
+             ;; Copy missing files automatically
+             copy-summary (copy-missing-files!+ sync-result dirs)
+
+             _ (do (vscode/window.showInformationMessage
+                    (str "Auto-copied: " (:copied-from-stable copy-summary) " from stable, "
+                         (:copied-from-insiders copy-summary) " from insiders"))
+                   nil)]
+
+       ;; Handle conflicts using letfn recursion instead of loop/recur
+       (handle-conflicts conflicts)))))
 
 ;; Export for use (disabled until we're ready making sure the test mode works )
 (defn ^:export main-disabled []

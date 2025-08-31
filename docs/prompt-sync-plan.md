@@ -382,59 +382,81 @@ This tool is perfect for developers who work with both VS Code stable and inside
 
 ### Step 7: Main Orchestration
 
+**Critical Implementation Notes**:
+- **Never use `loop`/`recur` inside promise chains** - this causes evaluation hangs due to async control flow conflicts
+- **Use `letfn` recursion** for handling sequential async operations like conflict resolution loops
+- **Fix test file setup** - ensure single-location files are created properly to test missing file scenarios
+
 ```clojure
+(defn copy-missing-files!+
+  "Copies missing files automatically, returns summary"
+  [{:prompt-sync.result/keys [missing-in-stable missing-in-insiders]} {:prompt-sync/keys [stable-dir insiders-dir]}]
+  (p/let [_ (p/all (map #(copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri %)
+                                      :prompt-sync/target-uri (vscode/Uri.file
+                                                               (path/join stable-dir (:prompt-sync.file/name %)))})
+                        missing-in-stable))
+          _ (p/all (map #(copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri %)
+                                      :prompt-sync/target-uri (vscode/Uri.file
+                                                               (path/join insiders-dir (:prompt-sync.file/name %)))})
+                        missing-in-insiders))]
+    {:copied-from-stable (count missing-in-stable)
+     :copied-from-insiders (count missing-in-insiders)}))
+
 (defn sync-prompts!+
   "Main entry point - orchestrates the entire sync process"
   ([] (sync-prompts!+ {}))
   ([{:prompt-sync/keys [test-mode?] :or {test-mode? false}}]
-   (p/let [dirs (get-user-prompts-dirs {:prompt-sync/test-mode? test-mode?})
-           {:prompt-sync/keys [stable-dir insiders-dir test-mode?]} dirs
+   ;; Use letfn recursion instead of loop/recur for async control flow
+   (letfn [(handle-conflicts [remaining-conflicts]
+             (if (empty? remaining-conflicts)
+               (p/resolved (vscode/window.showInformationMessage "Prompt sync completed!"))
+               (p/let [selected-conflict (show-conflict-picker!+ {:prompt-sync.result/conflicts remaining-conflicts})]
+                 (if selected-conflict
+                   (p/let [choice (show-resolution-menu!+ selected-conflict)
+                           _ (when choice (resolve-conflict!+ selected-conflict choice))
+                           resolved-conflicts (if choice #{selected-conflict} #{})]
+                     (handle-conflicts (remove resolved-conflicts remaining-conflicts)))
+                   ;; User cancelled
+                   (p/resolved (vscode/window.showInformationMessage "Prompt sync cancelled"))))))]
 
-           _ (if test-mode?
-               (vscode/window.showInformationMessage "🧪 TEST MODE: Using /tmp directories")
-               (vscode/window.showInformationMessage "Starting prompt sync..."))
+     (p/let [dirs (get-user-prompts-dirs {:prompt-sync/test-mode? test-mode?})
+             {:prompt-sync/keys [stable-dir insiders-dir test-mode?]} dirs
 
-           sync-result (compare-directories!+ {:prompt-sync/stable-dir stable-dir
-                                               :prompt-sync/insiders-dir insiders-dir})
+             _ (if test-mode?
+                 (vscode/window.showInformationMessage "🧪 TEST MODE: Using /tmp directories")
+                 (vscode/window.showInformationMessage "Starting prompt sync..."))
 
-           {:prompt-sync.result/keys [missing-in-stable missing-in-insiders conflicts]} sync-result
+             ;; Create test environment if in test mode
+             _ (when test-mode?
+                 (p/let [test-dirs (create-test-environment!+)]
+                   (populate-test-files!+ test-dirs)))
 
-           ;; Copy missing files automatically
-           _ (when (seq missing-in-stable)
-               (p/all (map #(copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri %)
-                                          :prompt-sync/target-uri (vscode/Uri.file
-                                                                   (path/join stable-dir (:prompt-sync.file/name %)))})
-                           missing-in-stable)))
+             sync-result (compare-directories!+ {:prompt-sync/stable-dir stable-dir
+                                                 :prompt-sync/insiders-dir insiders-dir})
 
-           _ (when (seq missing-in-insiders)
-               (p/all (map #(copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri %)
-                                          :prompt-sync/target-uri (vscode/Uri.file
-                                                                   (path/join insiders-dir (:prompt-sync.file/name %)))})
-                           missing-in-insiders)))]
+             {:prompt-sync.result/keys [conflicts]} sync-result
 
-     ;; Handle conflicts in a loop
-     (loop [remaining-conflicts conflicts]
-       (if (empty? remaining-conflicts)
-         (vscode/window.showInformationMessage "Prompt sync completed!")
-         (p/let [selected-conflict (show-conflict-picker!+ {:prompt-sync.result/conflicts remaining-conflicts})]
-           (if selected-conflict
-             (p/let [choice (show-resolution-menu!+ selected-conflict)
-                     _ (when choice (resolve-conflict!+ selected-conflict choice))
-                     resolved-conflicts (if choice #{selected-conflict} #{})]
-               (recur (remove resolved-conflicts remaining-conflicts)))
-             ;; User cancelled
-             (vscode/window.showInformationMessage "Prompt sync cancelled"))))))))
+             ;; Copy missing files automatically
+             copy-summary (copy-missing-files!+ sync-result dirs)
 
-;; Export for use
-(defn ^:export main []
+             _ (vscode/window.showInformationMessage
+                (str "Auto-copied: " (:copied-from-stable copy-summary) " from stable, "
+                     (:copied-from-insiders copy-summary) " from insiders"))]
+
+       ;; Handle conflicts using letfn recursion
+       (handle-conflicts conflicts)))))
+
+;; Export for use (disabled until test mode verified)
+(defn ^:export main-disabled []
   (p/catch
    (sync-prompts!+ {:prompt-sync/test-mode? false})
    (fn [error]
      (vscode/window.showErrorMessage (str "Sync error: " (.-message error)))
      (js/console.error "Prompt sync error:" error))))
 
-(defn ^:export main-test []
+(defn ^:export main-test
   "Entry point for test mode - uses /tmp directories"
+  []
   (p/catch
    (sync-prompts!+ {:prompt-sync/test-mode? true})
    (fn [error]
@@ -443,7 +465,7 @@ This tool is perfect for developers who work with both VS Code stable and inside
 
 ;; Auto-run when script is invoked
 (when (= (joyride/invoked-script) joyride/*file*)
-  (main))
+  (main-test))
 ```
 
 ## Methodology
@@ -462,6 +484,89 @@ This project will be developed using Joyride's REPL-driven development capabilit
 - **Edge case verification** (missing directories, permission issues, empty files)
 - **UI workflow testing** through complete sync scenarios
 - **Error handling validation** with deliberate failure conditions
+
+## Critical Implementation Considerations
+
+### Async Control Flow Patterns
+
+**⚠️ CRITICAL: Never use `loop`/`recur` inside promise chains** - this causes evaluation hangs due to conflicting async control flow patterns. The Clojure `loop`/`recur` construct expects synchronous execution and cannot properly handle promise chain continuations.
+
+**Solution**: Use `letfn` recursion for sequential async operations:
+
+```clojure
+;; ❌ WRONG - causes hangs
+(loop [items remaining-items]
+  (if (empty? items)
+    (p/resolved "done")
+    (p/let [result (async-operation (first items))]
+      (recur (rest items)))))
+
+;; ✅ CORRECT - works with promises
+(letfn [(process-items [items]
+          (if (empty? items)
+            (p/resolved "done")
+            (p/let [result (async-operation (first items))]
+              (process-items (rest items)))))]
+  (process-items remaining-items))
+```
+
+### Test Environment Setup
+
+The test file population function must correctly handle single-location files to properly test missing file scenarios:
+
+```clojure
+(defn populate-test-files!+ [dirs]
+  "Creates sample test files for different sync scenarios"
+  (let [encoder (js/TextEncoder.)
+        files [{:name "identical.prompt.md"
+                :content "# Identical\nThis file is the same in both"}
+               {:name "conflict.instruction.md"
+                :stable-content "# Stable Version\nThis is from stable"
+                :insiders-content "# Insiders Version\nThis is from insiders"}
+               {:name "stable-only.chatmode.md"
+                :content "# Stable Only\nThis file only exists in stable"
+                :location :stable-only}
+               {:name "insiders-only.prompt.md"
+                :content "# Insiders Only\nThis file only exists in insiders"
+                :location :insiders-only}]]
+
+    (p/all
+     (for [file files]
+       (cond
+         ;; Identical files - create in both directories
+         (:content file)
+         (let [content (.encode encoder (:content file))
+               stable-uri (vscode/Uri.file (path/join (:stable dirs) (:name file)))
+               insiders-uri (vscode/Uri.file (path/join (:insiders dirs) (:name file)))]
+           (-> (vscode/workspace.fs.writeFile stable-uri content)
+               (.then (fn [_] (vscode/workspace.fs.writeFile insiders-uri content)))))
+
+         ;; Conflict files - create different versions
+         (:stable-content file)
+         (let [stable-content (.encode encoder (:stable-content file))
+               insiders-content (.encode encoder (:insiders-content file))
+               stable-uri (vscode/Uri.file (path/join (:stable dirs) (:name file)))
+               insiders-uri (vscode/Uri.file (path/join (:insiders dirs) (:name file)))]
+           (-> (vscode/workspace.fs.writeFile stable-uri stable-content)
+               (.then (fn [_] (vscode/workspace.fs.writeFile insiders-uri insiders-content)))))
+
+         ;; Single location files - CRITICAL: Only create in specified location
+         (= (:location file) :stable-only)
+         (let [content (.encode encoder (:content file))
+               stable-uri (vscode/Uri.file (path/join (:stable dirs) (:name file)))]
+           (vscode/workspace.fs.writeFile stable-uri content))
+
+         (= (:location file) :insiders-only)
+         (let [content (.encode encoder (:content file))
+               insiders-uri (vscode/Uri.file (path/join (:insiders dirs) (:name file)))]
+           (vscode/workspace.fs.writeFile insiders-uri content)))))))
+```
+
+The original version was incorrectly creating all files in both directories, preventing proper testing of missing file scenarios.
+
+### Development Safety
+
+**Always use test mode first**: The main export function should be disabled (`main-disabled`) until test mode is thoroughly validated to prevent any risk to real prompt files.
 
 ### Error Handling Patterns
 - Graceful degradation when one installation is missing
@@ -482,10 +587,11 @@ The implementing agent should:
 ### Development Workflow
 1. **Create empty script file first** using create_file with empty content
 2. **Read the file after creation** to check for any default content
-3. **Use structural editing tools** (insert_top_level_form, replace_top_level_form) for all Clojure code modifications
-4. **Test each function in REPL** using evaluate_clojure_code as development progresses - start with test mode for safety
-5. **Check for linting issues** with get_errors after each edit
-6. **Work from bottom to top** when editing multiple forms to maintain accurate line numbers
+3. **Use structural editing tools** (insert_top_level_form, replace_top_level_form) for all Clojure code modifications - these are the only safe way to edit Clojure files
+4. **Never use create_file to append or edit existing files** - it will corrupt the file structure
+5. **Test each function in REPL** using joyride_evaluate_code with `awaitResult=true` for promise-returning functions
+6. **Check for linting issues** with get_errors after each edit
+7. **Work from bottom to top** when editing multiple forms to maintain accurate line numbers
 
 ### Code Quality Standards
 - Follow functional programming principles and data-oriented design
@@ -659,71 +765,54 @@ To avoid any risks to your actual prompt files during development and testing, u
         (.catch (fn [err] (println "Cleanup error:" (.-message err)))))))
 ```
 
-#### Test Mode for Production Script
+#### Test Mode Integration
 
-Add a test mode parameter to the main script that uses `/tmp` instead of real directories:
+The production script includes comprehensive test mode support using domain-namespaced keywords and proper async control flow:
 
 ```clojure
 (defn get-user-prompts-dirs
-  ([] (get-user-prompts-dirs false))  ; Default to production mode
-  ([test-mode?]
+  "Returns configuration map with stable and insiders prompt directory paths"
+  ([] (get-user-prompts-dirs {}))
+  ([{:prompt-sync/keys [test-mode?] :or {test-mode? false}}]
    (if test-mode?
-     ;; Test mode - use /tmp directories
-     {:stable "/tmp/prompt-sync-test/stable/prompts"
-      :insiders "/tmp/prompt-sync-test/insiders/prompts"
-      :current-is-insiders false
-      :test-mode true}
-     ;; Production mode - use real VS Code directories
+     {:prompt-sync/stable-dir "/tmp/prompt-sync-test/stable/prompts"
+      :prompt-sync/insiders-dir "/tmp/prompt-sync-test/insiders/prompts"
+      :prompt-sync/current-is-insiders? false
+      :prompt-sync/test-mode? true}
      (let [current-user-dir (get-vscode-user-dir)
            is-insiders? (.includes current-user-dir "Insiders")
-
            stable-dir (if is-insiders?
                         (.replace current-user-dir "Code - Insiders" "Code")
                         current-user-dir)
            insiders-dir (if is-insiders?
                           current-user-dir
                           (.replace current-user-dir "Code" "Code - Insiders"))]
+       {:prompt-sync/stable-dir (path/join stable-dir "prompts")
+        :prompt-sync/insiders-dir (path/join insiders-dir "prompts")
+        :prompt-sync/current-is-insiders? is-insiders?
+        :prompt-sync/test-mode? false}))))
 
-       {:stable (path/join stable-dir "prompts")
-        :insiders (path/join insiders-dir "prompts")
-        :current-is-insiders is-insiders?
-        :test-mode false}))))
-
-(defn sync-prompts!+
-  ([] (sync-prompts!+ false))  ; Default to production
-  ([test-mode?]
-   (p/let [dirs (get-user-prompts-dirs test-mode?)
-           _ (if (:test-mode dirs)
-               (vscode/window.showInformationMessage "🧪 TEST MODE: Using /tmp directories")
-               (vscode/window.showInformationMessage "Starting prompt sync..."))
-
-           ;; Create test environment if in test mode
-           _ (when (:test-mode dirs)
-               (create-test-environment!+)
-               (populate-test-files!+ dirs))
-
-           sync-result (compare-directories!+ (:stable dirs) (:insiders dirs))]
-
-     ;; Rest of sync logic remains the same...
-     ;; The script will automatically work with test or real directories
-     )))
-
-;; Add command-line style interface for test mode
-(defn ^:export main-test []
-  "Entry point for test mode - uses /tmp directories"
+;; Production main function disabled until test mode validated
+(defn ^:export main-disabled []
+  "Entry point for production mode - DISABLED until test validation complete"
   (p/catch
-   (sync-prompts!+ true)  ; Enable test mode
+   (sync-prompts!+ {:prompt-sync/test-mode? false})
+   (fn [error]
+     (vscode/window.showErrorMessage (str "Sync error: " (.-message error)))
+     (js/console.error "Prompt sync error:" error))))
+
+(defn ^:export main-test
+  "Entry point for test mode - uses /tmp directories"
+  []
+  (p/catch
+   (sync-prompts!+ {:prompt-sync/test-mode? true})
    (fn [error]
      (vscode/window.showErrorMessage (str "Test sync error: " (.-message error)))
      (js/console.error "Test prompt sync error:" error))))
 
-(defn ^:export main []
-  "Entry point for production mode - uses real VS Code directories"
-  (p/catch
-   (sync-prompts!+ false)  ; Production mode
-   (fn [error]
-     (vscode/window.showErrorMessage (str "Sync error: " (.-message error)))
-     (js/console.error "Prompt sync error:" error))))
+;; Auto-run in test mode for safety
+(when (= (joyride/invoked-script) joyride/*file*)
+  (main-test))
 ```
 
 #### Safe Development Workflow
@@ -737,20 +826,31 @@ Add a test mode parameter to the main script that uses `/tmp` instead of real di
 #### Quick Test Setup Commands
 
 ```clojure
-;; Set up complete test environment
-(-> (create-test-environment!+)
-    (.then populate-test-files!+)
-    (.then (fn [_] (println "Test environment ready!"))))
+;; Test incremental functions with awaitResult
+(joyride_evaluate_code
+  :code "(create-test-environment!+)"
+  :awaitResult true)
 
-;; Run sync in test mode
-(sync-prompts!+ true)
+;; Validate test file creation
+(joyride_evaluate_code
+  :code "(p/let [dirs {:stable \"/tmp/prompt-sync-test/stable/prompts\"
+                       :insiders \"/tmp/prompt-sync-test/insiders/prompts\"}]
+           (populate-test-files!+ dirs))"
+  :awaitResult true)
+
+;; Run full test mode sync
+(main-test)
 
 ;; Clean up when done
 (cleanup-test-environment!+)
 
-;; Verify test files were created correctly
-(-> (scan-directory!+ "/tmp/prompt-sync-test/stable/prompts")
-    (.then (fn [files] (println "Stable test files:" (map :filename files)))))
+;; Verify test scenarios work correctly
+(-> (compare-directories!+ {:prompt-sync/stable-dir "/tmp/prompt-sync-test/stable/prompts"
+                            :prompt-sync/insiders-dir "/tmp/prompt-sync-test/insiders/prompts"})
+    (.then (fn [{:prompt-sync.result/keys [missing-in-stable missing-in-insiders conflicts]}]
+             (println "Missing in stable:" (count missing-in-stable))
+             (println "Missing in insiders:" (count missing-in-insiders))
+             (println "Conflicts:" (count conflicts)))))
 ```
 
 This approach ensures that:
