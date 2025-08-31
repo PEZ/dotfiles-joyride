@@ -29,8 +29,7 @@ This tool is perfect for developers who work with both VS Code stable and inside
 - VS Code's QuickPick API for interactive selection
 - VS Code's diff editor for conflict visualization
 
-**workspace.fs Key Insights** (verified via REPL experimentation):
-- ✅ **Works outside workspace** - can read/write any filesystem location including User directories
+**apropos workspace.fs**
 - **File operations**: `readFile` (returns Uint8Array), `writeFile` (expects Uint8Array), `stat`, `delete`
 - **Directory operations**: `readDirectory` (returns `[name, type]` arrays), `createDirectory`
 - **Error handling**: Clean `.code` and `.message` properties, `FileNotFound` for missing files
