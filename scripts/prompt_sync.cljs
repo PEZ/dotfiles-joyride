@@ -356,54 +356,6 @@
       (do (log! :debug "  → Cancelled")
           (p/resolved {:prompt-sync.resolution/action :cancelled :prompt-sync.resolution/filename filename :prompt-sync.resolution/success false})))))
 
-(defn create-test-environment!+
-  "Creates test directories and sample files for safe testing"
-  []
-  (let [test-base "/tmp/prompt-sync-test"
-        test-stable (path/join test-base "stable" "prompts")
-        test-insiders (path/join test-base "insiders" "prompts")
-        base-uri (vscode/Uri.file test-base)
-        stable-uri (vscode/Uri.file test-stable)
-        insiders-uri (vscode/Uri.file test-insiders)]
-    (-> (vscode/workspace.fs.createDirectory base-uri)
-        (.then (fn [_] (vscode/workspace.fs.createDirectory stable-uri)))
-        (.then (fn [_] (vscode/workspace.fs.createDirectory insiders-uri)))
-        (.then (fn [_]
-                 (log! :debug "Created test environment:")
-                 (log! :debug "Stable:" test-stable)
-                 (log! :debug "Insiders:" test-insiders)
-                 {:prompt-sync.env/stable test-stable :prompt-sync.env/insiders test-insiders})))))
-
-(defn populate-test-files!+
-  "Creates sample test files using only stable-content and insiders-content keys"
-  [dirs files]
-  (let [encoder (js/TextEncoder.)]
-    (for [file files]
-      (let [{:prompt-sync.file/keys [filename stable-content insiders-content location]} file
-            stable-uri (vscode/Uri.file (path/join (:prompt-sync.env/stable dirs) filename))
-            insiders-uri (vscode/Uri.file (path/join (:prompt-sync.env/insiders dirs) filename))
-
-            ;; Create stable file if content exists and location allows it
-            stable-promise (when (and stable-content
-                                      (not= location :insiders-only))
-                             (vscode/workspace.fs.writeFile stable-uri (.encode encoder stable-content)))
-
-            ;; Create insiders file if content exists and location allows it
-            insiders-promise (when (and insiders-content
-                                        (not= location :stable-only))
-                               (vscode/workspace.fs.writeFile insiders-uri (.encode encoder insiders-content)))]
-
-        ;; Return promise that resolves when both files are written (if needed)
-        (p/all (filter some? [stable-promise insiders-promise]))))))
-
-(defn cleanup-test-environment!+
-  "Removes test environment when done"
-  []
-  (let [test-base-uri (vscode/Uri.file "/tmp/prompt-sync-test")]
-    (-> (vscode/workspace.fs.delete test-base-uri #js {:recursive true :useTrash false})
-        (.then (fn [_] (log! :debug "Cleaned up test environment")))
-        (.catch (fn [err] (log! :debug "Cleanup error:" (.-message err)))))))
-
 (defn update-file-status-after-resolution
   "Pure function for updating file status after conflict resolution in flat list"
   [all-files resolved-filename resolution-type]
@@ -501,7 +453,62 @@
                   "# Insiders Only\nThis file only exists in insiders"
                   :prompt-sync.file/location :insiders-only}])
 
-;; Export for use (disabled until we're ready making sure the test mode works )
+(defn populate-test-files!+
+  "Creates sample test files using only stable-content and insiders-content keys"
+  [dirs files]
+  (let [encoder (js/TextEncoder.)]
+    (->> (into []
+               (for [file files]
+                 (let [{:prompt-sync.file/keys [filename
+                                                stable-content
+                                                insiders-content location]} file
+                       stable-uri (vscode/Uri.file
+                                   (path/join (:prompt-sync.env/stable dirs) filename))
+                       insiders-uri (vscode/Uri.file
+                                     (path/join (:prompt-sync.env/insiders dirs) filename))
+
+                       ;; Create stable file if content exists and location allows it
+                       stable (when (and stable-content
+                                         (not= location :insiders-only))
+                                (vscode/workspace.fs.writeFile
+                                 stable-uri (.encode encoder stable-content)))
+
+                       ;; Create insiders file if content exists and location allows it
+                       insiders (when (and insiders-content
+                                           (not= location :stable-only))
+                                  (vscode/workspace.fs.writeFile
+                                   insiders-uri (.encode encoder insiders-content)))]
+                   [stable insiders])))
+         (filter some?)
+         p/all)))
+
+(defn create-test-environment!+
+  "Creates test directories and sample files for safe testing"
+  []
+  (let [test-base "/tmp/prompt-sync-test"
+        test-stable (path/join test-base "stable" "prompts")
+        test-insiders (path/join test-base "insiders" "prompts")
+        base-uri (vscode/Uri.file test-base)
+        stable-uri (vscode/Uri.file test-stable)
+        insiders-uri (vscode/Uri.file test-insiders)]
+    (-> (vscode/workspace.fs.createDirectory base-uri)
+        (.then (fn [_] (vscode/workspace.fs.createDirectory stable-uri)))
+        (.then (fn [_] (vscode/workspace.fs.createDirectory insiders-uri)))
+        (.then (fn [_]
+                 (log! :info "Created test environment:")
+                 (log! :info "Stable:" test-stable)
+                 (log! :info "Insiders:" test-insiders)
+                 {:prompt-sync.env/stable test-stable :prompt-sync.env/insiders test-insiders})))))
+
+(defn cleanup-test-environment!+
+  "Removes test environment when done"
+  []
+  (let [test-base-uri (vscode/Uri.file "/tmp/prompt-sync-test")]
+    (-> (vscode/workspace.fs.delete test-base-uri #js {:recursive true :useTrash false})
+        (.then (fn [_] (log! :info "Cleaned up test environment")))
+        (.catch (fn [err] (log! :info "Cleanup error:" (.-message err)))))))
+
+;; Export for use (disabled until we're ready making sure the test mode works)
 (defn ^:export main-disabled []
   (p/catch
    (sync-prompts!+ {:prompt-sync/test-mode? false})
@@ -514,9 +521,9 @@
   []
   (p/catch
    (binding [*log-level* :debug] ; Re-binding not working deeper down the call chain for some reason
-     ;; Create test environment if in test mode
-     (p/let [test-dirs (create-test-environment!+)]
-       (populate-test-files!+ test-dirs test-files)
+     (p/let [_ (cleanup-test-environment!+) ; Clean first, then create
+             test-dirs (create-test-environment!+)
+             _ (populate-test-files!+ test-dirs test-files)]
        (sync-prompts!+ {:prompt-sync/test-mode? true})))
    (fn [error]
      (vscode/window.showErrorMessage (str "Test sync error: " (.-message error)))
