@@ -433,80 +433,91 @@
         (.then (fn [_] (println "Cleaned up test environment")))
         (.catch (fn [err] (println "Cleanup error:" (.-message err)))))))
 
+;; Clean separation of concerns helper functions
+
+(defn handle-cancellation
+  "Centralized cancellation handling"
+  []
+  (p/resolved :cancelled))
+
+(defn update-sync-result-after-resolution
+  "Pure function for updating sync result after conflict resolution"
+  [enhanced-result resolved-conflict resolution-type]
+  (let [updated-conflicts (remove #(= % resolved-conflict) (:prompt-sync.result/conflicts enhanced-result))
+        resolved-entry {:prompt-sync.file/filename (:prompt-sync.file/filename resolved-conflict)
+                        :prompt-sync.file/stable-file (:prompt-sync.file/stable-file resolved-conflict)
+                        :prompt-sync.file/insiders-file (:prompt-sync.file/insiders-file resolved-conflict)
+                        :prompt-sync.file/file-type (:prompt-sync.file/file-type resolved-conflict)
+                        :prompt-sync.resolved/action resolution-type}
+        existing-resolved (get enhanced-result :prompt-sync.result/resolved [])
+        updated-enhanced (-> enhanced-result
+                            (assoc :prompt-sync.result/conflicts updated-conflicts)
+                            (assoc :prompt-sync.result/resolved (conj existing-resolved resolved-entry)))]
+    (enhance-sync-result updated-enhanced)))
+
+(defn resolve-single-conflict!+
+  "Handles single conflict resolution with UI interaction"
+  [selected-conflict enhanced-result]
+  (p/let [choice (show-resolution-menu!+ selected-conflict)]
+    (if choice
+      (p/let [_ (resolve-conflict!+ selected-conflict choice)
+              resolution-type (case choice
+                                :prompt-sync.action/choose-stable :resolution/choose-stable
+                                :prompt-sync.action/choose-insiders :resolution/choose-insiders
+                                :prompt-sync.action/skip :resolution/skipped)
+              updated-result (update-sync-result-after-resolution enhanced-result selected-conflict resolution-type)]
+        (do (vscode/window.showInformationMessage (str "Resolved: " (:prompt-sync.file/filename selected-conflict)))
+            updated-result))
+      (handle-cancellation))))
+
+(defn handle-conflicts-clean!+
+  "Clean iterative conflict handling using p/loop instead of deep recursion"
+  [enhanced-sync-result]
+  (p/loop [current-result enhanced-sync-result]
+    (let [remaining-conflicts (:prompt-sync.result/conflicts current-result)]
+      (if (empty? remaining-conflicts)
+        (p/resolved (do (vscode/window.showInformationMessage "Prompt sync completed!")
+                        :completed))
+        (p/let [selected-conflict (show-all-files-picker!+ current-result)]
+          (if selected-conflict
+            (p/let [updated-result (resolve-single-conflict!+ selected-conflict current-result)]
+              (if (= updated-result :cancelled)
+                (handle-cancellation)
+                (p/recur updated-result)))
+            (handle-cancellation)))))))
+
 (defn sync-prompts!+
   "Main entry point - orchestrates the entire sync process"
   ([] (sync-prompts!+ {}))
   ([{:prompt-sync/keys [test-mode?]}]
-   (letfn [(handle-conflicts [remaining-conflicts enhanced-sync-result]
-             (if (empty? remaining-conflicts)
-               (p/resolved (do (vscode/window.showInformationMessage "Prompt sync completed!")
-                               :completed))
-               (p/let [selected-conflict (show-all-files-picker!+ enhanced-sync-result)]
-                 (println "🔍 Selected conflict:" (when selected-conflict (:prompt-sync.file/filename selected-conflict)))
-                 (if selected-conflict
-                   (p/let [choice (show-resolution-menu!+ selected-conflict)]
-                     (println "🎯 User choice:" choice)
-                     (if choice
-                       (p/let [resolution-result (resolve-conflict!+ selected-conflict choice)]
-                         (println "🎯 Resolution result:" resolution-result)
-                         (do (vscode/window.showInformationMessage (str "Resolved: " (:prompt-sync.file/filename selected-conflict)))
-                             ;; Update the enhanced result to remove resolved conflict and add to resolved list
-                             (let [updated-conflicts (remove #(= % selected-conflict) remaining-conflicts)
-                                   ;; NEW: Clean resolution tracking with separated concerns
-                                   resolution-type (case choice
-                                                     :prompt-sync.action/choose-stable :resolution/choose-stable
-                                                     :prompt-sync.action/choose-insiders :resolution/choose-insiders
-                                                     :prompt-sync.action/skip :resolution/skipped)
-                                   resolved-entry {:prompt-sync.file/filename (:prompt-sync.file/filename selected-conflict)
-                                                   :prompt-sync.file/stable-file (:prompt-sync.file/stable-file selected-conflict)
-                                                   :prompt-sync.file/insiders-file (:prompt-sync.file/insiders-file selected-conflict)
-                                                   :prompt-sync.file/file-type (:prompt-sync.file/file-type selected-conflict)
-                                                   ;; NEW: Use clean resolution action, not mixed status
-                                                   :prompt-sync.resolved/action resolution-type}
-                                   existing-resolved (get enhanced-sync-result :prompt-sync.result/resolved [])
-                                   updated-enhanced (-> enhanced-sync-result
-                                                        (assoc :prompt-sync.result/conflicts updated-conflicts)
-                                                        (assoc :prompt-sync.result/resolved (conj existing-resolved resolved-entry)))]
-                               (handle-conflicts updated-conflicts (enhance-sync-result updated-enhanced)))))
-                       ;; User cancelled resolution menu
-                       (p/resolved (do (vscode/window.showInformationMessage "Prompt sync cancelled")
-                                       :cancelled))))
-                   ;; User cancelled conflict picker
-                   (p/resolved (do (vscode/window.showInformationMessage "Prompt sync cancelled")
-                                   :cancelled))))))]
+   (p/let [dirs (get-user-prompts-dirs {:prompt-sync/test-mode? test-mode?})
+           {:prompt-sync/keys [stable-dir insiders-dir test-mode?]} dirs
 
-     (p/let [dirs (get-user-prompts-dirs {:prompt-sync/test-mode? test-mode?})
-             {:prompt-sync/keys [stable-dir insiders-dir test-mode?]} dirs
+           _ (if test-mode?
+               (do (vscode/window.showInformationMessage "🧪 TEST MODE: Using /tmp directories") nil)
+               (do (vscode/window.showInformationMessage "Starting prompt sync...") nil))
 
-             _ (if test-mode?
-                 (do (vscode/window.showInformationMessage "🧪 TEST MODE: Using /tmp directories")
-                     nil)
-                 (do (vscode/window.showInformationMessage "Starting prompt sync...")
-                     nil))
+           ;; Create test environment if in test mode
+           _ (when test-mode?
+               (p/let [test-dirs (create-test-environment!+)]
+                 (populate-test-files!+ test-dirs)))
 
-             ;; Create test environment if in test mode
-             _ (when test-mode?
-                 (p/let [test-dirs (create-test-environment!+)]
-                   (populate-test-files!+ test-dirs)))
+           sync-result (compare-directories!+ {:prompt-sync/stable-dir stable-dir
+                                               :prompt-sync/insiders-dir insiders-dir})
 
-             sync-result (compare-directories!+ {:prompt-sync/stable-dir stable-dir
-                                                 :prompt-sync/insiders-dir insiders-dir})
+           ;; Copy missing files automatically
+           copy-summary (copy-missing-files!+ sync-result dirs)
 
-             {:prompt-sync.result/keys [conflicts]} sync-result
+           _ (do (vscode/window.showInformationMessage
+                  (str "Auto-copied: " (:prompt-sync.result/copied-from-stable copy-summary) " from stable, "
+                       (:prompt-sync.result/copied-from-insiders copy-summary) " from insiders"))
+                 nil)
 
-             ;; Copy missing files automatically
-             copy-summary (copy-missing-files!+ sync-result dirs)
+           ;; Enhance sync result for UI after copying
+           enhanced-result (enhance-sync-result sync-result)]
 
-             _ (do (vscode/window.showInformationMessage
-                    (str "Auto-copied: " (:prompt-sync.result/copied-from-stable copy-summary) " from stable, "
-                         (:prompt-sync.result/copied-from-insiders copy-summary) " from insiders"))
-                   nil)
-
-             ;; Enhance sync result for UI after copying
-             enhanced-result (enhance-sync-result sync-result)]
-
-       ;; Handle conflicts using enhanced picker
-       (handle-conflicts conflicts enhanced-result)))))
+     ;; Handle conflicts using clean approach
+     (handle-conflicts-clean!+ enhanced-result))))
 
 ;; Export for use (disabled until we're ready making sure the test mode works )
 (defn ^:export main-disabled []
