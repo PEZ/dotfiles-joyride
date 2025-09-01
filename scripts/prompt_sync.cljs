@@ -376,28 +376,8 @@
 
 (defn populate-test-files!+
   "Creates sample test files for different sync scenarios"
-  [dirs]
-  (let [encoder (js/TextEncoder.)
-        files [{:prompt-sync.file/filename "identical.prompt.md"
-                :prompt-sync.file/content "# Identical\nThis file is the same in both"}
-               {:prompt-sync.file/filename "conflict1.instruction.md"
-                :prompt-sync.file/stable-content "# Stable Version - Instruction\nThis is from stable\n## Instructions\n- Use stable approach\n- Follow stable patterns"
-                :prompt-sync.file/insiders-content "# Insiders Version - Instruction\nThis is from insiders\n## Instructions\n- Use insiders approach\n- Follow insiders patterns"}
-               {:prompt-sync.file/filename "conflict2.prompt.md"
-                :prompt-sync.file/stable-content "# Stable Prompt\nYou are a stable assistant.\n\n## Rules\n- Be conservative\n- Follow stable guidelines"
-                :prompt-sync.file/insiders-content "# Insiders Prompt\nYou are an experimental assistant.\n\n## Rules\n- Be innovative\n- Try new approaches"}
-               {:prompt-sync.file/filename "conflict3.chatmode.md"
-                :prompt-sync.file/stable-content "# Stable Chat Mode\nconversational: true\ntemperature: 0.3\n\n## Description\nStable conversation mode"
-                :prompt-sync.file/insiders-content "# Insiders Chat Mode\nconversational: true\ntemperature: 0.8\n\n## Description\nExperimental conversation mode"}
-               {:prompt-sync.file/filename "conflict4.instruction.md"
-                :prompt-sync.file/stable-content "# Another Stable Instruction\nThese are stable coding guidelines.\n\n- Always use stable APIs\n- Avoid experimental features"
-                :prompt-sync.file/insiders-content "# Another Insiders Instruction\nThese are experimental coding guidelines.\n\n- Try new APIs\n- Embrace experimental features"}
-               {:prompt-sync.file/filename "stable-only.chatmode.md"
-                :prompt-sync.file/content "# Stable Only\nThis file only exists in stable"
-                :prompt-sync.file/location :stable-only}
-               {:prompt-sync.file/filename "insiders-only.prompt.md"
-                :prompt-sync.file/content "# Insiders Only\nThis file only exists in insiders"
-                :prompt-sync.file/location :insiders-only}]]
+  [dirs files]
+  (let [encoder (js/TextEncoder.)]
 
     (p/all
      (for [file files]
@@ -503,6 +483,37 @@
          nil)
      (main-menu-loop!+ updated-files))))
 
+(def test-files [{:prompt-sync.file/filename "identical.prompt.md"
+                  :prompt-sync.file/content "# Identical\nThis file is the same in both"}
+                 {:prompt-sync.file/filename "conflict1.instruction.md"
+                  :prompt-sync.file/stable-content
+                  "# Stable Version - Instruction\nThis is from stable\n## Instructions\n- Use stable approach\n- Follow stable patterns"
+                  :prompt-sync.file/insiders-content
+                  "# Insiders Version - Instruction\nThis is from insiders\n## Instructions\n- Use insiders approach\n- Follow insiders patterns"}
+                 {:prompt-sync.file/filename "conflict2.prompt.md"
+                  :prompt-sync.file/stable-content
+                  "# Stable Prompt\nYou are a stable assistant.\n\n## Rules\n- Be conservative\n- Follow stable guidelines"
+                  :prompt-sync.file/insiders-content
+                  "# Insiders Prompt\nYou are an experimental assistant.\n\n## Rules\n- Be innovative\n- Try new approaches"}
+                 {:prompt-sync.file/filename "conflict3.chatmode.md"
+                  :prompt-sync.file/stable-content
+                  "# Stable Chat Mode\nconversational: true\ntemperature: 0.3\n\n## Description\nStable conversation mode"
+                  :prompt-sync.file/insiders-content
+                  "# Insiders Chat Mode\nconversational: true\ntemperature: 0.8\n\n## Description\nExperimental conversation mode"}
+                 {:prompt-sync.file/filename "conflict4.instruction.md"
+                  :prompt-sync.file/stable-content
+                  "# Another Stable Instruction\nThese are stable coding guidelines.\n\n- Always use stable APIs\n- Avoid experimental features"
+                  :prompt-sync.file/insiders-content
+                  "# Another Insiders Instruction\nThese are experimental coding guidelines.\n\n- Try new APIs\n- Embrace experimental features"}
+                 {:prompt-sync.file/filename "stable-only.chatmode.md"
+                  :prompt-sync.file/content
+                  "# Stable Only\nThis file only exists in stable"
+                  :prompt-sync.file/location :stable-only}
+                 {:prompt-sync.file/filename "insiders-only.prompt.md"
+                  :prompt-sync.file/content
+                  "# Insiders Only\nThis file only exists in insiders"
+                  :prompt-sync.file/location :insiders-only}])
+
 ;; Export for use (disabled until we're ready making sure the test mode works )
 (defn ^:export main-disabled []
   (p/catch
@@ -518,7 +529,7 @@
    (binding [*log-level* :debug] ; Re-binding not working deeper down the call chain for some reason
      ;; Create test environment if in test mode
      (p/let [test-dirs (create-test-environment!+)]
-       (populate-test-files!+ test-dirs)
+       (populate-test-files!+ test-dirs test-files)
        (sync-prompts!+ {:prompt-sync/test-mode? true})))
    (fn [error]
      (vscode/window.showErrorMessage (str "Test sync error: " (.-message error)))
