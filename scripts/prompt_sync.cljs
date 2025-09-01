@@ -41,9 +41,9 @@
   "Determines file type from filename for appropriate icon"
   [filename]
   (cond
-    (.includes filename "instruction") :prompt-sync.file/instruction
-    (.includes filename "chatmode") :prompt-sync.file/chatmode
-    :else :prompt-sync.file/prompt))
+    (.endsWith filename "prompt.md") :prompt-sync.type/prompt
+    (.endsWith filename "chatmode.md") :prompt-sync.type/chatmode
+    :else :prompt-sync.type/instruction))
 
 (defn scan-directory!+
   "Scans directory for .md files using workspace.fs, returns promise"
@@ -218,9 +218,9 @@
   "Gets appropriate VS Code icon for file type"
   [file-type]
   (case file-type
-    :prompt-sync.file/instruction (vscode/ThemeIcon. "list-ordered")
-    :prompt-sync.file/prompt (vscode/ThemeIcon. "chevron-right")
-    :prompt-sync.file/chatmode (vscode/ThemeIcon. "color-mode")
+    :prompt-sync.type/instruction (vscode/ThemeIcon. "list-ordered")
+    :prompt-sync.type/prompt (vscode/ThemeIcon. "chevron-right")
+    :prompt-sync.type/chatmode (vscode/ThemeIcon. "color-mode")
     (vscode/ThemeIcon. "diff")))
 
 (defn create-all-files-picker-item
