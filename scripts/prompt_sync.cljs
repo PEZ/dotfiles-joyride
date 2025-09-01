@@ -378,24 +378,23 @@
   "Creates sample test files using only stable-content and insiders-content keys"
   [dirs files]
   (let [encoder (js/TextEncoder.)]
-    (p/all
-     (for [file files]
-       (let [{:prompt-sync.file/keys [filename stable-content insiders-content location]} file
-             stable-uri (vscode/Uri.file (path/join (:prompt-sync.env/stable dirs) filename))
-             insiders-uri (vscode/Uri.file (path/join (:prompt-sync.env/insiders dirs) filename))
+    (for [file files]
+      (let [{:prompt-sync.file/keys [filename stable-content insiders-content location]} file
+            stable-uri (vscode/Uri.file (path/join (:prompt-sync.env/stable dirs) filename))
+            insiders-uri (vscode/Uri.file (path/join (:prompt-sync.env/insiders dirs) filename))
 
-             ;; Create stable file if content exists and location allows it
-             stable-promise (when (and stable-content
-                                       (not= location :insiders-only))
-                              (vscode/workspace.fs.writeFile stable-uri (.encode encoder stable-content)))
+            ;; Create stable file if content exists and location allows it
+            stable-promise (when (and stable-content
+                                      (not= location :insiders-only))
+                             (vscode/workspace.fs.writeFile stable-uri (.encode encoder stable-content)))
 
-             ;; Create insiders file if content exists and location allows it
-             insiders-promise (when (and insiders-content
-                                         (not= location :stable-only))
-                                (vscode/workspace.fs.writeFile insiders-uri (.encode encoder insiders-content)))]
+            ;; Create insiders file if content exists and location allows it
+            insiders-promise (when (and insiders-content
+                                        (not= location :stable-only))
+                               (vscode/workspace.fs.writeFile insiders-uri (.encode encoder insiders-content)))]
 
-         ;; Return promise that resolves when both files are written (if needed)
-         (p/all (filter some? [stable-promise insiders-promise])))))))
+        ;; Return promise that resolves when both files are written (if needed)
+        (p/all (filter some? [stable-promise insiders-promise]))))))
 
 (defn cleanup-test-environment!+
   "Removes test environment when done"
