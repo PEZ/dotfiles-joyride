@@ -149,8 +149,8 @@
                                        :prompt-sync/target-uri (vscode/Uri.file
                                                                 (path/join insiders-dir (:prompt-sync.file/filename %)))})
                         missing-in-insiders))]
-    {:copied-from-stable (count missing-in-stable)
-     :copied-from-insiders (count missing-in-insiders)}))
+    {:prompt-sync.result/copied-from-stable (count missing-in-stable)
+     :prompt-sync.result/copied-from-insiders (count missing-in-insiders)}))
 
 (defn add-file-status
   "Adds status and optional metadata to file data - replaces all transformer functions!"
@@ -336,20 +336,20 @@
       (do (println "  → Copying stable to insiders")
           (p/let [_ (copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri stable-file)
                                   :prompt-sync/target-uri (:prompt-sync.file/uri insiders-file)})]
-            {:action :choose-stable :filename filename :success true}))
+            {:prompt-sync.resolution/action :choose-stable :prompt-sync.resolution/filename filename :prompt-sync.resolution/success true}))
 
       :prompt-sync.action/choose-insiders
       (do (println "  → Copying insiders to stable")
           (p/let [_ (copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri insiders-file)
                                   :prompt-sync/target-uri (:prompt-sync.file/uri stable-file)})]
-            {:action :choose-insiders :filename filename :success true}))
+            {:prompt-sync.resolution/action :choose-insiders :prompt-sync.resolution/filename filename :prompt-sync.resolution/success true}))
 
       :prompt-sync.action/skip
       (do (println "  → Skipping")
-          (p/resolved {:action :skip :filename filename :success true}))
+          (p/resolved {:prompt-sync.resolution/action :skip :prompt-sync.resolution/filename filename :prompt-sync.resolution/success true}))
 
       (do (println "  → Cancelled")
-          (p/resolved {:action :cancelled :filename filename :success false})))))
+          (p/resolved {:prompt-sync.resolution/action :cancelled :prompt-sync.resolution/filename filename :prompt-sync.resolution/success false})))))
 
 (defn create-test-environment!+
   "Creates test directories and sample files for safe testing"
@@ -367,62 +367,62 @@
                  (println "Created test environment:")
                  (println "Stable:" test-stable)
                  (println "Insiders:" test-insiders)
-                 {:stable test-stable :insiders test-insiders})))))
+                 {:prompt-sync.env/stable test-stable :prompt-sync.env/insiders test-insiders})))))
 
 (defn populate-test-files!+
   "Creates sample test files for different sync scenarios"
   [dirs]
   (let [encoder (js/TextEncoder.)
-        files [{:name "identical.prompt.md"
-                :content "# Identical\nThis file is the same in both"}
-               {:name "conflict1.instruction.md"
-                :stable-content "# Stable Version - Instruction\nThis is from stable\n## Instructions\n- Use stable approach\n- Follow stable patterns"
-                :insiders-content "# Insiders Version - Instruction\nThis is from insiders\n## Instructions\n- Use insiders approach\n- Follow insiders patterns"}
-               {:name "conflict2.prompt.md"
-                :stable-content "# Stable Prompt\nYou are a stable assistant.\n\n## Rules\n- Be conservative\n- Follow stable guidelines"
-                :insiders-content "# Insiders Prompt\nYou are an experimental assistant.\n\n## Rules\n- Be innovative\n- Try new approaches"}
-               {:name "conflict3.chatmode.md"
-                :stable-content "# Stable Chat Mode\nconversational: true\ntemperature: 0.3\n\n## Description\nStable conversation mode"
-                :insiders-content "# Insiders Chat Mode\nconversational: true\ntemperature: 0.8\n\n## Description\nExperimental conversation mode"}
-               {:name "conflict4.instruction.md"
-                :stable-content "# Another Stable Instruction\nThese are stable coding guidelines.\n\n- Always use stable APIs\n- Avoid experimental features"
-                :insiders-content "# Another Insiders Instruction\nThese are experimental coding guidelines.\n\n- Try new APIs\n- Embrace experimental features"}
-               {:name "stable-only.chatmode.md"
-                :content "# Stable Only\nThis file only exists in stable"
-                :location :stable-only}
-               {:name "insiders-only.prompt.md"
-                :content "# Insiders Only\nThis file only exists in insiders"
-                :location :insiders-only}]]
+        files [{:prompt-sync.file/filename "identical.prompt.md"
+                :prompt-sync.file/content "# Identical\nThis file is the same in both"}
+               {:prompt-sync.file/filename "conflict1.instruction.md"
+                :prompt-sync.file/stable-content "# Stable Version - Instruction\nThis is from stable\n## Instructions\n- Use stable approach\n- Follow stable patterns"
+                :prompt-sync.file/insiders-content "# Insiders Version - Instruction\nThis is from insiders\n## Instructions\n- Use insiders approach\n- Follow insiders patterns"}
+               {:prompt-sync.file/filename "conflict2.prompt.md"
+                :prompt-sync.file/stable-content "# Stable Prompt\nYou are a stable assistant.\n\n## Rules\n- Be conservative\n- Follow stable guidelines"
+                :prompt-sync.file/insiders-content "# Insiders Prompt\nYou are an experimental assistant.\n\n## Rules\n- Be innovative\n- Try new approaches"}
+               {:prompt-sync.file/filename "conflict3.chatmode.md"
+                :prompt-sync.file/stable-content "# Stable Chat Mode\nconversational: true\ntemperature: 0.3\n\n## Description\nStable conversation mode"
+                :prompt-sync.file/insiders-content "# Insiders Chat Mode\nconversational: true\ntemperature: 0.8\n\n## Description\nExperimental conversation mode"}
+               {:prompt-sync.file/filename "conflict4.instruction.md"
+                :prompt-sync.file/stable-content "# Another Stable Instruction\nThese are stable coding guidelines.\n\n- Always use stable APIs\n- Avoid experimental features"
+                :prompt-sync.file/insiders-content "# Another Insiders Instruction\nThese are experimental coding guidelines.\n\n- Try new APIs\n- Embrace experimental features"}
+               {:prompt-sync.file/filename "stable-only.chatmode.md"
+                :prompt-sync.file/content "# Stable Only\nThis file only exists in stable"
+                :prompt-sync.file/location :stable-only}
+               {:prompt-sync.file/filename "insiders-only.prompt.md"
+                :prompt-sync.file/content "# Insiders Only\nThis file only exists in insiders"
+                :prompt-sync.file/location :insiders-only}]]
 
     (p/all
      (for [file files]
        (cond
          ;; Identical files - create in both directories (has :content, no :location)
-         (and (:content file) (not (:location file)))
-         (let [content (.encode encoder (:content file))
-               stable-uri (vscode/Uri.file (path/join (:stable dirs) (:name file)))
-               insiders-uri (vscode/Uri.file (path/join (:insiders dirs) (:name file)))]
+         (and (:prompt-sync.file/content file) (not (:prompt-sync.file/location file)))
+         (let [content (.encode encoder (:prompt-sync.file/content file))
+               stable-uri (vscode/Uri.file (path/join (:prompt-sync.env/stable dirs) (:prompt-sync.file/filename file)))
+               insiders-uri (vscode/Uri.file (path/join (:prompt-sync.env/insiders dirs) (:prompt-sync.file/filename file)))]
            (-> (vscode/workspace.fs.writeFile stable-uri content)
                (.then (fn [_] (vscode/workspace.fs.writeFile insiders-uri content)))))
 
          ;; Conflict files - create different versions (has :stable-content and :insiders-content)
-         (:stable-content file)
-         (let [stable-content (.encode encoder (:stable-content file))
-               insiders-content (.encode encoder (:insiders-content file))
-               stable-uri (vscode/Uri.file (path/join (:stable dirs) (:name file)))
-               insiders-uri (vscode/Uri.file (path/join (:insiders dirs) (:name file)))]
+         (:prompt-sync.file/stable-content file)
+         (let [stable-content (.encode encoder (:prompt-sync.file/stable-content file))
+               insiders-content (.encode encoder (:prompt-sync.file/insiders-content file))
+               stable-uri (vscode/Uri.file (path/join (:prompt-sync.env/stable dirs) (:prompt-sync.file/filename file)))
+               insiders-uri (vscode/Uri.file (path/join (:prompt-sync.env/insiders dirs) (:prompt-sync.file/filename file)))]
            (-> (vscode/workspace.fs.writeFile stable-uri stable-content)
                (.then (fn [_] (vscode/workspace.fs.writeFile insiders-uri insiders-content)))))
 
          ;; Single location files - only create in specified location
-         (= (:location file) :stable-only)
-         (let [content (.encode encoder (:content file))
-               stable-uri (vscode/Uri.file (path/join (:stable dirs) (:name file)))]
+         (= (:prompt-sync.file/location file) :stable-only)
+         (let [content (.encode encoder (:prompt-sync.file/content file))
+               stable-uri (vscode/Uri.file (path/join (:prompt-sync.env/stable dirs) (:prompt-sync.file/filename file)))]
            (vscode/workspace.fs.writeFile stable-uri content))
 
-         (= (:location file) :insiders-only)
-         (let [content (.encode encoder (:content file))
-               insiders-uri (vscode/Uri.file (path/join (:insiders dirs) (:name file)))]
+         (= (:prompt-sync.file/location file) :insiders-only)
+         (let [content (.encode encoder (:prompt-sync.file/content file))
+               insiders-uri (vscode/Uri.file (path/join (:prompt-sync.env/insiders dirs) (:prompt-sync.file/filename file)))]
            (vscode/workspace.fs.writeFile insiders-uri content)))))))
 
 (defn cleanup-test-environment!+
@@ -498,8 +498,8 @@
              copy-summary (copy-missing-files!+ sync-result dirs)
 
              _ (do (vscode/window.showInformationMessage
-                    (str "Auto-copied: " (:copied-from-stable copy-summary) " from stable, "
-                         (:copied-from-insiders copy-summary) " from insiders"))
+                    (str "Auto-copied: " (:prompt-sync.result/copied-from-stable copy-summary) " from stable, "
+                         (:prompt-sync.result/copied-from-insiders copy-summary) " from insiders"))
                    nil)
 
              ;; Enhance sync result for UI after copying
