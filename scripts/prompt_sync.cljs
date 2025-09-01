@@ -91,7 +91,7 @@
                          :prompt-sync.file/error (.-message err)))))))
 
 (defn compare-directories!+
-  "Compares two directories and returns flat file list with statuses"
+  "Compares two directories and returns flat file list with statuses and :original-status metadata"
   [{:prompt-sync/keys [stable-dir insiders-dir]}]
   (p/let [stable-files (scan-directory!+ {:prompt-sync/dir-path stable-dir})
           insiders-files (scan-directory!+ {:prompt-sync/dir-path insiders-dir})
@@ -104,40 +104,40 @@
           stable-map (into {} (map (fn [f] [(:prompt-sync.file/filename f) f]) stable-with-content))
           insiders-map (into {} (map (fn [f] [(:prompt-sync.file/filename f) f]) insiders-with-content))
 
-          all-filenames (set (concat (keys stable-map) (keys insiders-map)))]
+          filenames (set (concat (keys stable-map) (keys insiders-map)))]
+    ;; Return flat list with statuses and :original-status metadata
+    (sort-by :prompt-sync.file/filename
+             (map (fn [filename]
+                    (let [stable-file (get stable-map filename)
+                          insiders-file (get insiders-map filename)]
+                      (cond
+                        ;; File only in stable
+                        (and stable-file (not insiders-file))
+                        (assoc stable-file
+                               :prompt-sync.file/status :missing-in-insiders
+                               :prompt-sync.file/action-needed :copy-to-insiders
+                               :prompt-sync.file/original-status :original/missing-in-insiders)
 
-    ;; Return flat list with statuses instead of buckets
-    {:prompt-sync.result/all-files
-     (sort-by :prompt-sync.file/filename
-              (map (fn [filename]
-                     (let [stable-file (get stable-map filename)
-                           insiders-file (get insiders-map filename)]
-                       (cond
-                         ;; File only in stable
-                         (and stable-file (not insiders-file))
-                         (assoc stable-file
-                                :prompt-sync.file/status :missing-in-insiders
-                                :prompt-sync.file/action-needed :copy-to-insiders)
+                        ;; File only in insiders
+                        (and insiders-file (not stable-file))
+                        (assoc insiders-file
+                               :prompt-sync.file/status :missing-in-stable
+                               :prompt-sync.file/action-needed :copy-to-stable
+                               :prompt-sync.file/original-status :original/missing-in-stable)
 
-                         ;; File only in insiders
-                         (and insiders-file (not stable-file))
-                         (assoc insiders-file
-                                :prompt-sync.file/status :missing-in-stable
-                                :prompt-sync.file/action-needed :copy-to-stable)
-
-                         ;; File in both - check content
-                         (and stable-file insiders-file)
-                         (if (= (:prompt-sync.file/content stable-file)
-                                (:prompt-sync.file/content insiders-file))
-                           (assoc stable-file
-                                  :prompt-sync.file/status :identical
+                        ;; File in both
+                        (and stable-file insiders-file)
+                        (merge stable-file
+                               {:prompt-sync.file/insiders-file insiders-file}
+                               (if (= (:prompt-sync.file/content stable-file)
+                                      (:prompt-sync.file/content insiders-file))
+                                 {:prompt-sync.file/status :identical
                                   :prompt-sync.file/action-needed :none
-                                  :prompt-sync.file/insiders-file insiders-file)
-                           (-> stable-file
-                               (assoc :prompt-sync.file/status :conflict
-                                      :prompt-sync.file/action-needed :resolve
-                                      :prompt-sync.file/insiders-file insiders-file))))))
-                   all-filenames))}))
+                                  :prompt-sync.file/original-status :original/identical}
+                                 {:prompt-sync.file/status :conflict
+                                  :prompt-sync.file/action-needed :resolve
+                                  :prompt-sync.file/original-status :original/conflict})))))
+                  filenames))))
 
 (defn copy-file!+
   "Copies file using workspace.fs"
@@ -147,10 +147,10 @@
                (vscode/workspace.fs.writeFile target-uri content)))))
 
 (defn copy-missing-files!+
-  "Copies files that need copying and updates their status in the flat list"
+  "Copies files that need copying and updates their status using :original-status metadata"
   [all-files {:prompt-sync/keys [stable-dir insiders-dir]}]
   (p/let [files-to-copy (filter #(#{:missing-in-stable :missing-in-insiders}
-                                   (:prompt-sync.file/status %)) all-files)
+                                  (:prompt-sync.file/status %)) all-files)
 
           ;; Execute all copy operations
           _ (p/all (map (fn [file-info]
@@ -165,19 +165,17 @@
                                                                    (path/join insiders-dir (:prompt-sync.file/filename file-info)))})))
                         files-to-copy))]
 
-    ;; Update statuses to reflect that files were copied
+    ;; Transform statuses using :original-status metadata - clean transformation
     (map (fn [file-info]
            (case (:prompt-sync.file/status file-info)
              :missing-in-stable
              (assoc file-info
                     :prompt-sync.file/status :copied
-                    :prompt-sync.file/copy-direction :copied-to-stable
                     :prompt-sync.file/action-needed :none)
 
              :missing-in-insiders
              (assoc file-info
                     :prompt-sync.file/status :copied
-                    :prompt-sync.file/copy-direction :copied-to-insiders
                     :prompt-sync.file/action-needed :none)
 
              ;; Other statuses unchanged
@@ -209,27 +207,28 @@
     :prompt-sync.type/chatmode (vscode/ThemeIcon. "color-mode")
     (vscode/ThemeIcon. "diff")))
 
-(defn create-all-files-picker-item
-  "Creates QuickPick item with clear status-based descriptions for flat file data"
-  [{:prompt-sync.file/keys [filename status file-type copy-direction action-needed]}]
+(defn create-picker-item
+  "Creates QuickPick item using :original-status for copy direction display"
+  [{:prompt-sync.file/keys [filename status file-type action-needed original-status]}]
   (let [icon (get-file-icon file-type)
-        description (case status
-                      :copied (case copy-direction
-                                :copied-to-insiders "Stable → Insiders"
-                                :copied-to-stable "Insiders → Stable"
-                                "copied") ; fallback
-                      :conflict (str (name file-type) " • has conflicts")
-                      :identical "identical"
-                      :missing-in-stable (str (name file-type) " • missing in stable")
-                      :missing-in-insiders (str (name file-type) " • missing in insiders")
-                      :resolved "resolved"
-                      (str (name file-type) " • " (name status)))
-        detail (case action-needed
-                 :resolve "Select to choose resolution"
-                 :copy-to-stable "Will be copied to stable"
-                 :copy-to-insiders "Will be copied to insiders"
-                 :none "Preview only"
-                 "")]
+        direction-string (case original-status
+                           :original/missing-in-insiders "Stable → Insiders"
+                           :original/missing-in-stable "Insiders → Stable"
+                           "copied")
+        detail (case status
+                 :copied  direction-string
+                 :conflict (str (name file-type) " • has conflicts")
+                 :identical "identical"
+                 :missing-in-stable (str (name file-type) " • missing in stable")
+                 :missing-in-insiders (str (name file-type) " • missing in insiders")
+                 :resolved (str "resolved: " direction-string)
+                 (str (name file-type) " • " (name status)))
+        description (case action-needed
+                      :resolve "Select to choose resolution"
+                      :copy-to-stable "Will be copied to stable"
+                      :copy-to-insiders "Will be copied to insiders"
+                      :none "Preview only"
+                      "")]
     #js {:label filename
          :iconPath icon
          :description description
@@ -252,7 +251,7 @@
   [all-files]
   (if (empty? all-files)
     (p/resolved nil)
-    (let [items (map create-all-files-picker-item all-files)
+    (let [items (map create-picker-item all-files)
           picker (vscode/window.createQuickPick)]
 
       (set! (.-items picker) (into-array items))
@@ -281,18 +280,17 @@
        (fn [resolve _reject]
          (.onDidAccept picker
                        (fn []
-                         (let [selected (first (.-selectedItems picker))]
-                           (when selected
-                             (let [file-info (.-fileInfo selected)
-                                   is-conflict (.-isConflict file-info)]
-                               (if is-conflict
-                                 ;; Return conflict data for resolution
-                                 (let [filename (.-filename file-info)
-                                       conflict-info (first (filter #(= (:prompt-sync.file/filename %) filename) all-files))]
-                                   (.hide picker)
-                                   (resolve conflict-info))
-                                 ;; For non-conflicts, keep picker open (don't resolve)
-                                 (log! :debug "📁 Preview only:" (.-filename file-info))))))))
+                         (when-let [selected (first (.-selectedItems picker))]
+                           (let [file-info (.-fileInfo selected)
+                                 is-conflict (.-isConflict file-info)]
+                             (if is-conflict
+                               ;; Return conflict data for resolution
+                               (let [filename (.-filename file-info)
+                                     conflict-info (first (filter #(= (:prompt-sync.file/filename %) filename) all-files))]
+                                 (.hide picker)
+                                 (resolve conflict-info))
+                               ;; For non-conflicts, keep picker open (don't resolve)
+                               (log! :debug "📁 Preview only:" (.-filename file-info)))))))
          (.onDidHide picker
                      (fn []
                        (resolve nil)))
@@ -440,13 +438,6 @@
         (.then (fn [_] (log! :debug "Cleaned up test environment")))
         (.catch (fn [err] (log! :debug "Cleanup error:" (.-message err)))))))
 
-;; Clean separation of concerns helper functions
-
-(defn handle-cancellation
-  "Centralized cancellation handling"
-  []
-  (p/resolved :cancelled))
-
 (defn update-file-status-after-resolution
   "Pure function for updating file status after conflict resolution in flat list"
   [all-files resolved-filename resolution-type]
@@ -470,58 +461,47 @@
                                 :prompt-sync.action/choose-insiders :resolution/choose-insiders
                                 :prompt-sync.action/skip :resolution/skipped)
               updated-files (update-file-status-after-resolution all-files
-                                                                (:prompt-sync.file/filename selected-conflict)
-                                                                resolution-type)]
+                                                                 (:prompt-sync.file/filename selected-conflict)
+                                                                 resolution-type)]
         updated-files)
-      (handle-cancellation))))
+      (p/resolved :cancelled))))
 
-(defn handle-conflicts!+
-  "Clean iterative conflict handling using p/loop with flat file list"
-  [all-files]
-  (p/loop [current-files all-files]
-    (let [remaining-conflicts (filter #(= (:prompt-sync.file/status %) :conflict) current-files)]
-      (if (empty? remaining-conflicts)
-        (p/resolved :completed)
-        (p/let [selected-conflict (show-all-files-picker!+ current-files)]
-          (if selected-conflict
-            (p/let [updated-files (resolve-single-conflict!+ selected-conflict current-files)]
-              (if (= updated-files :cancelled)
-                (handle-cancellation)
-                (p/recur updated-files)))
-            (handle-cancellation)))))))
+(defn main-menu-loop!+
+  "Show files picker offering conflict resolution actions for conclicts
+   Keep showing the files menu until the user cancels"
+  [files]
+  (def files files)
+  (p/loop [current-files files]
+    (p/let [selected-conflict (show-all-files-picker!+ current-files)]
+      (if selected-conflict
+        (p/let [updated-files (resolve-single-conflict!+ selected-conflict current-files)]
+          (if (= updated-files :cancelled)
+            (p/recur current-files)
+            (p/recur updated-files)))
+        (p/resolved :cancelled)))))
 
 (defn sync-prompts!+
   "Main entry point - orchestrates the entire sync process"
   ([] (sync-prompts!+ {}))
   ([{:prompt-sync/keys [test-mode?]}]
+   (if test-mode?
+     (log! :info "🧪 TEST MODE: Using /tmp directories")
+     (log! :debug "Starting prompt sync..."))
    (p/let [dirs (get-user-prompts-dirs {:prompt-sync/test-mode? test-mode?})
-           {:prompt-sync/keys [stable-dir insiders-dir test-mode?]} dirs
+           {:prompt-sync/keys [stable-dir insiders-dir]} dirs
 
-           _ (if test-mode?
-               (do (log! :debug "🧪 TEST MODE: Using /tmp directories") nil)
-               (do (log! :debug "Starting prompt sync...") nil))
-
-           ;; Create test environment if in test mode
-           _ (when test-mode?
-               (p/let [test-dirs (create-test-environment!+)]
-                 (populate-test-files!+ test-dirs)))
-
-           sync-result (compare-directories!+ {:prompt-sync/stable-dir stable-dir
-                                               :prompt-sync/insiders-dir insiders-dir})
-
-           ;; Extract the flat file list from the result
-           all-files (:prompt-sync.result/all-files sync-result)
+           compared (compare-directories!+ {:prompt-sync/stable-dir stable-dir
+                                            :prompt-sync/insiders-dir insiders-dir})
+           _ (def compared compared)
 
            ;; Copy missing files automatically and get updated file list
-           updated-files (copy-missing-files!+ all-files dirs)
+           updated-files (copy-missing-files!+ compared dirs)
 
            ;; Count what was copied for logging
-           copied-count (count (filter #(= (:prompt-sync.file/status %) :copied) updated-files))
-
-           _ (do (log! :debug (str "Auto-copied: " copied-count " files"))
-                 nil)]
-
-     (handle-conflicts!+ updated-files))))
+           copied-count (count (filter #(= (:prompt-sync.file/status %) :copied) updated-files))]
+     (do (log! :debug (str "Auto-copied: " copied-count " files"))
+         nil)
+     (main-menu-loop!+ updated-files))))
 
 ;; Export for use (disabled until we're ready making sure the test mode works )
 (defn ^:export main-disabled []
@@ -536,7 +516,10 @@
   []
   (p/catch
    (binding [*log-level* :debug] ; Re-binding not working deeper down the call chain for some reason
-     (sync-prompts!+ {:prompt-sync/test-mode? true}))
+     ;; Create test environment if in test mode
+     (p/let [test-dirs (create-test-environment!+)]
+       (populate-test-files!+ test-dirs)
+       (sync-prompts!+ {:prompt-sync/test-mode? true})))
    (fn [error]
      (vscode/window.showErrorMessage (str "Test sync error: " (.-message error)))
      (js/console.error "Test prompt sync error:" error))))
