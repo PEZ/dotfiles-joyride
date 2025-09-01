@@ -152,29 +152,31 @@
      :copied-from-insiders (count missing-in-insiders)}))
 
 (defn enhance-sync-result
-  "Adds unified all-files view to sync result for UI consumption"
+  "Adds unified all-files view with UNIFORM file objects - all have same shape"
   [sync-result]
   (let [{:prompt-sync.result/keys [conflicts missing-in-stable missing-in-insiders identical resolved]} sync-result
         ;; Track filenames that were copied to exclude them from identical list
         copied-filenames (set (concat (map :prompt-sync.file/filename missing-in-insiders)
                                       (map :prompt-sync.file/filename missing-in-stable)))
         all-files (concat
-                   ;; Conflicts - pure state, no other fields
+                   ;; Conflicts - UNIFORM: all fields present, nil for unused
                    (map (fn [{:prompt-sync.conflict/keys [filename stable-file insiders-file file-type]}]
                           {:prompt-sync.file/filename filename
-                           :prompt-sync.file/status :conflict  ; PURE STATE
-                           :prompt-sync.file/file-type file-type
-                           :prompt-sync.file/stable-file stable-file
-                           :prompt-sync.file/insiders-file insiders-file})
-                        conflicts)
-                   ;; Resolved conflicts - separate status and resolution
-                   (map (fn [{:prompt-sync.resolved/keys [filename stable-file insiders-file file-type action]}]
-                          {:prompt-sync.file/filename filename
-                           :prompt-sync.file/status :resolved  ; PURE STATE
+                           :prompt-sync.file/status :conflict
                            :prompt-sync.file/file-type file-type
                            :prompt-sync.file/stable-file stable-file
                            :prompt-sync.file/insiders-file insiders-file
-                           ;; SEPARATED CONCERN: resolution in its own field
+                           :prompt-sync.file/copy-direction nil  ; UNIFORM: always present
+                           :prompt-sync.file/resolution nil})    ; UNIFORM: always present
+                        conflicts)
+                   ;; Resolved conflicts - UNIFORM: all fields present
+                   (map (fn [{:prompt-sync.resolved/keys [filename stable-file insiders-file file-type action]}]
+                          {:prompt-sync.file/filename filename
+                           :prompt-sync.file/status :resolved
+                           :prompt-sync.file/file-type file-type
+                           :prompt-sync.file/stable-file stable-file
+                           :prompt-sync.file/insiders-file insiders-file
+                           :prompt-sync.file/copy-direction nil  ; UNIFORM: always present
                            :prompt-sync.file/resolution (case action
                                                           :resolution/choose-stable :resolution/choose-stable
                                                           :resolution/choose-insiders :resolution/choose-insiders
@@ -184,32 +186,34 @@
                                                           :resolved-to-insiders :resolution/choose-insiders
                                                           :resolution-skipped :resolution/skipped)})
                         (or resolved []))
-                   ;; Missing files - separate status and copy direction
+                   ;; Missing files - UNIFORM: all fields present
                    (map (fn [stable-file]
                           {:prompt-sync.file/filename (:prompt-sync.file/filename stable-file)
-                           :prompt-sync.file/status :copied  ; PURE STATE
+                           :prompt-sync.file/status :copied
                            :prompt-sync.file/file-type (:prompt-sync.file/file-type stable-file)
                            :prompt-sync.file/stable-file stable-file
-                           :prompt-sync.file/insiders-file nil
-                           ;; SEPARATED CONCERN: copy direction in its own field
-                           :prompt-sync.file/copy-direction :copied-to-insiders})
+                           :prompt-sync.file/insiders-file nil  ; UNIFORM: always present, nil when missing
+                           :prompt-sync.file/copy-direction :copied-to-insiders
+                           :prompt-sync.file/resolution nil})   ; UNIFORM: always present
                         missing-in-insiders)
                    (map (fn [insiders-file]
                           {:prompt-sync.file/filename (:prompt-sync.file/filename insiders-file)
-                           :prompt-sync.file/status :copied  ; PURE STATE
+                           :prompt-sync.file/status :copied
                            :prompt-sync.file/file-type (:prompt-sync.file/file-type insiders-file)
-                           :prompt-sync.file/stable-file nil
+                           :prompt-sync.file/stable-file nil    ; UNIFORM: always present, nil when missing
                            :prompt-sync.file/insiders-file insiders-file
-                           ;; SEPARATED CONCERN: copy direction in its own field
-                           :prompt-sync.file/copy-direction :copied-to-stable})
+                           :prompt-sync.file/copy-direction :copied-to-stable
+                           :prompt-sync.file/resolution nil})   ; UNIFORM: always present
                         missing-in-stable)
-                   ;; Identical files - pure state, no other fields
+                   ;; Identical files - UNIFORM: all fields present
                    (map (fn [{:prompt-sync.conflict/keys [filename stable-file insiders-file]}]
                           {:prompt-sync.file/filename filename
-                           :prompt-sync.file/status :identical  ; PURE STATE
+                           :prompt-sync.file/status :identical
                            :prompt-sync.file/file-type (:prompt-sync.file/file-type stable-file)
                            :prompt-sync.file/stable-file stable-file
-                           :prompt-sync.file/insiders-file insiders-file})
+                           :prompt-sync.file/insiders-file insiders-file
+                           :prompt-sync.file/copy-direction nil  ; UNIFORM: always present
+                           :prompt-sync.file/resolution nil})    ; UNIFORM: always present
                         (remove #(copied-filenames (:prompt-sync.conflict/filename %)) identical)))
         ;; Sort all files by filename to maintain consistent order
         sorted-files (sort-by :prompt-sync.file/filename all-files)]
@@ -270,7 +274,7 @@
 
 (defn show-file-preview!+
   "Shows file preview for non-conflict files"
-  [{:prompt-sync.file/keys [filename status stable-file insiders-file]}]
+  [{:prompt-sync.file/keys [stable-file insiders-file]}]
   (let [file-to-preview (or stable-file insiders-file)
         uri (:prompt-sync.file/uri file-to-preview)]
     (when uri
