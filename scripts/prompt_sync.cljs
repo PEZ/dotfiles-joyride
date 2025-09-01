@@ -375,40 +375,27 @@
                  {:prompt-sync.env/stable test-stable :prompt-sync.env/insiders test-insiders})))))
 
 (defn populate-test-files!+
-  "Creates sample test files for different sync scenarios"
+  "Creates sample test files using only stable-content and insiders-content keys"
   [dirs files]
   (let [encoder (js/TextEncoder.)]
-
     (p/all
      (for [file files]
-       (cond
-         ;; Identical files - create in both directories (has :content, no :location)
-         (and (:prompt-sync.file/content file) (not (:prompt-sync.file/location file)))
-         (let [content (.encode encoder (:prompt-sync.file/content file))
-               stable-uri (vscode/Uri.file (path/join (:prompt-sync.env/stable dirs) (:prompt-sync.file/filename file)))
-               insiders-uri (vscode/Uri.file (path/join (:prompt-sync.env/insiders dirs) (:prompt-sync.file/filename file)))]
-           (-> (vscode/workspace.fs.writeFile stable-uri content)
-               (.then (fn [_] (vscode/workspace.fs.writeFile insiders-uri content)))))
+       (let [{:prompt-sync.file/keys [filename stable-content insiders-content location]} file
+             stable-uri (vscode/Uri.file (path/join (:prompt-sync.env/stable dirs) filename))
+             insiders-uri (vscode/Uri.file (path/join (:prompt-sync.env/insiders dirs) filename))
 
-         ;; Conflict files - create different versions (has :stable-content and :insiders-content)
-         (:prompt-sync.file/stable-content file)
-         (let [stable-content (.encode encoder (:prompt-sync.file/stable-content file))
-               insiders-content (.encode encoder (:prompt-sync.file/insiders-content file))
-               stable-uri (vscode/Uri.file (path/join (:prompt-sync.env/stable dirs) (:prompt-sync.file/filename file)))
-               insiders-uri (vscode/Uri.file (path/join (:prompt-sync.env/insiders dirs) (:prompt-sync.file/filename file)))]
-           (-> (vscode/workspace.fs.writeFile stable-uri stable-content)
-               (.then (fn [_] (vscode/workspace.fs.writeFile insiders-uri insiders-content)))))
+             ;; Create stable file if content exists and location allows it
+             stable-promise (when (and stable-content
+                                       (not= location :insiders-only))
+                              (vscode/workspace.fs.writeFile stable-uri (.encode encoder stable-content)))
 
-         ;; Single location files - only create in specified location
-         (= (:prompt-sync.file/location file) :stable-only)
-         (let [content (.encode encoder (:prompt-sync.file/content file))
-               stable-uri (vscode/Uri.file (path/join (:prompt-sync.env/stable dirs) (:prompt-sync.file/filename file)))]
-           (vscode/workspace.fs.writeFile stable-uri content))
+             ;; Create insiders file if content exists and location allows it
+             insiders-promise (when (and insiders-content
+                                         (not= location :stable-only))
+                                (vscode/workspace.fs.writeFile insiders-uri (.encode encoder insiders-content)))]
 
-         (= (:prompt-sync.file/location file) :insiders-only)
-         (let [content (.encode encoder (:prompt-sync.file/content file))
-               insiders-uri (vscode/Uri.file (path/join (:prompt-sync.env/insiders dirs) (:prompt-sync.file/filename file)))]
-           (vscode/workspace.fs.writeFile insiders-uri content)))))))
+         ;; Return promise that resolves when both files are written (if needed)
+         (p/all (filter some? [stable-promise insiders-promise])))))))
 
 (defn cleanup-test-environment!+
   "Removes test environment when done"
@@ -484,7 +471,8 @@
      (main-menu-loop!+ updated-files))))
 
 (def test-files [{:prompt-sync.file/filename "identical.prompt.md"
-                  :prompt-sync.file/content "# Identical\nThis file is the same in both"}
+                  :prompt-sync.file/stable-content "# Identical\nThis file is the same in both"
+                  :prompt-sync.file/insiders-content "# Identical\nThis file is the same in both"}
                  {:prompt-sync.file/filename "conflict1.instruction.md"
                   :prompt-sync.file/stable-content
                   "# Stable Version - Instruction\nThis is from stable\n## Instructions\n- Use stable approach\n- Follow stable patterns"
@@ -506,11 +494,11 @@
                   :prompt-sync.file/insiders-content
                   "# Another Insiders Instruction\nThese are experimental coding guidelines.\n\n- Try new APIs\n- Embrace experimental features"}
                  {:prompt-sync.file/filename "stable-only.chatmode.md"
-                  :prompt-sync.file/content
+                  :prompt-sync.file/stable-content
                   "# Stable Only\nThis file only exists in stable"
                   :prompt-sync.file/location :stable-only}
                  {:prompt-sync.file/filename "insiders-only.prompt.md"
-                  :prompt-sync.file/content
+                  :prompt-sync.file/insiders-content
                   "# Insiders Only\nThis file only exists in insiders"
                   :prompt-sync.file/location :insiders-only}])
 
