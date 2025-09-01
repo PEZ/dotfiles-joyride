@@ -138,12 +138,12 @@
   "Copies missing files automatically, returns summary"
   [{:prompt-sync.result/keys [missing-in-stable missing-in-insiders]} {:prompt-sync/keys [stable-dir insiders-dir]}]
   (p/let [_ (p/all (map #(copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri %)
-                                      :prompt-sync/target-uri (vscode/Uri.file
-                                                               (path/join stable-dir (:prompt-sync.file/name %)))})
+                                       :prompt-sync/target-uri (vscode/Uri.file
+                                                                (path/join stable-dir (:prompt-sync.file/name %)))})
                         missing-in-stable))
           _ (p/all (map #(copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri %)
-                                      :prompt-sync/target-uri (vscode/Uri.file
-                                                               (path/join insiders-dir (:prompt-sync.file/name %)))})
+                                       :prompt-sync/target-uri (vscode/Uri.file
+                                                                (path/join insiders-dir (:prompt-sync.file/name %)))})
                         missing-in-insiders))]
     {:copied-from-stable (count missing-in-stable)
      :copied-from-insiders (count missing-in-insiders)}))
@@ -154,7 +154,7 @@
   (let [{:prompt-sync.result/keys [conflicts missing-in-stable missing-in-insiders identical resolved]} sync-result
         ;; Track filenames that were copied to exclude them from identical list
         copied-filenames (set (concat (map :prompt-sync.file/name missing-in-insiders)
-                                     (map :prompt-sync.file/name missing-in-stable)))
+                                      (map :prompt-sync.file/name missing-in-stable)))
         all-files (concat
                    ;; Conflicts
                    (map (fn [{:prompt-sync.conflict/keys [filename stable-file insiders-file type]}]
@@ -256,7 +256,7 @@
         uri (:prompt-sync.file/uri file-to-preview)]
     (when uri
       (vscode/commands.executeCommand "vscode.open" uri #js {:preview true
-                                                            :preserveFocus true}))))
+                                                             :preserveFocus true}))))
 
 (defn show-all-files-picker!+
   "Shows QuickPick for all files with appropriate preview and selection behavior"
@@ -473,14 +473,14 @@
                                                        :prompt-sync.action/choose-insiders :resolved-to-insiders
                                                        :prompt-sync.action/skip :resolution-skipped)
                                    resolved-entry {:prompt-sync.resolved/filename (:prompt-sync.conflict/filename selected-conflict)
-                                                  :prompt-sync.resolved/stable-file (:prompt-sync.conflict/stable-file selected-conflict)
-                                                  :prompt-sync.resolved/insiders-file (:prompt-sync.conflict/insiders-file selected-conflict)
-                                                  :prompt-sync.resolved/type (:prompt-sync.conflict/type selected-conflict)
-                                                  :prompt-sync.resolved/action resolution-status}
+                                                   :prompt-sync.resolved/stable-file (:prompt-sync.conflict/stable-file selected-conflict)
+                                                   :prompt-sync.resolved/insiders-file (:prompt-sync.conflict/insiders-file selected-conflict)
+                                                   :prompt-sync.resolved/type (:prompt-sync.conflict/type selected-conflict)
+                                                   :prompt-sync.resolved/action resolution-status}
                                    existing-resolved (get enhanced-sync-result :prompt-sync.result/resolved [])
                                    updated-enhanced (-> enhanced-sync-result
-                                                       (assoc :prompt-sync.result/conflicts updated-conflicts)
-                                                       (assoc :prompt-sync.result/resolved (conj existing-resolved resolved-entry)))]
+                                                        (assoc :prompt-sync.result/conflicts updated-conflicts)
+                                                        (assoc :prompt-sync.result/resolved (conj existing-resolved resolved-entry)))]
                                (handle-conflicts updated-conflicts (enhance-sync-result updated-enhanced)))))
                        ;; User cancelled resolution menu
                        (p/resolved (do (vscode/window.showInformationMessage "Prompt sync cancelled")
