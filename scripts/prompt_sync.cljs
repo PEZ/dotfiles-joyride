@@ -7,6 +7,17 @@
 ;; VS Code FileType constants for semantic clarity
 (def ^:const VSCODE-FILE-TYPE vscode/FileType.File)
 
+(def ^:dynamic *log-level* :info)
+
+(defn log!
+  [level & messages]
+  (def level level)
+  (def log-level *log-level*)
+  (when (or (= :info level)
+            (= :debug *log-level*))
+    (let [formatted-messages (map str messages)]
+      (apply println formatted-messages))))
+
 (defn get-vscode-user-dir
   "Gets the VS Code User directory using Joyride extension context"
   []
@@ -287,7 +298,7 @@
                                    (.hide picker)
                                    (resolve conflict-info))
                                  ;; For non-conflicts, keep picker open (don't resolve)
-                                 (println "📁 Preview only:" (.-filename file-info))))))))
+                                 (log! :debug "📁 Preview only:" (.-filename file-info))))))))
          (.onDidHide picker
                      (fn []
                        (resolve nil)))
@@ -296,7 +307,7 @@
 (defn show-resolution-menu!+
   "Shows resolution options menu"
   [{:prompt-sync.file/keys [filename]}]
-  (println "📋 show-resolution-menu!+ called for:" filename)
+  (log! :debug "📋 show-resolution-menu!+ called for:" filename)
   (let [actions [{:label "Choose Stable"
                   :iconPath (vscode/ThemeIcon. "arrow-left")
                   :description "Copy stable version to insiders"
@@ -314,41 +325,41 @@
          #js {:placeHolder (str "How to resolve: " filename)
               :ignoreFocusOut true})
         (.then (fn [choice]
-                 (println "📋 User selected:" (when choice (.-label choice)) "for" filename)
-                 (println "📋 Raw action string:" (when choice (.-action choice)))
+                 (log! :debug "📋 User selected:" (when choice (.-label choice)) "for" filename)
+                 (log! :debug "📋 Raw action string:" (when choice (.-action choice)))
                  (when choice
                    (let [action-keyword (keyword (.-action choice))]
-                     (println "📋 Action as keyword:" action-keyword)
+                     (log! :debug "📋 Action as keyword:" action-keyword)
                      action-keyword)))))))
 
 (defn resolve-conflict!+
   "Executes the chosen resolution action, returns result data"
   [conflict choice]
-  (println "🔧 resolve-conflict!+ called with:")
-  (println "  Choice:" choice)
-  (println "  Choice type:" (type choice))
-  (println "  Conflict filename:" (:prompt-sync.file/filename conflict))
+  (log! :debug "🔧 resolve-conflict!+ called with:")
+  (log! :debug "  Choice:" choice)
+  (log! :debug "  Choice type:" (type choice))
+  (log! :debug "  Conflict filename:" (:prompt-sync.file/filename conflict))
   (let [{:prompt-sync.file/keys [stable-file insiders-file filename]} conflict]
-    (println "  Stable file URI:" (:prompt-sync.file/uri stable-file))
-    (println "  Insiders file URI:" (:prompt-sync.file/uri insiders-file))
+    (log! :debug "  Stable file URI:" (:prompt-sync.file/uri stable-file))
+    (log! :debug "  Insiders file URI:" (:prompt-sync.file/uri insiders-file))
     (case choice
       :prompt-sync.action/choose-stable
-      (do (println "  → Copying stable to insiders")
+      (do (log! :debug "  → Copying stable to insiders")
           (p/let [_ (copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri stable-file)
                                   :prompt-sync/target-uri (:prompt-sync.file/uri insiders-file)})]
             {:prompt-sync.resolution/action :choose-stable :prompt-sync.resolution/filename filename :prompt-sync.resolution/success true}))
 
       :prompt-sync.action/choose-insiders
-      (do (println "  → Copying insiders to stable")
+      (do (log! :debug "  → Copying insiders to stable")
           (p/let [_ (copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri insiders-file)
                                   :prompt-sync/target-uri (:prompt-sync.file/uri stable-file)})]
             {:prompt-sync.resolution/action :choose-insiders :prompt-sync.resolution/filename filename :prompt-sync.resolution/success true}))
 
       :prompt-sync.action/skip
-      (do (println "  → Skipping")
+      (do (log! :debug "  → Skipping")
           (p/resolved {:prompt-sync.resolution/action :skip :prompt-sync.resolution/filename filename :prompt-sync.resolution/success true}))
 
-      (do (println "  → Cancelled")
+      (do (log! :debug "  → Cancelled")
           (p/resolved {:prompt-sync.resolution/action :cancelled :prompt-sync.resolution/filename filename :prompt-sync.resolution/success false})))))
 
 (defn create-test-environment!+
@@ -364,9 +375,9 @@
         (.then (fn [_] (vscode/workspace.fs.createDirectory stable-uri)))
         (.then (fn [_] (vscode/workspace.fs.createDirectory insiders-uri)))
         (.then (fn [_]
-                 (println "Created test environment:")
-                 (println "Stable:" test-stable)
-                 (println "Insiders:" test-insiders)
+                 (log! :debug "Created test environment:")
+                 (log! :debug "Stable:" test-stable)
+                 (log! :debug "Insiders:" test-insiders)
                  {:prompt-sync.env/stable test-stable :prompt-sync.env/insiders test-insiders})))))
 
 (defn populate-test-files!+
@@ -430,8 +441,8 @@
   []
   (let [test-base-uri (vscode/Uri.file "/tmp/prompt-sync-test")]
     (-> (vscode/workspace.fs.delete test-base-uri #js {:recursive true :useTrash false})
-        (.then (fn [_] (println "Cleaned up test environment")))
-        (.catch (fn [err] (println "Cleanup error:" (.-message err)))))))
+        (.then (fn [_] (log! :debug "Cleaned up test environment")))
+        (.catch (fn [err] (log! :debug "Cleanup error:" (.-message err)))))))
 
 ;; Clean separation of concerns helper functions
 
@@ -451,8 +462,8 @@
                         :prompt-sync.resolved/action resolution-type}
         existing-resolved (get enhanced-result :prompt-sync.result/resolved [])
         updated-enhanced (-> enhanced-result
-                            (assoc :prompt-sync.result/conflicts updated-conflicts)
-                            (assoc :prompt-sync.result/resolved (conj existing-resolved resolved-entry)))]
+                             (assoc :prompt-sync.result/conflicts updated-conflicts)
+                             (assoc :prompt-sync.result/resolved (conj existing-resolved resolved-entry)))]
     (enhance-sync-result updated-enhanced)))
 
 (defn resolve-single-conflict!+
@@ -466,18 +477,16 @@
                                 :prompt-sync.action/choose-insiders :resolution/choose-insiders
                                 :prompt-sync.action/skip :resolution/skipped)
               updated-result (update-sync-result-after-resolution enhanced-result selected-conflict resolution-type)]
-        (do (vscode/window.showInformationMessage (str "Resolved: " (:prompt-sync.file/filename selected-conflict)))
-            updated-result))
+        updated-result)
       (handle-cancellation))))
 
-(defn handle-conflicts-clean!+
+(defn handle-conflicts!+
   "Clean iterative conflict handling using p/loop instead of deep recursion"
   [enhanced-sync-result]
   (p/loop [current-result enhanced-sync-result]
     (let [remaining-conflicts (:prompt-sync.result/conflicts current-result)]
       (if (empty? remaining-conflicts)
-        (p/resolved (do (vscode/window.showInformationMessage "Prompt sync completed!")
-                        :completed))
+        (p/resolved :completed)
         (p/let [selected-conflict (show-all-files-picker!+ current-result)]
           (if selected-conflict
             (p/let [updated-result (resolve-single-conflict!+ selected-conflict current-result)]
@@ -494,8 +503,8 @@
            {:prompt-sync/keys [stable-dir insiders-dir test-mode?]} dirs
 
            _ (if test-mode?
-               (do (vscode/window.showInformationMessage "🧪 TEST MODE: Using /tmp directories") nil)
-               (do (vscode/window.showInformationMessage "Starting prompt sync...") nil))
+               (do (log! :debug "🧪 TEST MODE: Using /tmp directories") nil)
+               (do (log! :debug "Starting prompt sync...") nil))
 
            ;; Create test environment if in test mode
            _ (when test-mode?
@@ -508,16 +517,14 @@
            ;; Copy missing files automatically
            copy-summary (copy-missing-files!+ sync-result dirs)
 
-           _ (do (vscode/window.showInformationMessage
+           _ (do (log! :debug
                   (str "Auto-copied: " (:prompt-sync.result/copied-from-stable copy-summary) " from stable, "
                        (:prompt-sync.result/copied-from-insiders copy-summary) " from insiders"))
                  nil)
 
-           ;; Enhance sync result for UI after copying
            enhanced-result (enhance-sync-result sync-result)]
 
-     ;; Handle conflicts using clean approach
-     (handle-conflicts-clean!+ enhanced-result))))
+     (handle-conflicts!+ enhanced-result))))
 
 ;; Export for use (disabled until we're ready making sure the test mode works )
 (defn ^:export main-disabled []
@@ -531,7 +538,8 @@
   "Entry point for test mode - uses /tmp directories"
   []
   (p/catch
-   (sync-prompts!+ {:prompt-sync/test-mode? true})
+   (binding [*log-level* :debug] ; Re-binding not working deeper down the call chain for some reason
+     (sync-prompts!+ {:prompt-sync/test-mode? true}))
    (fn [error]
      (vscode/window.showErrorMessage (str "Test sync error: " (.-message error)))
      (js/console.error "Test prompt sync error:" error))))
