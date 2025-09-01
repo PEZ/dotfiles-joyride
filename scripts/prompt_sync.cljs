@@ -7,16 +7,13 @@
 ;; VS Code FileType constants for semantic clarity
 (def ^:const VSCODE-FILE-TYPE vscode/FileType.File)
 
-(def ^:dynamic *log-level* :info)
+(def ^:dynamic *log-level* :debug)
 
 (defn log!
   [level & messages]
-  (def level level)
-  (def log-level *log-level*)
   (when (or (= :info level)
             (= :debug *log-level*))
-    (let [formatted-messages (map str messages)]
-      (apply println formatted-messages))))
+    (apply println (conj (vec messages) "\n"))))
 
 (defn get-vscode-user-dir
   "Gets the VS Code User directory using Joyride extension context"
@@ -94,7 +91,7 @@
                          :prompt-sync.file/error (.-message err)))))))
 
 (defn compare-directories!+
-  "Compares two directories and categorizes files, returns promise"
+  "Compares two directories and returns flat file list with statuses"
   [{:prompt-sync/keys [stable-dir insiders-dir]}]
   (p/let [stable-files (scan-directory!+ {:prompt-sync/dir-path stable-dir})
           insiders-files (scan-directory!+ {:prompt-sync/dir-path insiders-dir})
@@ -109,38 +106,38 @@
 
           all-filenames (set (concat (keys stable-map) (keys insiders-map)))]
 
-    (reduce (fn [result filename]
-              (let [stable-file (get stable-map filename)
-                    insiders-file (get insiders-map filename)]
-                (cond
-                  ;; File only in stable
-                  (and stable-file (not insiders-file))
-                  (update result :prompt-sync.result/missing-in-insiders conj
-                          (assoc stable-file :prompt-sync.file/copy-direction :copied-to-insiders))
+    ;; Return flat list with statuses instead of buckets
+    {:prompt-sync.result/all-files
+     (sort-by :prompt-sync.file/filename
+              (map (fn [filename]
+                     (let [stable-file (get stable-map filename)
+                           insiders-file (get insiders-map filename)]
+                       (cond
+                         ;; File only in stable
+                         (and stable-file (not insiders-file))
+                         (assoc stable-file
+                                :prompt-sync.file/status :missing-in-insiders
+                                :prompt-sync.file/action-needed :copy-to-insiders)
 
-                  ;; File only in insiders
-                  (and insiders-file (not stable-file))
-                  (update result :prompt-sync.result/missing-in-stable conj
-                          (assoc insiders-file :prompt-sync.file/copy-direction :copied-to-stable))
+                         ;; File only in insiders
+                         (and insiders-file (not stable-file))
+                         (assoc insiders-file
+                                :prompt-sync.file/status :missing-in-stable
+                                :prompt-sync.file/action-needed :copy-to-stable)
 
-                  ;; File in both - check content
-                  (and stable-file insiders-file)
-                  (if (= (:prompt-sync.file/content stable-file) (:prompt-sync.file/content insiders-file))
-                    (update result :prompt-sync.result/identical conj
-                            {:prompt-sync.file/filename filename
-                             :prompt-sync.file/stable-file stable-file
-                             :prompt-sync.file/insiders-file insiders-file
-                             :prompt-sync.file/file-type (:prompt-sync.file/file-type stable-file)})
-                    (update result :prompt-sync.result/conflicts conj
-                            {:prompt-sync.file/filename filename
-                             :prompt-sync.file/stable-file stable-file
-                             :prompt-sync.file/insiders-file insiders-file
-                             :prompt-sync.file/file-type (:prompt-sync.file/file-type stable-file)})))))
-            {:prompt-sync.result/missing-in-stable []
-             :prompt-sync.result/missing-in-insiders []
-             :prompt-sync.result/conflicts []
-             :prompt-sync.result/identical []}
-            all-filenames)))
+                         ;; File in both - check content
+                         (and stable-file insiders-file)
+                         (if (= (:prompt-sync.file/content stable-file)
+                                (:prompt-sync.file/content insiders-file))
+                           (assoc stable-file
+                                  :prompt-sync.file/status :identical
+                                  :prompt-sync.file/action-needed :none
+                                  :prompt-sync.file/insiders-file insiders-file)
+                           (-> stable-file
+                               (assoc :prompt-sync.file/status :conflict
+                                      :prompt-sync.file/action-needed :resolve
+                                      :prompt-sync.file/insiders-file insiders-file))))))
+                   all-filenames))}))
 
 (defn copy-file!+
   "Copies file using workspace.fs"
@@ -150,52 +147,50 @@
                (vscode/workspace.fs.writeFile target-uri content)))))
 
 (defn copy-missing-files!+
-  "Copies missing files automatically, returns summary"
-  [{:prompt-sync.result/keys [missing-in-stable missing-in-insiders]} {:prompt-sync/keys [stable-dir insiders-dir]}]
-  (p/let [_ (p/all (map #(copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri %)
-                                       :prompt-sync/target-uri (vscode/Uri.file
-                                                                (path/join stable-dir (:prompt-sync.file/filename %)))})
-                        missing-in-stable))
-          _ (p/all (map #(copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri %)
-                                       :prompt-sync/target-uri (vscode/Uri.file
-                                                                (path/join insiders-dir (:prompt-sync.file/filename %)))})
-                        missing-in-insiders))]
-    {:prompt-sync.result/copied-from-stable (count missing-in-stable)
-     :prompt-sync.result/copied-from-insiders (count missing-in-insiders)}))
+  "Copies files that need copying and updates their status in the flat list"
+  [all-files {:prompt-sync/keys [stable-dir insiders-dir]}]
+  (p/let [files-to-copy (filter #(#{:missing-in-stable :missing-in-insiders}
+                                   (:prompt-sync.file/status %)) all-files)
 
-(defn add-file-status
-  "Adds status and optional metadata to file data - replaces all transformer functions!"
-  [file-data status & {:keys [resolution copy-direction]}]
-  (cond-> (assoc file-data :prompt-sync.file/status status)
-    resolution (assoc :prompt-sync.file/resolution resolution)
-    copy-direction (assoc :prompt-sync.file/copy-direction copy-direction)))
+          ;; Execute all copy operations
+          _ (p/all (map (fn [file-info]
+                          (case (:prompt-sync.file/status file-info)
+                            :missing-in-stable
+                            (copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri file-info)
+                                          :prompt-sync/target-uri (vscode/Uri.file
+                                                                   (path/join stable-dir (:prompt-sync.file/filename file-info)))})
+                            :missing-in-insiders
+                            (copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri file-info)
+                                          :prompt-sync/target-uri (vscode/Uri.file
+                                                                   (path/join insiders-dir (:prompt-sync.file/filename file-info)))})))
+                        files-to-copy))]
 
-(defn enhance-sync-result
-  "Adds unified all-files view with UNIFORM file objects - much simpler with uniform namespace!"
-  [sync-result]
-  (let [{:prompt-sync.result/keys [conflicts missing-in-stable missing-in-insiders identical resolved]} sync-result
-        ;; Track filenames that were copied to exclude them from identical list
-        copied-filenames (set (concat (map :prompt-sync.file/filename missing-in-insiders)
-                                      (map :prompt-sync.file/filename missing-in-stable)))
-        all-files (concat
-                   ;; Simple status assignments instead of complex transformations!
-                   (map #(add-file-status % :conflict) conflicts)
-                   (map #(add-file-status % :resolved :resolution (:prompt-sync.resolved/action %)) (or resolved []))
-                   (map #(add-file-status % :copied :copy-direction :copied-to-insiders) missing-in-insiders)
-                   (map #(add-file-status % :copied :copy-direction :copied-to-stable) missing-in-stable)
-                   ;; Filter out copied files from identical list
-                   (->> identical
-                        (remove #(copied-filenames (:prompt-sync.file/filename %)))
-                        (map #(add-file-status % :identical))))
-        ;; Sort all files by filename to maintain consistent order
-        sorted-files (sort-by :prompt-sync.file/filename all-files)]
-    (assoc sync-result :prompt-sync.result/all-files sorted-files)))
+    ;; Update statuses to reflect that files were copied
+    (map (fn [file-info]
+           (case (:prompt-sync.file/status file-info)
+             :missing-in-stable
+             (assoc file-info
+                    :prompt-sync.file/status :copied
+                    :prompt-sync.file/copy-direction :copied-to-stable
+                    :prompt-sync.file/action-needed :none)
 
+             :missing-in-insiders
+             (assoc file-info
+                    :prompt-sync.file/status :copied
+                    :prompt-sync.file/copy-direction :copied-to-insiders
+                    :prompt-sync.file/action-needed :none)
+
+             ;; Other statuses unchanged
+             file-info))
+         all-files)))
+
+;; Obsolete functions removed - we now have flat data from the start!
+;; The bucket-based approach required complex transformations that are no longer needed.
 
 (defn show-diff-preview!+
   "Opens VS Code diff editor for conflict preview with default positioning"
-  [{:prompt-sync.file/keys [stable-file insiders-file filename]}]
-  (let [stable-uri (:prompt-sync.file/uri stable-file)
+  [{:prompt-sync.file/keys [filename uri insiders-file]}]
+  (let [stable-uri uri  ; Current file is the stable version
         insiders-uri (:prompt-sync.file/uri insiders-file)
         title (str "Diff: " filename " (Stable ↔ Insiders)")]
     (vscode/commands.executeCommand "vscode.diff"
@@ -215,26 +210,26 @@
     (vscode/ThemeIcon. "diff")))
 
 (defn create-all-files-picker-item
-  "Creates QuickPick item for any file type with appropriate description"
-  [{:prompt-sync.file/keys [filename status file-type copy-direction resolution]}]
+  "Creates QuickPick item with clear status-based descriptions for flat file data"
+  [{:prompt-sync.file/keys [filename status file-type copy-direction action-needed]}]
   (let [icon (get-file-icon file-type)
         description (case status
-                      :conflict (str (name file-type) " • has conflicts")
-                      :identical "identical"
                       :copied (case copy-direction
                                 :copied-to-insiders "Stable → Insiders"
                                 :copied-to-stable "Insiders → Stable"
                                 "copied") ; fallback
-                      :resolved (case resolution
-                                  :resolution/choose-stable "resolved • chose Stable"
-                                  :resolution/choose-insiders "resolved • chose Insiders"
-                                  :resolution/skipped "resolved • skipped"
-                                  "resolved") ; fallback
+                      :conflict (str (name file-type) " • has conflicts")
+                      :identical "identical"
+                      :missing-in-stable (str (name file-type) " • missing in stable")
+                      :missing-in-insiders (str (name file-type) " • missing in insiders")
+                      :resolved "resolved"
                       (str (name file-type) " • " (name status)))
-        detail (case status
-                 :conflict "Select to choose resolution"
-                 :resolved "Resolution complete"
-                 "Preview only")]
+        detail (case action-needed
+                 :resolve "Select to choose resolution"
+                 :copy-to-stable "Will be copied to stable"
+                 :copy-to-insiders "Will be copied to insiders"
+                 :none "Preview only"
+                 "")]
     #js {:label filename
          :iconPath icon
          :description description
@@ -246,16 +241,15 @@
 
 (defn show-file-preview!+
   "Shows file preview for non-conflict files"
-  [{:prompt-sync.file/keys [stable-file insiders-file]}]
-  (let [file-to-preview (or stable-file insiders-file)
-        uri (:prompt-sync.file/uri file-to-preview)]
-    (when uri
-      (vscode/commands.executeCommand "vscode.open" uri #js {:preview true
-                                                             :preserveFocus true}))))
+  [{:prompt-sync.file/keys [uri insiders-file]}]
+  (let [file-uri (or uri (:prompt-sync.file/uri insiders-file))]
+    (when file-uri
+      (vscode/commands.executeCommand "vscode.open" file-uri #js {:preview true
+                                                                  :preserveFocus true}))))
 
 (defn show-all-files-picker!+
   "Shows QuickPick for all files with appropriate preview and selection behavior"
-  [{:prompt-sync.result/keys [all-files conflicts]}]
+  [all-files]
   (if (empty? all-files)
     (p/resolved nil)
     (let [items (map create-all-files-picker-item all-files)
@@ -275,7 +269,7 @@
                                     is-conflict (.-isConflict file-info)]
                                 (if is-conflict
                                   ;; Show diff for conflicts
-                                  (let [conflict-info (first (filter #(= (:prompt-sync.file/filename %) filename) conflicts))]
+                                  (let [conflict-info (first (filter #(= (:prompt-sync.file/filename %) filename) all-files))]
                                     (when conflict-info
                                       (show-diff-preview!+ conflict-info)))
                                   ;; Show simple preview for non-conflicts
@@ -294,7 +288,7 @@
                                (if is-conflict
                                  ;; Return conflict data for resolution
                                  (let [filename (.-filename file-info)
-                                       conflict-info (first (filter #(= (:prompt-sync.file/filename %) filename) conflicts))]
+                                       conflict-info (first (filter #(= (:prompt-sync.file/filename %) filename) all-files))]
                                    (.hide picker)
                                    (resolve conflict-info))
                                  ;; For non-conflicts, keep picker open (don't resolve)
@@ -339,20 +333,22 @@
   (log! :debug "  Choice:" choice)
   (log! :debug "  Choice type:" (type choice))
   (log! :debug "  Conflict filename:" (:prompt-sync.file/filename conflict))
-  (let [{:prompt-sync.file/keys [stable-file insiders-file filename]} conflict]
-    (log! :debug "  Stable file URI:" (:prompt-sync.file/uri stable-file))
-    (log! :debug "  Insiders file URI:" (:prompt-sync.file/uri insiders-file))
+  (let [{:prompt-sync.file/keys [uri insiders-file filename]} conflict
+        stable-uri uri  ; Current file is the stable version
+        insiders-uri (:prompt-sync.file/uri insiders-file)]
+    (log! :debug "  Stable file URI:" stable-uri)
+    (log! :debug "  Insiders file URI:" insiders-uri)
     (case choice
       :prompt-sync.action/choose-stable
       (do (log! :debug "  → Copying stable to insiders")
-          (p/let [_ (copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri stable-file)
-                                  :prompt-sync/target-uri (:prompt-sync.file/uri insiders-file)})]
+          (p/let [_ (copy-file!+ {:prompt-sync/source-uri stable-uri
+                                  :prompt-sync/target-uri insiders-uri})]
             {:prompt-sync.resolution/action :choose-stable :prompt-sync.resolution/filename filename :prompt-sync.resolution/success true}))
 
       :prompt-sync.action/choose-insiders
       (do (log! :debug "  → Copying insiders to stable")
-          (p/let [_ (copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri insiders-file)
-                                  :prompt-sync/target-uri (:prompt-sync.file/uri stable-file)})]
+          (p/let [_ (copy-file!+ {:prompt-sync/source-uri insiders-uri
+                                  :prompt-sync/target-uri stable-uri})]
             {:prompt-sync.resolution/action :choose-insiders :prompt-sync.resolution/filename filename :prompt-sync.resolution/success true}))
 
       :prompt-sync.action/skip
@@ -451,24 +447,21 @@
   []
   (p/resolved :cancelled))
 
-(defn update-sync-result-after-resolution
-  "Pure function for updating sync result after conflict resolution"
-  [enhanced-result resolved-conflict resolution-type]
-  (let [updated-conflicts (remove #(= % resolved-conflict) (:prompt-sync.result/conflicts enhanced-result))
-        resolved-entry {:prompt-sync.file/filename (:prompt-sync.file/filename resolved-conflict)
-                        :prompt-sync.file/stable-file (:prompt-sync.file/stable-file resolved-conflict)
-                        :prompt-sync.file/insiders-file (:prompt-sync.file/insiders-file resolved-conflict)
-                        :prompt-sync.file/file-type (:prompt-sync.file/file-type resolved-conflict)
-                        :prompt-sync.resolved/action resolution-type}
-        existing-resolved (get enhanced-result :prompt-sync.result/resolved [])
-        updated-enhanced (-> enhanced-result
-                             (assoc :prompt-sync.result/conflicts updated-conflicts)
-                             (assoc :prompt-sync.result/resolved (conj existing-resolved resolved-entry)))]
-    (enhance-sync-result updated-enhanced)))
+(defn update-file-status-after-resolution
+  "Pure function for updating file status after conflict resolution in flat list"
+  [all-files resolved-filename resolution-type]
+  (map (fn [file-info]
+         (if (= (:prompt-sync.file/filename file-info) resolved-filename)
+           (assoc file-info
+                  :prompt-sync.file/status :resolved
+                  :prompt-sync.file/resolution resolution-type
+                  :prompt-sync.file/action-needed :none)
+           file-info))
+       all-files))
 
 (defn resolve-single-conflict!+
   "Handles single conflict resolution with UI interaction"
-  [selected-conflict enhanced-result]
+  [selected-conflict all-files]
   (p/let [choice (show-resolution-menu!+ selected-conflict)]
     (if choice
       (p/let [_ (resolve-conflict!+ selected-conflict choice)
@@ -476,23 +469,25 @@
                                 :prompt-sync.action/choose-stable :resolution/choose-stable
                                 :prompt-sync.action/choose-insiders :resolution/choose-insiders
                                 :prompt-sync.action/skip :resolution/skipped)
-              updated-result (update-sync-result-after-resolution enhanced-result selected-conflict resolution-type)]
-        updated-result)
+              updated-files (update-file-status-after-resolution all-files
+                                                                (:prompt-sync.file/filename selected-conflict)
+                                                                resolution-type)]
+        updated-files)
       (handle-cancellation))))
 
 (defn handle-conflicts!+
-  "Clean iterative conflict handling using p/loop instead of deep recursion"
-  [enhanced-sync-result]
-  (p/loop [current-result enhanced-sync-result]
-    (let [remaining-conflicts (:prompt-sync.result/conflicts current-result)]
+  "Clean iterative conflict handling using p/loop with flat file list"
+  [all-files]
+  (p/loop [current-files all-files]
+    (let [remaining-conflicts (filter #(= (:prompt-sync.file/status %) :conflict) current-files)]
       (if (empty? remaining-conflicts)
         (p/resolved :completed)
-        (p/let [selected-conflict (show-all-files-picker!+ current-result)]
+        (p/let [selected-conflict (show-all-files-picker!+ current-files)]
           (if selected-conflict
-            (p/let [updated-result (resolve-single-conflict!+ selected-conflict current-result)]
-              (if (= updated-result :cancelled)
+            (p/let [updated-files (resolve-single-conflict!+ selected-conflict current-files)]
+              (if (= updated-files :cancelled)
                 (handle-cancellation)
-                (p/recur updated-result)))
+                (p/recur updated-files)))
             (handle-cancellation)))))))
 
 (defn sync-prompts!+
@@ -514,17 +509,19 @@
            sync-result (compare-directories!+ {:prompt-sync/stable-dir stable-dir
                                                :prompt-sync/insiders-dir insiders-dir})
 
-           ;; Copy missing files automatically
-           copy-summary (copy-missing-files!+ sync-result dirs)
+           ;; Extract the flat file list from the result
+           all-files (:prompt-sync.result/all-files sync-result)
 
-           _ (do (log! :debug
-                  (str "Auto-copied: " (:prompt-sync.result/copied-from-stable copy-summary) " from stable, "
-                       (:prompt-sync.result/copied-from-insiders copy-summary) " from insiders"))
-                 nil)
+           ;; Copy missing files automatically and get updated file list
+           updated-files (copy-missing-files!+ all-files dirs)
 
-           enhanced-result (enhance-sync-result sync-result)]
+           ;; Count what was copied for logging
+           copied-count (count (filter #(= (:prompt-sync.file/status %) :copied) updated-files))
 
-     (handle-conflicts!+ enhanced-result))))
+           _ (do (log! :debug (str "Auto-copied: " copied-count " files"))
+                 nil)]
+
+     (handle-conflicts!+ updated-files))))
 
 ;; Export for use (disabled until we're ready making sure the test mode works )
 (defn ^:export main-disabled []
