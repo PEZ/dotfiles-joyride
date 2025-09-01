@@ -159,42 +159,54 @@
         copied-filenames (set (concat (map :prompt-sync.file/filename missing-in-insiders)
                                       (map :prompt-sync.file/filename missing-in-stable)))
         all-files (concat
-                   ;; Conflicts
+                   ;; Conflicts - pure state, no other fields
                    (map (fn [{:prompt-sync.conflict/keys [filename stable-file insiders-file file-type]}]
                           {:prompt-sync.file/filename filename
-                           :prompt-sync.file/status :conflict
+                           :prompt-sync.file/status :conflict  ; PURE STATE
                            :prompt-sync.file/file-type file-type
                            :prompt-sync.file/stable-file stable-file
                            :prompt-sync.file/insiders-file insiders-file})
                         conflicts)
-                   ;; Resolved conflicts
+                   ;; Resolved conflicts - separate status and resolution
                    (map (fn [{:prompt-sync.resolved/keys [filename stable-file insiders-file file-type action]}]
                           {:prompt-sync.file/filename filename
-                           :prompt-sync.file/status action  ; :resolved-to-stable, :resolved-to-insiders, :resolution-skipped
+                           :prompt-sync.file/status :resolved  ; PURE STATE
                            :prompt-sync.file/file-type file-type
                            :prompt-sync.file/stable-file stable-file
-                           :prompt-sync.file/insiders-file insiders-file})
+                           :prompt-sync.file/insiders-file insiders-file
+                           ;; SEPARATED CONCERN: resolution in its own field
+                           :prompt-sync.file/resolution (case action
+                                                          :resolution/choose-stable :resolution/choose-stable
+                                                          :resolution/choose-insiders :resolution/choose-insiders
+                                                          :resolution/skipped :resolution/skipped
+                                                          ;; Legacy compatibility during transition
+                                                          :resolved-to-stable :resolution/choose-stable
+                                                          :resolved-to-insiders :resolution/choose-insiders
+                                                          :resolution-skipped :resolution/skipped)})
                         (or resolved []))
-                   ;; Missing in insiders (copied from stable)
+                   ;; Missing files - separate status and copy direction
                    (map (fn [stable-file]
                           {:prompt-sync.file/filename (:prompt-sync.file/filename stable-file)
-                           :prompt-sync.file/status (:prompt-sync.file/copy-direction stable-file)
+                           :prompt-sync.file/status :copied  ; PURE STATE
                            :prompt-sync.file/file-type (:prompt-sync.file/file-type stable-file)
                            :prompt-sync.file/stable-file stable-file
-                           :prompt-sync.file/insiders-file nil})
+                           :prompt-sync.file/insiders-file nil
+                           ;; SEPARATED CONCERN: copy direction in its own field
+                           :prompt-sync.file/copy-direction :copied-to-insiders})
                         missing-in-insiders)
-                   ;; Missing in stable (copied from insiders)
                    (map (fn [insiders-file]
                           {:prompt-sync.file/filename (:prompt-sync.file/filename insiders-file)
-                           :prompt-sync.file/status (:prompt-sync.file/copy-direction insiders-file)
+                           :prompt-sync.file/status :copied  ; PURE STATE
                            :prompt-sync.file/file-type (:prompt-sync.file/file-type insiders-file)
                            :prompt-sync.file/stable-file nil
-                           :prompt-sync.file/insiders-file insiders-file})
+                           :prompt-sync.file/insiders-file insiders-file
+                           ;; SEPARATED CONCERN: copy direction in its own field
+                           :prompt-sync.file/copy-direction :copied-to-stable})
                         missing-in-stable)
-                   ;; Identical files (exclude files that were copied)
+                   ;; Identical files - pure state, no other fields
                    (map (fn [{:prompt-sync.conflict/keys [filename stable-file insiders-file]}]
                           {:prompt-sync.file/filename filename
-                           :prompt-sync.file/status :identical
+                           :prompt-sync.file/status :identical  ; PURE STATE
                            :prompt-sync.file/file-type (:prompt-sync.file/file-type stable-file)
                            :prompt-sync.file/stable-file stable-file
                            :prompt-sync.file/insiders-file insiders-file})
@@ -228,20 +240,24 @@
 
 (defn create-all-files-picker-item
   "Creates QuickPick item for any file type with appropriate description"
-  [{:prompt-sync.file/keys [filename status file-type]}]
+  [{:prompt-sync.file/keys [filename status file-type copy-direction resolution]}]
   (let [icon (get-file-icon file-type)
         description (case status
                       :conflict (str (name file-type) " • has conflicts")
                       :identical "identical"
-                      :copied-to-insiders "Stable → Insiders"
-                      :copied-to-stable "Insiders → Stable"
-                      :resolved-to-stable "resolved • chose Stable"
-                      :resolved-to-insiders "resolved • chose Insiders"
-                      :resolution-skipped "resolved • skipped"
+                      :copied (case copy-direction
+                                :copied-to-insiders "Stable → Insiders"
+                                :copied-to-stable "Insiders → Stable"
+                                "copied") ; fallback
+                      :resolved (case resolution
+                                  :resolution/choose-stable "resolved • chose Stable"
+                                  :resolution/choose-insiders "resolved • chose Insiders"
+                                  :resolution/skipped "resolved • skipped"
+                                  "resolved") ; fallback
                       (str (name file-type) " • " (name status)))
         detail (case status
                  :conflict "Select to choose resolution"
-                 (:resolved-to-stable :resolved-to-insiders :resolution-skipped) "Resolution complete"
+                 :resolved "Resolution complete"
                  "Preview only")]
     #js {:label filename
          :iconPath icon
@@ -471,15 +487,17 @@
                          (do (vscode/window.showInformationMessage (str "Resolved: " (:prompt-sync.conflict/filename selected-conflict)))
                              ;; Update the enhanced result to remove resolved conflict and add to resolved list
                              (let [updated-conflicts (remove #(= % selected-conflict) remaining-conflicts)
-                                   resolution-status (case choice
-                                                       :prompt-sync.action/choose-stable :resolved-to-stable
-                                                       :prompt-sync.action/choose-insiders :resolved-to-insiders
-                                                       :prompt-sync.action/skip :resolution-skipped)
+                                   ;; NEW: Clean resolution tracking with separated concerns
+                                   resolution-type (case choice
+                                                     :prompt-sync.action/choose-stable :resolution/choose-stable
+                                                     :prompt-sync.action/choose-insiders :resolution/choose-insiders
+                                                     :prompt-sync.action/skip :resolution/skipped)
                                    resolved-entry {:prompt-sync.resolved/filename (:prompt-sync.conflict/filename selected-conflict)
                                                    :prompt-sync.resolved/stable-file (:prompt-sync.conflict/stable-file selected-conflict)
                                                    :prompt-sync.resolved/insiders-file (:prompt-sync.conflict/insiders-file selected-conflict)
                                                    :prompt-sync.resolved/file-type (:prompt-sync.conflict/file-type selected-conflict)
-                                                   :prompt-sync.resolved/action resolution-status}
+                                                   ;; NEW: Use clean resolution action, not mixed status
+                                                   :prompt-sync.resolved/action resolution-type}
                                    existing-resolved (get enhanced-sync-result :prompt-sync.result/resolved [])
                                    updated-enhanced (-> enhanced-sync-result
                                                         (assoc :prompt-sync.result/conflicts updated-conflicts)
