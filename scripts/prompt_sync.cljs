@@ -151,70 +151,96 @@
     {:copied-from-stable (count missing-in-stable)
      :copied-from-insiders (count missing-in-insiders)}))
 
+(defn create-uniform-file
+  "Creates a uniform file object with all 7 fields, using nil for unused fields"
+  [{:keys [filename status file-type stable-file insiders-file copy-direction resolution]}]
+  {:prompt-sync.file/filename filename
+   :prompt-sync.file/status status
+   :prompt-sync.file/file-type file-type
+   :prompt-sync.file/stable-file stable-file
+   :prompt-sync.file/insiders-file insiders-file
+   :prompt-sync.file/copy-direction copy-direction  ; nil when not applicable
+   :prompt-sync.file/resolution resolution})        ; nil when not applicable
+
+(defn conflict->uniform-file
+  "Transforms conflict data to uniform file object"
+  [{:prompt-sync.conflict/keys [filename stable-file insiders-file file-type]}]
+  (create-uniform-file {:filename filename
+                        :status :conflict
+                        :file-type file-type
+                        :stable-file stable-file
+                        :insiders-file insiders-file
+                        :copy-direction nil
+                        :resolution nil}))
+
+(defn resolved->uniform-file
+  "Transforms resolved conflict data to uniform file object"
+  [{:prompt-sync.resolved/keys [filename stable-file insiders-file file-type action]}]
+  (create-uniform-file {:filename filename
+                        :status :resolved
+                        :file-type file-type
+                        :stable-file stable-file
+                        :insiders-file insiders-file
+                        :copy-direction nil
+                        :resolution (case action
+                                      :resolution/choose-stable :resolution/choose-stable
+                                      :resolution/choose-insiders :resolution/choose-insiders
+                                      :resolution/skipped :resolution/skipped
+                                      ;; Legacy compatibility during transition
+                                      :resolved-to-stable :resolution/choose-stable
+                                      :resolved-to-insiders :resolution/choose-insiders
+                                      :resolution-skipped :resolution/skipped)}))
+
+(defn missing-insiders->uniform-file
+  "Transforms missing-in-insiders file to uniform file object"
+  [stable-file]
+  (create-uniform-file {:filename (:prompt-sync.file/filename stable-file)
+                        :status :copied
+                        :file-type (:prompt-sync.file/file-type stable-file)
+                        :stable-file stable-file
+                        :insiders-file nil
+                        :copy-direction :copied-to-insiders
+                        :resolution nil}))
+
+(defn missing-stable->uniform-file
+  "Transforms missing-in-stable file to uniform file object"
+  [insiders-file]
+  (create-uniform-file {:filename (:prompt-sync.file/filename insiders-file)
+                        :status :copied
+                        :file-type (:prompt-sync.file/file-type insiders-file)
+                        :stable-file nil
+                        :insiders-file insiders-file
+                        :copy-direction :copied-to-stable
+                        :resolution nil}))
+
+(defn identical->uniform-file
+  "Transforms identical file data to uniform file object"
+  [{:prompt-sync.conflict/keys [filename stable-file insiders-file]}]
+  (create-uniform-file {:filename filename
+                        :status :identical
+                        :file-type (:prompt-sync.file/file-type stable-file)
+                        :stable-file stable-file
+                        :insiders-file insiders-file
+                        :copy-direction nil
+                        :resolution nil}))
+
 (defn enhance-sync-result
-  "Adds unified all-files view with UNIFORM file objects - all have same shape"
+  "Adds unified all-files view with UNIFORM file objects - clean and concise!"
   [sync-result]
   (let [{:prompt-sync.result/keys [conflicts missing-in-stable missing-in-insiders identical resolved]} sync-result
         ;; Track filenames that were copied to exclude them from identical list
         copied-filenames (set (concat (map :prompt-sync.file/filename missing-in-insiders)
                                       (map :prompt-sync.file/filename missing-in-stable)))
         all-files (concat
-                   ;; Conflicts - UNIFORM: all fields present, nil for unused
-                   (map (fn [{:prompt-sync.conflict/keys [filename stable-file insiders-file file-type]}]
-                          {:prompt-sync.file/filename filename
-                           :prompt-sync.file/status :conflict
-                           :prompt-sync.file/file-type file-type
-                           :prompt-sync.file/stable-file stable-file
-                           :prompt-sync.file/insiders-file insiders-file
-                           :prompt-sync.file/copy-direction nil  ; UNIFORM: always present
-                           :prompt-sync.file/resolution nil})    ; UNIFORM: always present
-                        conflicts)
-                   ;; Resolved conflicts - UNIFORM: all fields present
-                   (map (fn [{:prompt-sync.resolved/keys [filename stable-file insiders-file file-type action]}]
-                          {:prompt-sync.file/filename filename
-                           :prompt-sync.file/status :resolved
-                           :prompt-sync.file/file-type file-type
-                           :prompt-sync.file/stable-file stable-file
-                           :prompt-sync.file/insiders-file insiders-file
-                           :prompt-sync.file/copy-direction nil  ; UNIFORM: always present
-                           :prompt-sync.file/resolution (case action
-                                                          :resolution/choose-stable :resolution/choose-stable
-                                                          :resolution/choose-insiders :resolution/choose-insiders
-                                                          :resolution/skipped :resolution/skipped
-                                                          ;; Legacy compatibility during transition
-                                                          :resolved-to-stable :resolution/choose-stable
-                                                          :resolved-to-insiders :resolution/choose-insiders
-                                                          :resolution-skipped :resolution/skipped)})
-                        (or resolved []))
-                   ;; Missing files - UNIFORM: all fields present
-                   (map (fn [stable-file]
-                          {:prompt-sync.file/filename (:prompt-sync.file/filename stable-file)
-                           :prompt-sync.file/status :copied
-                           :prompt-sync.file/file-type (:prompt-sync.file/file-type stable-file)
-                           :prompt-sync.file/stable-file stable-file
-                           :prompt-sync.file/insiders-file nil  ; UNIFORM: always present, nil when missing
-                           :prompt-sync.file/copy-direction :copied-to-insiders
-                           :prompt-sync.file/resolution nil})   ; UNIFORM: always present
-                        missing-in-insiders)
-                   (map (fn [insiders-file]
-                          {:prompt-sync.file/filename (:prompt-sync.file/filename insiders-file)
-                           :prompt-sync.file/status :copied
-                           :prompt-sync.file/file-type (:prompt-sync.file/file-type insiders-file)
-                           :prompt-sync.file/stable-file nil    ; UNIFORM: always present, nil when missing
-                           :prompt-sync.file/insiders-file insiders-file
-                           :prompt-sync.file/copy-direction :copied-to-stable
-                           :prompt-sync.file/resolution nil})   ; UNIFORM: always present
-                        missing-in-stable)
-                   ;; Identical files - UNIFORM: all fields present
-                   (map (fn [{:prompt-sync.conflict/keys [filename stable-file insiders-file]}]
-                          {:prompt-sync.file/filename filename
-                           :prompt-sync.file/status :identical
-                           :prompt-sync.file/file-type (:prompt-sync.file/file-type stable-file)
-                           :prompt-sync.file/stable-file stable-file
-                           :prompt-sync.file/insiders-file insiders-file
-                           :prompt-sync.file/copy-direction nil  ; UNIFORM: always present
-                           :prompt-sync.file/resolution nil})    ; UNIFORM: always present
-                        (remove #(copied-filenames (:prompt-sync.conflict/filename %)) identical)))
+                   ;; Transform each data type using specialized functions
+                   (map conflict->uniform-file conflicts)
+                   (map resolved->uniform-file (or resolved []))
+                   (map missing-insiders->uniform-file missing-in-insiders)
+                   (map missing-stable->uniform-file missing-in-stable)
+                   ;; Filter out copied files from identical list
+                   (->> identical
+                        (remove #(copied-filenames (:prompt-sync.conflict/filename %)))
+                        (map identical->uniform-file)))
         ;; Sort all files by filename to maintain consistent order
         sorted-files (sort-by :prompt-sync.file/filename all-files)]
     (assoc sync-result :prompt-sync.result/all-files sorted-files)))
