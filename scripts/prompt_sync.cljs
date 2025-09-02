@@ -174,7 +174,7 @@
     :instruction.type/chatmode (vscode/ThemeIcon. "color-mode")
     (vscode/ThemeIcon. "diff")))
 
-(defn create-picker-item
+(defn instruction->quickpick-item
   "Creates QuickPick item"
   [{:instruction/keys [filename status instruction-type action-needed resolution]}]
   (def status status)
@@ -204,7 +204,7 @@
                         :instruction-type (name instruction-type)
                         :isConflict (= status :status/conflict)}}))
 
-(defn create-status-item
+(defn instructions->status-summary-item
   "Creates a descriptive status menu item for the picker"
   [instructions]
   (let [status-counts (frequencies (map :instruction/status instructions))
@@ -270,7 +270,7 @@
        (filter #(not= (:instruction/status %) :status/resolved))
        count))
 
-(defn create-grouped-menu-items
+(defn instructions->menu-items
   "Creates hierarchical menu structure with buttons on first items"
   [instructions]
   (let [grouped (group-by-original-status instructions)
@@ -280,7 +280,7 @@
                    (let [total-count (count group)
                          unresolved-count (count-unresolved-in-group group)
                          section-header (create-section-header-item original-status total-count)
-                         file-items (map create-picker-item group)
+                         file-items (map instruction->quickpick-item group)
                          ;; Add button to first file item if we have unresolved items and it's a missing group
                          enhanced-file-items (if (and (> unresolved-count 0)
                                                       (#{:original/missing-in-stable :original/missing-in-insiders} original-status)
@@ -317,14 +317,14 @@
       (vscode/commands.executeCommand "vscode.open" file-uri #js {:preview true
                                                                   :preserveFocus true}))))
 
-(defn show-all-files-picker!+
+(defn show-instructions-picker!+
   "Shows QuickPick for all files with appropriate preview and selection behavior"
-  ([all-instructions] (show-all-files-picker!+ all-instructions nil))
+  ([all-instructions] (show-instructions-picker!+ all-instructions nil))
   ([all-instructions last-active-item]
    (if (empty? all-instructions)
      (p/resolved nil)
-     (let [status-item (create-status-item all-instructions)
-           grouped-items (create-grouped-menu-items all-instructions)
+     (let [status-item (instructions->status-summary-item all-instructions)
+           grouped-items (instructions->menu-items all-instructions)
            items (into [status-item] grouped-items)
            picker (vscode/window.createQuickPick)
            last-active-index (when last-active-item
@@ -632,7 +632,7 @@
          :updated-instructions updated-instructions})
       {:bulk-operation-applied false})))
 
-(defn update-instruction-status-after-resolution
+(defn record-resolution
   "Pure function for updating instruction status after conflict resolution"
   [all-instructions resolved-filename resolution-type]
   (map (fn [instruction]
@@ -644,7 +644,7 @@
            instruction))
        all-instructions))
 
-(defn resolve-single-conflict!+
+(defn resolve-conflict!+
   "Handles single conflict resolution with UI interaction"
   [selected-instruction all-instructions dirs]
   (p/let [choice (show-resolution-menu!+ selected-instruction)]
@@ -656,7 +656,7 @@
                                 :prompt-sync.action/sync-to-stable :resolution/sync-to-stable
                                 :prompt-sync.action/sync-to-insiders :resolution/sync-to-insiders
                                 :prompt-sync.action/skip :resolution/skipped)
-              updated-instructions (update-instruction-status-after-resolution all-instructions
+              updated-instructions (record-resolution all-instructions
                                                                                (:instruction/filename selected-instruction)
                                                                                resolution-type)]
         updated-instructions)
@@ -670,7 +670,7 @@
    (def instructions instructions) ; excellent for interactive debugging
    (p/loop [current-instructions instructions
             last-active last-active-item]
-     (p/let [selected-instruction (show-all-files-picker!+ current-instructions last-active)]
+     (p/let [selected-instruction (show-instructions-picker!+ current-instructions last-active)]
        (if selected-instruction
          (cond
            (:bulk-operation-request selected-instruction)
@@ -688,7 +688,7 @@
 
            :else
            ;; Handle single instruction resolution
-           (p/let [updated-instructions (resolve-single-conflict!+ selected-instruction current-instructions dirs)]
+           (p/let [updated-instructions (resolve-conflict!+ selected-instruction current-instructions dirs)]
              (if (= updated-instructions :cancelled)
                (p/recur current-instructions selected-instruction) ; Keep the selected item as the last active
                (p/recur updated-instructions selected-instruction)))) ; Pass along the selected item for memory
