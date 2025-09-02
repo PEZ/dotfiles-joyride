@@ -370,6 +370,31 @@
       (vscode/commands.executeCommand "vscode.open" file-uri #js {:preview true
                                                                   :preserveFocus true}))))
 
+(defn handle-button-trigger
+  "Pure function to handle picker item button trigger events"
+  [button item instructions]
+  (let [action (-> button .-iconPath keyword)]
+    (case action
+      :prompt-sync.action/sync-to-stable [:action/sync-to-stable (:instruction/filename item)]
+      :prompt-sync.action/sync-to-insiders [:action/sync-to-insiders (:instruction/filename item)]
+      :prompt-sync.action/skip [:action/skip (:instruction/filename item)]
+      :prompt-sync.action/diff [:action/diff item]
+      [:action/unknown action])))
+
+(defn handle-picker-accept
+  "Pure function to determine bulk action from picker selection"
+  [picker]
+  (when-let [selected-items (and picker (.-selectedItems picker))]
+    (when (> (.-length selected-items) 0)
+      (let [first-item (aget selected-items 0)
+            item-label (.-label first-item)]
+        (case item-label
+          "🚀 Sync all to Stable" :prompt-sync.action/sync-all-to-stable
+          "🚀 Sync all to Insiders" :prompt-sync.action/sync-all-to-insiders
+          "📋 Sync all missing to both" :prompt-sync.action/sync-all-missing
+          "⏭️ Skip all missing" :prompt-sync.action/skip-all-missing
+          nil)))))
+
 (defn show-instructions-picker!+
   "Shows QuickPick for all files with appropriate preview and selection behavior"
   ([all-instructions] (show-instructions-picker!+ all-instructions nil))
@@ -384,9 +409,10 @@
                                (when-let [item-index (->> items
                                                           (map-indexed vector)
                                                           (filter (fn [[_idx item]]
-                                                                    (and (#{(.-itemType item)} #{"file" "file-with-bulk-button"})
-                                                                         (= (.-filename (.-fileInfo item))
-                                                                            (:instruction/filename last-active-item)))))
+                                                                    (and (#{"file" "file-with-bulk-button"} (.-itemType item))
+                                                                         (when (.-fileInfo item)
+                                                                           (= (.-filename (.-fileInfo item))
+                                                                              (:instruction/filename last-active-item))))))
                                                           (first)
                                                           (first))]
                                  item-index))]
@@ -549,9 +575,19 @@
   (let [missing-stable (filter #(= (:instruction/status %) :status/missing-in-stable) instructions)
         missing-insiders (filter #(= (:instruction/status %) :status/missing-in-insiders) instructions)
         all-missing (concat missing-stable missing-insiders)]
-    ;; Early return if no missing files to prevent QuickPick flash
+    ;; Show informational message if no missing files, otherwise show bulk operations
     (if-not (seq all-missing)
-      (p/resolved nil)
+      (let [summary (frequencies (map :instruction/status instructions))
+            conflicts (:status/conflict summary 0)
+            resolved (:status/resolved summary 0)
+            identical (:status/identical summary 0)
+            total (count instructions)]
+        (-> (vscode/window.showInformationMessage
+             (str "No bulk operations available. Status: "
+                  total " total, " identical " identical, "
+                  conflicts " conflicts, " resolved " resolved")
+             #js {:modal false})
+            (.then (fn [_] nil)))) ; Always return nil for no action
       (let [actions (cond-> []
                       (seq missing-stable)
                       (conj {:label (str "Sync All to Stable (" (count missing-stable) " files)")
@@ -665,6 +701,39 @@
     :prompt-sync.action/skip-all-missing (filter-all-missing all-instructions)
     []))
 
+(defn process-bulk-instruction
+  "Pure function to process single instruction in bulk operation"
+  [instruction targets choice]
+  (when (some #(= (:instruction/filename %) (:instruction/filename instruction)) targets)
+    (case choice
+      :prompt-sync.action/sync-all-to-stable [:action/sync-to-stable (:instruction/filename instruction)]
+      :prompt-sync.action/sync-all-to-insiders [:action/sync-to-insiders (:instruction/filename instruction)]
+      :prompt-sync.action/sync-all-missing
+      (case (:instruction/status instruction)
+        :status/missing-in-stable [:action/sync-to-stable (:instruction/filename instruction)]
+        :status/missing-in-insiders [:action/sync-to-insiders (:instruction/filename instruction)]
+        nil)
+      :prompt-sync.action/skip-all-missing [:action/skip (:instruction/filename instruction)]
+      nil)))
+
+(defn update-instruction-status-bulk
+  "Pure function to update instruction status after bulk operation"
+  [instruction targets choice]
+  (if (some #(= (:instruction/filename %) (:instruction/filename instruction)) targets)
+    (let [resolution (case choice
+                       :prompt-sync.action/sync-all-to-stable :resolution/sync-to-stable
+                       :prompt-sync.action/sync-all-to-insiders :resolution/sync-to-insiders
+                       :prompt-sync.action/sync-all-missing
+                       (case (:instruction/status instruction)
+                         :status/missing-in-stable :resolution/sync-to-stable
+                         :status/missing-in-insiders :resolution/sync-to-insiders)
+                       :prompt-sync.action/skip-all-missing :resolution/skipped)]
+      (assoc instruction
+             :instruction/status :status/resolved
+             :instruction/resolution resolution
+             :instruction/action-needed :none))
+    instruction))
+
 (defn apply-bulk-operation!+
   "Applies bulk resolution operation to multiple instructions"
   [all-instructions choice dirs]
@@ -673,38 +742,13 @@
       (p/resolved all-instructions)
       (p/let [;; Execute all file operations in parallel
               _ (p/all (map (fn [instruction]
-                              (case choice
-                                :prompt-sync.action/sync-all-to-stable
-                                (resolve-instruction!+ instruction :prompt-sync.action/sync-to-stable dirs)
-
-                                :prompt-sync.action/sync-all-to-insiders
-                                (resolve-instruction!+ instruction :prompt-sync.action/sync-to-insiders dirs)
-
-                                :prompt-sync.action/sync-all-missing
-                                (let [action (case (:instruction/status instruction)
-                                               :status/missing-in-stable :prompt-sync.action/sync-to-stable
-                                               :status/missing-in-insiders :prompt-sync.action/sync-to-insiders)]
-                                  (resolve-instruction!+ instruction action dirs))
-
-                                :prompt-sync.action/skip-all-missing
-                                (resolve-instruction!+ instruction :prompt-sync.action/skip dirs)))
+                              (when-let [action-data (process-bulk-instruction instruction targets choice)]
+                                (let [[action _filename] action-data]
+                                  (resolve-instruction!+ instruction action dirs))))
                             targets))]
         ;; Update all instruction statuses
         (map (fn [instruction]
-               (if (some #(= (:instruction/filename %) (:instruction/filename instruction)) targets)
-                 (let [resolution (case choice
-                                    :prompt-sync.action/sync-all-to-stable :resolution/sync-to-stable
-                                    :prompt-sync.action/sync-all-to-insiders :resolution/sync-to-insiders
-                                    :prompt-sync.action/sync-all-missing
-                                    (case (:instruction/status instruction)
-                                      :status/missing-in-stable :resolution/sync-to-stable
-                                      :status/missing-in-insiders :resolution/sync-to-insiders)
-                                    :prompt-sync.action/skip-all-missing :resolution/skipped)]
-                   (assoc instruction
-                          :instruction/status :status/resolved
-                          :instruction/resolution resolution
-                          :instruction/action-needed :none))
-                 instruction))
+               (update-instruction-status-bulk instruction targets choice))
              all-instructions)))))
 
 (defn handle-bulk-operations!+
