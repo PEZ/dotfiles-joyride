@@ -164,13 +164,13 @@
                             :missing-in-stable
                             (let [source-uri (-> instruction :instruction/insiders :location/uri)
                                   target-uri (vscode/Uri.file
-                                             (path/join stable-dir (:instruction/filename instruction)))]
+                                              (path/join stable-dir (:instruction/filename instruction)))]
                               (copy-file!+ {:prompt-sync/source-uri source-uri
                                             :prompt-sync/target-uri target-uri}))
                             :missing-in-insiders
                             (let [source-uri (-> instruction :instruction/stable :location/uri)
                                   target-uri (vscode/Uri.file
-                                             (path/join insiders-dir (:instruction/filename instruction)))]
+                                              (path/join insiders-dir (:instruction/filename instruction)))]
                               (copy-file!+ {:prompt-sync/source-uri source-uri
                                             :prompt-sync/target-uri target-uri}))))
                         instructions-to-copy))]
@@ -240,6 +240,7 @@
          :iconPath icon
          :description description
          :detail (str (name instruction-type) " • " status-string)
+         :itemType "file"
          :fileInfo #js {:filename filename
                         :status (name status)
                         :instruction-type (name instruction-type)
@@ -262,11 +263,114 @@
                      "R:" resolved ", "
                      "C:" conflicts)
          :description (str "Identical: " identical
-                      " • Missing in Stable: " missing-stable
-                      " • Missing in Insiders: " missing-insiders
-                      " • Resolved: " resolved
-                      " • Conflicts: " conflicts)
+                           " • Missing in Stable: " missing-stable
+                           " • Missing in Insiders: " missing-insiders
+                           " • Resolved: " resolved
+                           " • Conflicts: " conflicts)
          :fileInfo #js {:isStatus true}}))
+
+;; Grouping and hierarchical menu functions
+
+(def ^:const original-status-priority
+  "Priority order for displaying original status groups"
+  {:original/conflict 1
+   :original/missing-in-stable 2
+   :original/missing-in-insiders 3
+   :original/identical 4})
+
+(defn group-by-original-status
+  "Groups instructions by their original status"
+  [instructions]
+  (group-by :instruction/original-status instructions))
+
+(defn sort-groups-by-priority
+  "Sorts grouped instructions by original status priority"
+  [grouped-instructions]
+  (->> grouped-instructions
+       (sort-by (fn [[original-status _]]
+                  (get original-status-priority original-status 999)))
+       (into [])))
+
+(defn create-section-header-item
+  "Creates a section header item for grouped display"
+  [original-status file-count]
+  (let [header-text (case original-status
+                      :original/conflict (str "Originally Conflicting (" file-count " files)")
+                      :original/missing-in-stable (str "Originally Missing in Stable (" file-count " files)")
+                      :original/missing-in-insiders (str "Originally Missing in Insiders (" file-count " files)")
+                      :original/identical (str "Originally Identical (" file-count " files)")
+                      (str "Unknown Status (" file-count " files)"))]
+    #js {:label header-text
+         :kind vscode/QuickPickItemKind.Separator
+         :itemType "section-header"
+         :sectionInfo #js {:originalStatus (name original-status)
+                           :totalCount file-count}}))
+
+(defn create-bulk-action-item
+  "Creates a bulk action button for missing file groups"
+  [original-status unresolved-count]
+  (case original-status
+    :original/missing-in-stable
+    #js {:label (str "Sync All to Stable (" unresolved-count " files)")
+         :iconPath (vscode/ThemeIcon. "arrow-left")
+         :itemType "bulk-action"
+         :bulkAction "sync-all-to-stable"
+         :targetCount unresolved-count}
+
+    :original/missing-in-insiders
+    #js {:label (str "Sync All to Insiders (" unresolved-count " files)")
+         :iconPath (vscode/ThemeIcon. "arrow-right")
+         :itemType "bulk-action"
+         :bulkAction "sync-all-to-insiders"
+         :targetCount unresolved-count}
+
+    nil))
+
+(defn count-unresolved-in-group
+  "Counts unresolved files in a group (not :resolved status)"
+  [group]
+  (->> group
+       (filter #(not= (:instruction/status %) :resolved))
+       count))
+
+(defn create-grouped-menu-items
+  "Creates hierarchical menu structure with buttons on first items"
+  [instructions]
+  (let [grouped (group-by-original-status instructions)
+        sorted-groups (sort-groups-by-priority grouped)]
+    (->> sorted-groups
+         (mapcat (fn [[original-status group]]
+                   (let [total-count (count group)
+                         unresolved-count (count-unresolved-in-group group)
+                         section-header (create-section-header-item original-status total-count)
+                         file-items (map create-picker-item group)
+                         ;; Add button to first file item if we have unresolved items and it's a missing group
+                         enhanced-file-items (if (and (> unresolved-count 0)
+                                                      (#{:original/missing-in-stable :original/missing-in-insiders} original-status)
+                                                      (seq file-items))
+                                               (let [first-item (first file-items)
+                                                     rest-items (rest file-items)
+                                                     bulk-button (case original-status
+                                                                   :original/missing-in-stable
+                                                                   #js {:iconPath (vscode/ThemeIcon. "arrow-left")
+                                                                        :tooltip (str "Sync All to Stable (" unresolved-count " files)")}
+                                                                   :original/missing-in-insiders
+                                                                   #js {:iconPath (vscode/ThemeIcon. "arrow-right")
+                                                                        :tooltip (str "Sync All to Insiders (" unresolved-count " files)")})
+                                                     enhanced-first-item (js-obj "label" (.-label first-item)
+                                                                                 "iconPath" (.-iconPath first-item)
+                                                                                 "description" (.-description first-item)
+                                                                                 "detail" (.-detail first-item)
+                                                                                 "itemType" "file-with-bulk-button"
+                                                                                 "buttons" #js [bulk-button]
+                                                                                 "fileInfo" (.-fileInfo first-item)
+                                                                                 "bulkAction" (case original-status
+                                                                                                :original/missing-in-stable "sync-all-to-stable"
+                                                                                                :original/missing-in-insiders "sync-all-to-insiders"))]
+                                                 (concat [enhanced-first-item] rest-items))
+                                               file-items)]
+                     (concat [section-header] enhanced-file-items))))
+         (into []))))
 
 (defn show-file-preview!+
   "Shows file preview for non-conflict files"
@@ -282,73 +386,98 @@
   ([all-instructions last-active-item]
    (if (empty? all-instructions)
      (p/resolved nil)
-     (let [file-items (map create-picker-item all-instructions)
-           status-item (create-status-item all-instructions)
-           items (into [status-item] file-items)  ; Status item first
+     (let [status-item (create-status-item all-instructions)
+           grouped-items (create-grouped-menu-items all-instructions)
+           items (into [status-item] grouped-items)
            picker (vscode/window.createQuickPick)
-           ;; Find the index of the last active item if provided (offset by 1 for status item)
            last-active-index (when last-active-item
-                               (when-let [file-index (->> file-items
+                               (when-let [item-index (->> items
                                                           (map-indexed vector)
                                                           (filter (fn [[_idx item]]
-                                                                    (= (.-filename (.-fileInfo item))
-                                                                       (:instruction/filename last-active-item))))
+                                                                    (and (#{(.-itemType item)} #{"file" "file-with-bulk-button"})
+                                                                         (= (.-filename (.-fileInfo item))
+                                                                            (:instruction/filename last-active-item)))))
                                                           (first)
                                                           (first))]
-                                 (inc file-index)))]  ; Add 1 to account for status item
+                                 item-index))]
 
        (set! (.-items picker) (into-array items))
        (set! (.-title picker) "Prompt Sync: Stable ↔ Insiders")
        (set! (.-placeholder picker) "Select conflicts to resolve, others for preview")
        (set! (.-ignoreFocusOut picker) true)
 
-       ;; Set active item to the last selected one if available
        (when (and last-active-index (< last-active-index (count items)))
          (set! (.-activeItems picker) #js [(nth items last-active-index)]))
 
-       ;; Live preview on active item change
        (.onDidChangeActive picker
                            (fn [active-items]
                              (when-let [first-item (first active-items)]
-                               (let [file-info (.-fileInfo first-item)]
-                                 (if (.-isStatus file-info)
-                                   ;; Status item selected - no preview
-                                   nil
-                                   ;; File item selected - show preview
-                                   (let [filename (.-filename file-info)
+                               (let [item-type (.-itemType first-item)]
+                                 (case item-type
+                                   "status" nil
+                                   "section-header" nil
+                                   "bulk-action" nil
+                                   ("file" "file-with-bulk-button")
+                                   (let [file-info (.-fileInfo first-item)
+                                         filename (.-filename file-info)
                                          is-conflict (.-isConflict file-info)]
                                      (if is-conflict
-                                       ;; Show diff for conflicts
                                        (let [instruction-info (first (filter #(= (:instruction/filename %) filename) all-instructions))]
                                          (when instruction-info
                                            (show-diff-preview!+ instruction-info)))
-                                       ;; Show simple preview for non-conflicts
                                        (let [instruction-data (first (filter #(= (:instruction/filename %) filename) all-instructions))]
                                          (when instruction-data
-                                           (show-file-preview!+ instruction-data))))))))))
+                                           (show-file-preview!+ instruction-data)))))
+                                   nil)))))
+
+       ;; Button event handling
+       (.onDidTriggerItemButton picker
+                                (fn [event]
+                                  (let [item (.-item event)
+                                        button (.-button event)
+                                        tooltip (.-tooltip button)
+                                        bulk-action (.-bulkAction item)]
+                                    (log! :debug "🔘 Button triggered! Tooltip:" tooltip "Action:" bulk-action)
+                                    (.hide picker)
+                                    (.resolve js/Promise #js {:bulk-action-request true
+                                                              :action bulk-action
+                                                              :all-instructions all-instructions}))))
 
        (js/Promise.
         (fn [resolve _reject]
           (.onDidAccept picker
                         (fn []
                           (when-let [selected (first (.-selectedItems picker))]
-                            (let [file-info (.-fileInfo selected)]
-                              (if (.-isStatus file-info)
-                                ;; Status item selected - return bulk operation marker
+                            (let [item-type (.-itemType selected)]
+                              (case item-type
+                                "status"
                                 (do
                                   (.hide picker)
                                   (resolve {:bulk-operation-request true
-                                           :all-instructions all-instructions}))
-                                ;; File item selected - process
-                                (let [filename (.-filename file-info)
+                                            :all-instructions all-instructions}))
+
+                                "section-header"
+                                (log! :debug "📂 Section header selected - no action")
+
+                                "bulk-action"
+                                (let [bulk-action (.-bulkAction selected)]
+                                  (log! :debug "🔄 Bulk action triggered:" bulk-action)
+                                  (.hide picker)
+                                  (resolve {:bulk-action-request true
+                                            :action bulk-action
+                                            :all-instructions all-instructions}))
+
+                                ("file" "file-with-bulk-button")
+                                (let [file-info (.-fileInfo selected)
+                                      filename (.-filename file-info)
                                       instruction-info (first (filter #(= (:instruction/filename %) filename) all-instructions))
                                       needs-resolution? (= (:instruction/action-needed instruction-info) :resolve)]
                                   (if needs-resolution?
-                                    ;; Return instruction data for resolution (conflicts or missing files)
                                     (do (.hide picker)
                                         (resolve instruction-info))
-                                    ;; For files that don't need resolution, keep picker open (don't resolve)
-                                    (log! :debug "📁 Preview only:" filename))))))))
+                                    (log! :debug "📁 Preview only:" filename)))
+
+                                (log! :debug "❓ Unknown item type selected:" item-type))))))
           (.onDidHide picker
                       (fn []
                         (resolve nil)))
@@ -590,8 +719,8 @@
                                 :prompt-sync.action/sync-to-insiders :resolution/sync-to-insiders
                                 :prompt-sync.action/skip :resolution/skipped)
               updated-instructions (update-instruction-status-after-resolution all-instructions
-                                                                              (:instruction/filename selected-instruction)
-                                                                              resolution-type)]
+                                                                               (:instruction/filename selected-instruction)
+                                                                               resolution-type)]
         updated-instructions)
       (p/resolved :cancelled))))
 
@@ -605,12 +734,21 @@
             last-active last-active-item]
      (p/let [selected-instruction (show-all-files-picker!+ current-instructions last-active)]
        (if selected-instruction
-         (if (:bulk-operation-request selected-instruction)
-           ;; Handle bulk operations
+         (cond
+           (:bulk-operation-request selected-instruction)
+           ;; Handle bulk operations from status item
            (p/let [bulk-result (handle-bulk-operations!+ (:all-instructions selected-instruction) dirs)]
              (if (:bulk-operation-applied bulk-result)
                (p/recur (:updated-instructions bulk-result) nil) ; Updated instructions, no last active
                (p/recur current-instructions last-active))) ; No changes, keep last active
+
+           (:bulk-action-request selected-instruction)
+           ;; Handle direct bulk actions from embedded buttons
+           (p/let [action-keyword (keyword (str "prompt-sync.action/" (:action selected-instruction)))
+                   updated-instructions (apply-bulk-operation!+ (:all-instructions selected-instruction) action-keyword dirs)]
+             (p/recur updated-instructions nil)) ; Updated instructions, no last active
+
+           :else
            ;; Handle single instruction resolution
            (p/let [updated-instructions (resolve-single-conflict!+ selected-instruction current-instructions dirs)]
              (if (= updated-instructions :cancelled)
@@ -655,41 +793,38 @@
   "Generates test files based on status counts map.
    Options: {:identical N :conflicts N :stable-only N :insiders-only N}
    Defaults to current test pattern: 1 identical, 4 conflicts, 1 stable-only, 1 insiders-only"
-  [{:keys [identical conflicts stable-only insiders-only]
-    :or {identical 1 conflicts 4 stable-only 1 insiders-only 1}}]
+  [{:test-files/keys [identical conflicts stable-only insiders-only]}]
   (let [file-types [".instruction.md" ".prompt.md" ".chatmode.md"]]
     (concat
-      ;; Generate identical files
-      (for [i (range identical)]
-        (let [file-type (nth file-types (mod i (count file-types)))
-              content (str "# Identical " (inc i) "\nThis file is the same in both")]
-          {:prompt-sync.file/filename (str "identical" (inc i) file-type)
-           :prompt-sync.file/stable-content content
-           :prompt-sync.file/insiders-content content}))
+     (for [i (range identical)]
+       (let [file-type (nth file-types (mod i (count file-types)))
+             content (str "# Identical " (inc i) "\nThis file is the same in both")]
+         {:prompt-sync.file/filename (str "identical" (inc i) file-type)
+          :prompt-sync.file/stable-content content
+          :prompt-sync.file/insiders-content content}))
 
-      ;; Generate conflict files
-      (for [i (range conflicts)]
-        (let [file-type (nth file-types (mod i (count file-types)))]
-          {:prompt-sync.file/filename (str "conflict" (inc i) file-type)
-           :prompt-sync.file/stable-content (generate-stable-content file-type (inc i))
-           :prompt-sync.file/insiders-content (generate-insiders-content file-type (inc i))}))
+     (for [i (range conflicts)]
+       (let [file-type (nth file-types (mod i (count file-types)))]
+         {:prompt-sync.file/filename (str "conflict" (inc i) file-type)
+          :prompt-sync.file/stable-content (generate-stable-content file-type (inc i))
+          :prompt-sync.file/insiders-content (generate-insiders-content file-type (inc i))}))
 
-      ;; Generate stable-only files
-      (for [i (range stable-only)]
-        (let [file-type (nth file-types (mod i (count file-types)))]
-          {:prompt-sync.file/filename (str "stable-only" (inc i) file-type)
-           :prompt-sync.file/stable-content (str "# Stable Only " (inc i) "\nThis file only exists in stable")
-           :prompt-sync.file/location :stable-only}))
+     (for [i (range stable-only)]
+       (let [file-type (nth file-types (mod i (count file-types)))]
+         {:prompt-sync.file/filename (str "stable-only" (inc i) file-type)
+          :prompt-sync.file/stable-content (str "# Stable Only " (inc i) "\nThis file only exists in stable")
+          :prompt-sync.file/location :stable-only}))
 
-      ;; Generate insiders-only files
-      (for [i (range insiders-only)]
-        (let [file-type (nth file-types (mod i (count file-types)))]
-          {:prompt-sync.file/filename (str "insiders-only" (inc i) file-type)
-           :prompt-sync.file/insiders-content (str "# Insiders Only " (inc i) "\nThis file only exists in insiders")
-           :prompt-sync.file/location :insiders-only})))))
+     (for [i (range insiders-only)]
+       (let [file-type (nth file-types (mod i (count file-types)))]
+         {:prompt-sync.file/filename (str "insiders-only" (inc i) file-type)
+          :prompt-sync.file/insiders-content (str "# Insiders Only " (inc i) "\nThis file only exists in insiders")
+          :prompt-sync.file/location :insiders-only})))))
 
-;; Default test files (maintains current behavior)
-(def test-files (generate-test-files {}))
+(def test-files (generate-test-files {:test-files/identical 3
+                                      :test-files/conflicts 4
+                                      :test-files/stable-only 2
+                                      :test-files/insiders-only 1}))
 
 (defn populate-test-files!+
   "Creates sample test files using only stable-content and insiders-content keys"
@@ -758,17 +893,14 @@
 (defn ^:export main-test
   "Entry point for test mode - uses /tmp directories.
    Optionally accepts file-config map: {:identical N :conflicts N :stable-only N :insiders-only N}"
-  ([] (main-test {}))
-  ([file-config]
-   (let [test-files (generate-test-files file-config)]
-     (->
-      (p/let [_ (cleanup-test-environment!+) ; Clean first, then create
+  []
+  (-> (p/let [_ (cleanup-test-environment!+)
               test-dirs (create-test-environment!+)
               _ (populate-test-files!+ test-dirs test-files)]
         (sync-prompts!+ {:prompt-sync/test-mode? true}))
       (.catch (fn [error]
                 (vscode/window.showErrorMessage (str "Test sync error: " (.-message error)))
-                (js/console.error "Test prompt sync error:" error)))))))
+                (js/console.error "Test prompt sync error:" error)))))
 
 ;; Auto-run when script is invoked
 (when (= (joyride/invoked-script) joyride/*file*)
