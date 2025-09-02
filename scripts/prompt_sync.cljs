@@ -693,7 +693,8 @@
                                   (vscode/workspace.fs.writeFile
                                    insiders-uri (.encode encoder insiders-content)))]
                    [stable insiders])))
-         (filter some?)
+         (mapcat identity)  ; Flatten the pairs into a single collection
+         (filter some?)     ; Remove nil values
          p/all)))
 
 (defn create-test-environment!+
@@ -736,6 +737,7 @@
   (->
    (p/let [_ (cleanup-test-environment!+) ; Clean first, then create
            test-dirs (create-test-environment!+)
+           _ (def test-dirs test-dirs)
            _ (populate-test-files!+ test-dirs test-files)]
      (sync-prompts!+ {:prompt-sync/test-mode? true}))
    (.catch (fn [error]
