@@ -454,13 +454,16 @@
                                      (let [item (.-item event)
                                            button (.-button event)
                                            tooltip (.-tooltip button)
-                                           bulk-action (.-bulkAction item)]
+                                           bulk-action (.-bulkAction item)
+                                           file-info (.-fileInfo item)
+                                           filename (when file-info (.-filename file-info))]
                                        (log! :debug "🔘 Button triggered! Tooltip:" tooltip "Action:" bulk-action)
-                                       ;; Hide picker and resolve with bulk action
+                                       ;; Hide picker and resolve with bulk action, preserving which item was clicked
                                        (.hide picker)
                                        (resolve {:bulk-action-request true
                                                  :action bulk-action
-                                                 :all-instructions all-instructions}))))
+                                                 :all-instructions all-instructions
+                                                 :button-item-filename filename}))))
 
           (.onDidAccept picker
                         (fn []
@@ -575,19 +578,9 @@
   (let [missing-stable (filter #(= (:instruction/status %) :status/missing-in-stable) instructions)
         missing-insiders (filter #(= (:instruction/status %) :status/missing-in-insiders) instructions)
         all-missing (concat missing-stable missing-insiders)]
-    ;; Show informational message if no missing files, otherwise show bulk operations
+    ;; No bulk operations available - return nil (no-op like section headers)
     (if-not (seq all-missing)
-      (let [summary (frequencies (map :instruction/status instructions))
-            conflicts (:status/conflict summary 0)
-            resolved (:status/resolved summary 0)
-            identical (:status/identical summary 0)
-            total (count instructions)]
-        (-> (vscode/window.showInformationMessage
-             (str "No bulk operations available. Status: "
-                  total " total, " identical " identical, "
-                  conflicts " conflicts, " resolved " resolved")
-             #js {:modal false})
-            (.then (fn [_] nil)))) ; Always return nil for no action
+      (p/resolved nil)
       (let [actions (cond-> []
                       (seq missing-stable)
                       (conj {:label (str "Sync All to Stable (" (count missing-stable) " files)")
@@ -813,8 +806,11 @@
            (:bulk-action-request selected-instruction)
            ;; Handle direct bulk actions from embedded buttons
            (p/let [action-keyword (keyword (str "prompt-sync.action/" (:action selected-instruction)))
-                   updated-instructions (apply-bulk-operation!+ (:all-instructions selected-instruction) action-keyword dirs)]
-             (p/recur updated-instructions nil)) ; Updated instructions, no last active
+                   updated-instructions (apply-bulk-operation!+ (:all-instructions selected-instruction) action-keyword dirs)
+                   ;; Preserve the item that had the button clicked, if available
+                   button-item (when-let [filename (:button-item-filename selected-instruction)]
+                                 (first (filter #(= (:instruction/filename %) filename) updated-instructions)))]
+             (p/recur updated-instructions button-item)) ; Preserve the button item as last active
 
            :else
            ;; Handle single instruction resolution
