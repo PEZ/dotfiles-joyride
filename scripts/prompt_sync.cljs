@@ -116,7 +116,7 @@
                         (and stable-location (not insiders-location))
                         {:instruction/filename filename
                          :instruction/instruction-type (:location/instruction-type stable-location)
-                         :instruction/status :missing-in-insiders
+                         :instruction/status :status/missing-in-insiders
                          :instruction/action-needed :resolve
                          :instruction/original-status :original/missing-in-insiders
                          :instruction/stable stable-location
@@ -126,7 +126,7 @@
                         (and insiders-location (not stable-location))
                         {:instruction/filename filename
                          :instruction/instruction-type (:location/instruction-type insiders-location)
-                         :instruction/status :missing-in-stable
+                         :instruction/status :status/missing-in-stable
                          :instruction/action-needed :resolve
                          :instruction/original-status :original/missing-in-stable
                          :instruction/stable nil
@@ -138,7 +138,7 @@
                                                 (:location/content insiders-location))]
                           {:instruction/filename filename
                            :instruction/instruction-type (:location/instruction-type stable-location)
-                           :instruction/status (if content-match? :identical :conflict)
+                           :instruction/status (if content-match? :status/identical :status/conflict)
                            :instruction/action-needed (if content-match? :none :resolve)
                            :instruction/original-status (if content-match? :original/identical :original/conflict)
                            :instruction/stable stable-location
@@ -175,21 +175,22 @@
     (vscode/ThemeIcon. "diff")))
 
 (defn create-picker-item
-  "Creates QuickPick item using new symmetric instruction structure"
+  "Creates QuickPick item"
   [{:instruction/keys [filename status instruction-type action-needed resolution]}]
+  (def status status)
   (let [icon (get-instruction-icon instruction-type)
         status-string (case status
-                        :missing-in-stable "Missing in Stable"
-                        :missing-in-insiders "Missing in Insiders"
-                        :conflict "Has conflicts"
-                        :identical "Identical"
-                        :resolved (case resolution
-                                    :resolution/choose-stable "Conflict resolved, copied: Stable → Insiders"
-                                    :resolution/choose-insiders "Conflict resolved, copied: Stable ← Insiders"
-                                    :resolution/sync-to-stable "Missing file synced: Insiders → Stable"
-                                    :resolution/sync-to-insiders "Missing file synced: Stable → Insiders"
-                                    :resolution/skipped "Skipped"
-                                    "resolved")
+                        :status/missing-in-stable "Missing in Stable"
+                        :status/missing-in-insiders "Missing in Insiders"
+                        :status/conflict "Has conflicts"
+                        :status/identical "Identical"
+                        :status/resolved (case resolution
+                                           :resolution/choose-stable "Conflict resolved, copied: Stable → Insiders"
+                                           :resolution/choose-insiders "Conflict resolved, copied: Stable ← Insiders"
+                                           :resolution/sync-to-stable "Missing file synced: Insiders → Stable"
+                                           :resolution/sync-to-insiders "Missing file synced: Stable → Insiders"
+                                           :resolution/skipped "Skipped"
+                                           "resolved")
                         (name status))
         description (when (= :resolve action-needed)
                       "Select to choose resolution")]
@@ -201,17 +202,17 @@
          :fileInfo #js {:filename filename
                         :status (name status)
                         :instruction-type (name instruction-type)
-                        :isConflict (= status :conflict)}}))
+                        :isConflict (= status :status/conflict)}}))
 
 (defn create-status-item
   "Creates a descriptive status menu item for the picker"
   [instructions]
   (let [status-counts (frequencies (map :instruction/status instructions))
-        conflicts (:conflict status-counts 0)
-        resolved (:resolved status-counts 0)
-        missing-stable (:missing-in-stable status-counts 0)
-        missing-insiders (:missing-in-insiders status-counts 0)
-        identical (:identical status-counts 0)
+        conflicts (:status/conflict status-counts 0)
+        resolved (:status/resolved status-counts 0)
+        missing-stable (:status/missing-in-stable status-counts 0)
+        missing-insiders (:status/missing-in-insiders status-counts 0)
+        identical (:status/identical status-counts 0)
         total (count instructions)]
     #js {:label (str total " instructions: "
                      "I:" identical ", "
@@ -224,7 +225,8 @@
                            " • Missing in Insiders: " missing-insiders
                            " • Resolved: " resolved
                            " • Conflicts: " conflicts)
-         :fileInfo #js {:isStatus true}}))
+         :fileInfo #js {:isStatus true}
+         :itemType "status"}))
 
 (def ^:const original-status-priority
   "Priority order for displaying original status groups"
@@ -262,10 +264,10 @@
                            :totalCount file-count}}))
 
 (defn count-unresolved-in-group
-  "Counts unresolved files in a group (not :resolved status)"
+  "Counts unresolved files in a group (not :status/resolved status)"
   [group]
   (->> group
-       (filter #(not= (:instruction/status %) :resolved))
+       (filter #(not= (:instruction/status %) :status/resolved))
        count))
 
 (defn create-grouped-menu-items
@@ -424,7 +426,7 @@
   [{:instruction/keys [filename status]}]
   (log! :debug "📋 show-resolution-menu!+ called for:" filename "status:" status)
   (let [actions (case status
-                  :conflict
+                  :status/conflict
                   [{:label "Choose Stable"
                     :iconPath (vscode/ThemeIcon. "arrow-right")
                     :description "Copy stable version to insiders"
@@ -438,7 +440,7 @@
                     :description "Leave both files as-is"
                     :action "prompt-sync.action/skip"}]
 
-                  :missing-in-stable
+                  :status/missing-in-stable
                   [{:label "Sync to Stable"
                     :iconPath (vscode/ThemeIcon. "arrow-left")
                     :description "Copy file from insiders to stable"
@@ -448,7 +450,7 @@
                     :description "Leave file only in insiders"
                     :action "prompt-sync.action/skip"}]
 
-                  :missing-in-insiders
+                  :status/missing-in-insiders
                   [{:label "Sync to Insiders"
                     :iconPath (vscode/ThemeIcon. "arrow-right")
                     :description "Copy file from stable to insiders"
@@ -478,8 +480,8 @@
 (defn show-status-resolution-menu!+
   "Shows bulk resolution options for all missing files based on status summary"
   [instructions]
-  (let [missing-stable (filter #(= (:instruction/status %) :missing-in-stable) instructions)
-        missing-insiders (filter #(= (:instruction/status %) :missing-in-insiders) instructions)
+  (let [missing-stable (filter #(= (:instruction/status %) :status/missing-in-stable) instructions)
+        missing-insiders (filter #(= (:instruction/status %) :status/missing-in-insiders) instructions)
         all-missing (concat missing-stable missing-insiders)]
     ;; Early return if no missing files to prevent QuickPick flash
     (if-not (seq all-missing)
@@ -569,16 +571,16 @@
   [all-instructions choice dirs]
   (let [targets (case choice
                   :prompt-sync.action/sync-all-to-stable
-                  (filter #(= (:instruction/status %) :missing-in-stable) all-instructions)
+                  (filter #(= (:instruction/status %) :status/missing-in-stable) all-instructions)
 
                   :prompt-sync.action/sync-all-to-insiders
-                  (filter #(= (:instruction/status %) :missing-in-insiders) all-instructions)
+                  (filter #(= (:instruction/status %) :status/missing-in-insiders) all-instructions)
 
                   :prompt-sync.action/sync-all-missing
-                  (filter #(#{:missing-in-stable :missing-in-insiders} (:instruction/status %)) all-instructions)
+                  (filter #(#{:status/missing-in-stable :status/missing-in-insiders} (:instruction/status %)) all-instructions)
 
                   :prompt-sync.action/skip-all-missing
-                  (filter #(#{:missing-in-stable :missing-in-insiders} (:instruction/status %)) all-instructions)
+                  (filter #(#{:status/missing-in-stable :status/missing-in-insiders} (:instruction/status %)) all-instructions)
 
                   [])]
     (if (empty? targets)
@@ -594,8 +596,8 @@
 
                                 :prompt-sync.action/sync-all-missing
                                 (let [action (case (:instruction/status instruction)
-                                               :missing-in-stable :prompt-sync.action/sync-to-stable
-                                               :missing-in-insiders :prompt-sync.action/sync-to-insiders)]
+                                               :status/missing-in-stable :prompt-sync.action/sync-to-stable
+                                               :status/missing-in-insiders :prompt-sync.action/sync-to-insiders)]
                                   (resolve-instruction!+ instruction action dirs))
 
                                 :prompt-sync.action/skip-all-missing
@@ -609,11 +611,11 @@
                                     :prompt-sync.action/sync-all-to-insiders :resolution/sync-to-insiders
                                     :prompt-sync.action/sync-all-missing
                                     (case (:instruction/status instruction)
-                                      :missing-in-stable :resolution/sync-to-stable
-                                      :missing-in-insiders :resolution/sync-to-insiders)
+                                      :status/missing-in-stable :resolution/sync-to-stable
+                                      :status/missing-in-insiders :resolution/sync-to-insiders)
                                     :prompt-sync.action/skip-all-missing :resolution/skipped)]
                    (assoc instruction
-                          :instruction/status :resolved
+                          :instruction/status :status/resolved
                           :instruction/resolution resolution
                           :instruction/action-needed :none))
                  instruction))
@@ -636,7 +638,7 @@
   (map (fn [instruction]
          (if (= (:instruction/filename instruction) resolved-filename)
            (assoc instruction
-                  :instruction/status :resolved
+                  :instruction/status :status/resolved
                   :instruction/resolution resolution-type
                   :instruction/action-needed :none)
            instruction))
@@ -726,9 +728,7 @@
     ".chatmode.md" (str "# Insiders Chat Mode " index "\nconversational: true\ntemperature: 0.8\n\n## Description\nExperimental conversation mode")))
 
 (defn generate-test-files
-  "Generates test files based on status counts map.
-   Options: {:identical N :conflicts N :stable-only N :insiders-only N}
-   Defaults to current test pattern: 1 identical, 4 conflicts, 1 stable-only, 1 insiders-only"
+  "Generates test files based on status counts map."
   [{:test-files/keys [identical conflicts stable-only insiders-only]}]
   (let [file-types [".instruction.md" ".prompt.md" ".chatmode.md"]]
     (concat
@@ -818,17 +818,18 @@
         (.then (fn [_] (log! :info "Cleaned up test environment")))
         (.catch (fn [err] (log! :info "Cleanup error:" (.-message err)))))))
 
-;; Entry point for script execution (disabled until we're ready, making sure the test mode works)
-(defn ^:export main-disabled []
+;; Entry point for script execution. IMPORTANT: AI Agent should run `main-test`, unless instructed to run `main`)
+(defn ^:export main []
   (p/catch
    (sync-prompts!+ {:prompt-sync/test-mode? false})
    (fn [error]
      (vscode/window.showErrorMessage (str "Sync error: " (.-message error)))
      (js/console.error "Prompt sync error:" error))))
 
+;; Entry-point for testing. IMPORTANT: AI Agent should this one during testing
 (defn ^:export main-test
   "Entry point for test mode - uses /tmp directories.
-   Optionally accepts file-config map: {:identical N :conflicts N :stable-only N :insiders-only N}"
+   Optionally accepts file-config map: {:status/identical N :conflicts N :stable-only N :insiders-only N}"
   []
   (-> (p/let [_ (cleanup-test-environment!+)
               test-dirs (create-test-environment!+)
@@ -839,4 +840,5 @@
                 (js/console.error "Test prompt sync error:" error)))))
 
 (when (= (joyride/invoked-script) joyride/*file*) ; Auto-run when script is invoked
-  (main-test))
+  #_(main-test)
+  (main))
