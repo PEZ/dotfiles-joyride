@@ -238,7 +238,20 @@ Functions needing access path updates:
 1. **Unit-level testing:** Test individual functions in REPL
 2. **Integration testing:** Run `main-test` to validate full flow
 3. **Data shape validation:** Inspect intermediate results
-4. **UI testing:** Manually trigger UI flows to ensure they work
+4. **UI testing:** See UI Testing Process below
+
+### UI Testing Process
+
+With UI testing the human developer is the source of truth together with the REPL. Follow this process:
+
+1. Think about what should be tested
+2. Summarize the test and expectations to the human
+3. Evaluate the test using `awaitResult: true`
+4. When the evaluation tool use returns:
+   1. Examine any results from the REPL
+   2. Ask the human for feedback (using the chat, tool use here risks messing with the UI)
+   3. Stop and listen
+5. Rinse and repeat
 
 ## Migration Strategy
 
