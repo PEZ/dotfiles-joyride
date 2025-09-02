@@ -519,15 +519,14 @@
 (defn ^:export main-test
   "Entry point for test mode - uses /tmp directories"
   []
-  (p/catch
-   (binding [*log-level* :debug] ; Re-binding not working deeper down the call chain for some reason
-     (p/let [_ (cleanup-test-environment!+) ; Clean first, then create
-             test-dirs (create-test-environment!+)
-             _ (populate-test-files!+ test-dirs test-files)]
-       (sync-prompts!+ {:prompt-sync/test-mode? true})))
-   (fn [error]
-     (vscode/window.showErrorMessage (str "Test sync error: " (.-message error)))
-     (js/console.error "Test prompt sync error:" error))))
+  (->
+   (p/let [_ (cleanup-test-environment!+) ; Clean first, then create
+           test-dirs (create-test-environment!+)
+           _ (populate-test-files!+ test-dirs test-files)]
+     (sync-prompts!+ {:prompt-sync/test-mode? true}))
+   (.catch (fn [error]
+             (vscode/window.showErrorMessage (str "Test sync error: " (.-message error)))
+             (js/console.error "Test prompt sync error:" error)))))
 
 ;; Auto-run when script is invoked
 (when (= (joyride/invoked-script) joyride/*file*)
