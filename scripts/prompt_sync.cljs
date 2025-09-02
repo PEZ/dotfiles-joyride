@@ -55,6 +55,20 @@
     (.endsWith filename "chatmode.md") :instruction.type/chatmode
     :else :instruction.type/instruction))
 
+(defn is-md-file?
+  "Checks if directory entry is a markdown file"
+  [[name type]]
+  (and (= type VSCODE-FILE-TYPE)
+       (.endsWith name ".md")))
+
+(defn entry->location-info
+  "Converts directory entry to location info map"
+  [dir-path [filename _]]
+  {:location/filename filename
+   :location/path (path/join dir-path filename)
+   :location/uri (vscode/Uri.file (path/join dir-path filename))
+   :location/instruction-type (classify-instruction-type filename)})
+
 (defn scan-directory!+
   "Scans directory for .md files using workspace.fs, returns promise"
   [{:scan/keys [dir-path]}]
@@ -63,14 +77,8 @@
         (.then (fn [entries]
                  (->> entries
                       (js->clj)
-                      (filter (fn [[name type]]
-                                (and (= type VSCODE-FILE-TYPE)
-                                     (.endsWith name ".md"))))
-                      (map (fn [[filename _]]
-                             {:location/filename filename
-                              :location/path (path/join dir-path filename)
-                              :location/uri (vscode/Uri.file (path/join dir-path filename))
-                              :location/instruction-type (classify-instruction-type filename)})))))
+                      (filter is-md-file?)
+                      (map (partial entry->location-info dir-path)))))
         (.catch (fn [err]
                   (if (= (.-code err) "FileNotFound")
                     [] ; Return empty array if directory doesn't exist
@@ -172,24 +180,29 @@
     :instruction.type/chatmode (vscode/ThemeIcon. "color-mode")
     (vscode/ThemeIcon. "diff")))
 
+(defn instruction-status->display-string
+  "Converts instruction status to human-readable display string"
+  [status resolution]
+  (case status
+    :status/missing-in-stable "Missing in Stable"
+    :status/missing-in-insiders "Missing in Insiders"
+    :status/conflict "Has conflicts"
+    :status/identical "Identical"
+    :status/resolved (case resolution
+                       :resolution/choose-stable "Conflict resolved, copied: Stable → Insiders"
+                       :resolution/choose-insiders "Conflict resolved, copied: Stable ← Insiders"
+                       :resolution/sync-to-stable "Missing file synced: Insiders → Stable"
+                       :resolution/sync-to-insiders "Missing file synced: Stable → Insiders"
+                       :resolution/skipped "Skipped"
+                       "resolved")
+    (name status)))
+
 (defn instruction->quickpick-item
   "Creates QuickPick item"
   [{:instruction/keys [filename status instruction-type action-needed resolution]}]
   (def status status)
   (let [icon (get-instruction-icon instruction-type)
-        status-string (case status
-                        :status/missing-in-stable "Missing in Stable"
-                        :status/missing-in-insiders "Missing in Insiders"
-                        :status/conflict "Has conflicts"
-                        :status/identical "Identical"
-                        :status/resolved (case resolution
-                                           :resolution/choose-stable "Conflict resolved, copied: Stable → Insiders"
-                                           :resolution/choose-insiders "Conflict resolved, copied: Stable ← Insiders"
-                                           :resolution/sync-to-stable "Missing file synced: Insiders → Stable"
-                                           :resolution/sync-to-insiders "Missing file synced: Stable → Insiders"
-                                           :resolution/skipped "Skipped"
-                                           "resolved")
-                        (name status))
+        status-string (instruction-status->display-string status resolution)
         description (when (= :resolve action-needed)
                       "Select to choose resolution")]
     #js {:label filename
@@ -202,6 +215,25 @@
                         :instruction-type (name instruction-type)
                         :isConflict (= status :status/conflict)}}))
 
+(defn format-status-counts
+  "Formats status counts for the summary label"
+  [total identical missing-stable missing-insiders resolved conflicts]
+  (str total " instructions: "
+       "I:" identical ", "
+       "MS:" missing-stable ", "
+       "MI:" missing-insiders ", "
+       "R:" resolved ", "
+       "C:" conflicts))
+
+(defn format-status-description
+  "Formats detailed status description"
+  [identical missing-stable missing-insiders resolved conflicts]
+  (str "Identical: " identical
+       " • Missing in Stable: " missing-stable
+       " • Missing in Insiders: " missing-insiders
+       " • Resolved: " resolved
+       " • Conflicts: " conflicts))
+
 (defn instructions->status-summary-item
   "Creates a descriptive status menu item for the picker"
   [instructions]
@@ -212,17 +244,8 @@
         missing-insiders (:status/missing-in-insiders status-counts 0)
         identical (:status/identical status-counts 0)
         total (count instructions)]
-    #js {:label (str total " instructions: "
-                     "I:" identical ", "
-                     "MS:" missing-stable ", "
-                     "MI:" missing-insiders ", "
-                     "R:" resolved ", "
-                     "C:" conflicts)
-         :description (str "Identical: " identical
-                           " • Missing in Stable: " missing-stable
-                           " • Missing in Insiders: " missing-insiders
-                           " • Resolved: " resolved
-                           " • Conflicts: " conflicts)
+    #js {:label (format-status-counts total identical missing-stable missing-insiders resolved conflicts)
+         :description (format-status-description identical missing-stable missing-insiders resolved conflicts)
          :fileInfo #js {:isStatus true}
          :itemType "status"}))
 
@@ -246,16 +269,21 @@
                   (get original-status-priority original-status 999)))
        (into [])))
 
+(defn original-status->header-text
+  "Generates header text for different original status types"
+  [original-status total-count unresolved-count]
+  (let [resolved-count (- total-count unresolved-count)]
+    (case original-status
+      :original/conflict (str "Conflicting (" resolved-count "/" total-count " resolved)")
+      :original/missing-in-stable (str "Missing in Stable (" resolved-count "/" total-count " resolved)")
+      :original/missing-in-insiders (str "Missing in Insiders (" resolved-count "/" total-count " resolved)")
+      :original/identical (str "Identical (" total-count " instructions)")
+      (str "Unknown Status (" total-count " instructions)"))))
+
 (defn create-section-header-item
   "Creates a section header item for grouped display"
   [original-status total-count unresolved-count]
-  (let [resolved-count (- total-count unresolved-count)
-        header-text (case original-status
-                      :original/conflict (str "Conflicting (" resolved-count "/" total-count " resolved")
-                      :original/missing-in-stable (str "Missing in Stable (" resolved-count "/" total-count " resolved")
-                      :original/missing-in-insiders (str "Missing in Insiders (" resolved-count "/" total-count " resolved")
-                      :original/identical (str "Identical (" total-count " instructions)")
-                      (str "Unknown Status (" total-count " instructions)"))]
+  (let [header-text (original-status->header-text original-status total-count unresolved-count)]
     #js {:label header-text
          :kind vscode/QuickPickItemKind.Separator
          :itemType "section-header"
@@ -420,50 +448,63 @@
                         (resolve nil)))
           (.show picker)))))))
 
+(defn build-conflict-actions
+  "Builds action items for conflict resolution"
+  []
+  [{:label "Choose Stable"
+    :iconPath (vscode/ThemeIcon. "arrow-right")
+    :description "Copy stable version to insiders"
+    :action "prompt-sync.action/choose-stable"}
+   {:label "Choose Insiders"
+    :iconPath (vscode/ThemeIcon. "arrow-left")
+    :description "Copy insiders version to stable"
+    :action "prompt-sync.action/choose-insiders"}
+   {:label "Skip"
+    :iconPath (vscode/ThemeIcon. "close")
+    :description "Leave both files as-is"
+    :action "prompt-sync.action/skip"}])
+
+(defn build-missing-stable-actions
+  "Builds action items for missing stable files"
+  []
+  [{:label "Sync to Stable"
+    :iconPath (vscode/ThemeIcon. "arrow-left")
+    :description "Copy file from insiders to stable"
+    :action "prompt-sync.action/sync-to-stable"}
+   {:label "Skip"
+    :iconPath (vscode/ThemeIcon. "close")
+    :description "Leave file only in insiders"
+    :action "prompt-sync.action/skip"}])
+
+(defn build-missing-insiders-actions
+  "Builds action items for missing insiders files"
+  []
+  [{:label "Sync to Insiders"
+    :iconPath (vscode/ThemeIcon. "arrow-right")
+    :description "Copy file from stable to insiders"
+    :action "prompt-sync.action/sync-to-insiders"}
+   {:label "Skip"
+    :iconPath (vscode/ThemeIcon. "close")
+    :description "Leave file only in stable"
+    :action "prompt-sync.action/skip"}])
+
+(defn build-default-actions
+  "Builds default fallback actions"
+  []
+  [{:label "Skip"
+    :iconPath (vscode/ThemeIcon. "close")
+    :description "No action available"
+    :action "prompt-sync.action/skip"}])
+
 (defn show-resolution-menu!+
   "Shows resolution options menu for conflicts and missing files"
   [{:instruction/keys [filename status]}]
   (log! :debug "📋 show-resolution-menu!+ called for:" filename "status:" status)
   (let [actions (case status
-                  :status/conflict
-                  [{:label "Choose Stable"
-                    :iconPath (vscode/ThemeIcon. "arrow-right")
-                    :description "Copy stable version to insiders"
-                    :action "prompt-sync.action/choose-stable"}
-                   {:label "Choose Insiders"
-                    :iconPath (vscode/ThemeIcon. "arrow-left")
-                    :description "Copy insiders version to stable"
-                    :action "prompt-sync.action/choose-insiders"}
-                   {:label "Skip"
-                    :iconPath (vscode/ThemeIcon. "close")
-                    :description "Leave both files as-is"
-                    :action "prompt-sync.action/skip"}]
-
-                  :status/missing-in-stable
-                  [{:label "Sync to Stable"
-                    :iconPath (vscode/ThemeIcon. "arrow-left")
-                    :description "Copy file from insiders to stable"
-                    :action "prompt-sync.action/sync-to-stable"}
-                   {:label "Skip"
-                    :iconPath (vscode/ThemeIcon. "close")
-                    :description "Leave file only in insiders"
-                    :action "prompt-sync.action/skip"}]
-
-                  :status/missing-in-insiders
-                  [{:label "Sync to Insiders"
-                    :iconPath (vscode/ThemeIcon. "arrow-right")
-                    :description "Copy file from stable to insiders"
-                    :action "prompt-sync.action/sync-to-insiders"}
-                   {:label "Skip"
-                    :iconPath (vscode/ThemeIcon. "close")
-                    :description "Leave file only in stable"
-                    :action "prompt-sync.action/skip"}]
-
-                  ;; Default fallback for unknown statuses
-                  [{:label "Skip"
-                    :iconPath (vscode/ThemeIcon. "close")
-                    :description "No action available"
-                    :action "prompt-sync.action/skip"}])]
+                  :status/conflict (build-conflict-actions)
+                  :status/missing-in-stable (build-missing-stable-actions)
+                  :status/missing-in-insiders (build-missing-insiders-actions)
+                  (build-default-actions))]
     (-> (vscode/window.showQuickPick
          (clj->js actions)
          #js {:placeHolder (str "How to resolve: " filename)
