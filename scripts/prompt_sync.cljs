@@ -257,53 +257,67 @@
 
 (defn show-all-files-picker!+
   "Shows QuickPick for all files with appropriate preview and selection behavior"
-  [all-instructions]
-  (if (empty? all-instructions)
-    (p/resolved nil)
-    (let [items (map create-picker-item all-instructions)
-          picker (vscode/window.createQuickPick)]
+  ([all-instructions] (show-all-files-picker!+ all-instructions nil))
+  ([all-instructions last-active-item]
+   (if (empty? all-instructions)
+     (p/resolved nil)
+     (let [items (map create-picker-item all-instructions)
+           picker (vscode/window.createQuickPick)
+           ;; Find the index of the last active item if provided
+           last-active-index (when last-active-item
+                               (->> items
+                                    (map-indexed vector)
+                                    (filter (fn [[_idx item]]
+                                              (= (.-filename (.-fileInfo item))
+                                                 (:instruction/filename last-active-item))))
+                                    (first)
+                                    (first)))]
 
-      (set! (.-items picker) (into-array items))
-      (set! (.-title picker) "Prompt Sync - All Files")
-      (set! (.-placeholder picker) "Select conflicts to resolve, others for preview")
-      (set! (.-ignoreFocusOut picker) true)
+       (set! (.-items picker) (into-array items))
+       (set! (.-title picker) "Prompt Sync - All Files")
+       (set! (.-placeholder picker) "Select conflicts to resolve, others for preview")
+       (set! (.-ignoreFocusOut picker) true)
 
-      ;; Live preview on active item change
-      (.onDidChangeActive picker
-                          (fn [active-items]
-                            (when-let [first-item (first active-items)]
-                              (let [file-info (.-fileInfo first-item)
-                                    filename (.-filename file-info)
-                                    is-conflict (.-isConflict file-info)]
-                                (if is-conflict
-                                  ;; Show diff for conflicts
-                                  (let [instruction-info (first (filter #(= (:instruction/filename %) filename) all-instructions))]
-                                    (when instruction-info
-                                      (show-diff-preview!+ instruction-info)))
-                                  ;; Show simple preview for non-conflicts
-                                  (let [instruction-data (first (filter #(= (:instruction/filename %) filename) all-instructions))]
-                                    (when instruction-data
-                                      (show-file-preview!+ instruction-data))))))))
+       ;; Set active item to the last selected one if available
+       (when (and last-active-index (< last-active-index (count items)))
+         (set! (.-activeItems picker) #js [(nth items last-active-index)]))
 
-      (js/Promise.
-       (fn [resolve _reject]
-         (.onDidAccept picker
-                       (fn []
-                         (when-let [selected (first (.-selectedItems picker))]
-                           (let [file-info (.-fileInfo selected)
-                                 is-conflict (.-isConflict file-info)]
-                             (if is-conflict
-                               ;; Return conflict data for resolution
-                               (let [filename (.-filename file-info)
-                                     instruction-info (first (filter #(= (:instruction/filename %) filename) all-instructions))]
-                                 (.hide picker)
-                                 (resolve instruction-info))
-                               ;; For non-conflicts, keep picker open (don't resolve)
-                               (log! :debug "📁 Preview only:" (.-filename file-info)))))))
-         (.onDidHide picker
-                     (fn []
-                       (resolve nil)))
-         (.show picker))))))
+       ;; Live preview on active item change
+       (.onDidChangeActive picker
+                           (fn [active-items]
+                             (when-let [first-item (first active-items)]
+                               (let [file-info (.-fileInfo first-item)
+                                     filename (.-filename file-info)
+                                     is-conflict (.-isConflict file-info)]
+                                 (if is-conflict
+                                   ;; Show diff for conflicts
+                                   (let [instruction-info (first (filter #(= (:instruction/filename %) filename) all-instructions))]
+                                     (when instruction-info
+                                       (show-diff-preview!+ instruction-info)))
+                                   ;; Show simple preview for non-conflicts
+                                   (let [instruction-data (first (filter #(= (:instruction/filename %) filename) all-instructions))]
+                                     (when instruction-data
+                                       (show-file-preview!+ instruction-data))))))))
+
+       (js/Promise.
+        (fn [resolve _reject]
+          (.onDidAccept picker
+                        (fn []
+                          (when-let [selected (first (.-selectedItems picker))]
+                            (let [file-info (.-fileInfo selected)
+                                  is-conflict (.-isConflict file-info)]
+                              (if is-conflict
+                                ;; Return conflict data for resolution
+                                (let [filename (.-filename file-info)
+                                      instruction-info (first (filter #(= (:instruction/filename %) filename) all-instructions))]
+                                  (.hide picker)
+                                  (resolve instruction-info))
+                                ;; For non-conflicts, keep picker open (don't resolve)
+                                (log! :debug "📁 Preview only:" (.-filename file-info)))))))
+          (.onDidHide picker
+                      (fn []
+                        (resolve nil)))
+          (.show picker)))))))
 
 (defn show-resolution-menu!+
   "Shows resolution options menu"
@@ -396,16 +410,18 @@
 (defn main-menu-loop!+
   "Show instructions picker offering conflict resolution actions for conflicts
    Keep showing the instructions menu until the user cancels"
-  [instructions]
-  (def instructions instructions)
-  (p/loop [current-instructions instructions]
-    (p/let [selected-instruction (show-all-files-picker!+ current-instructions)]
-      (if selected-instruction
-        (p/let [updated-instructions (resolve-single-conflict!+ selected-instruction current-instructions)]
-          (if (= updated-instructions :cancelled)
-            (p/recur current-instructions)
-            (p/recur updated-instructions)))
-        (p/resolved :cancelled)))))
+  ([instructions] (main-menu-loop!+ instructions nil))
+  ([instructions last-active-item]
+   (def instructions instructions)
+   (p/loop [current-instructions instructions
+            last-active last-active-item]
+     (p/let [selected-instruction (show-all-files-picker!+ current-instructions last-active)]
+       (if selected-instruction
+         (p/let [updated-instructions (resolve-single-conflict!+ selected-instruction current-instructions)]
+           (if (= updated-instructions :cancelled)
+             (p/recur current-instructions selected-instruction) ; Keep the selected item as the last active
+             (p/recur updated-instructions selected-instruction))) ; Pass along the selected item for memory
+         (p/resolved :cancelled))))))
 
 (defn sync-prompts!+
   "Main entry point - orchestrates the entire sync process"
