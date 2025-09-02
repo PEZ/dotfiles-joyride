@@ -25,6 +25,19 @@
         path/dirname
         path/dirname)))
 
+(defn construct-directory-paths
+  "Pure function to construct directory paths from user directory and insiders check"
+  [current-user-dir is-insiders?]
+  (let [stable-dir (if is-insiders?
+                     (.replace current-user-dir "Code - Insiders" "Code")
+                     current-user-dir)
+        insiders-dir (if is-insiders?
+                       current-user-dir
+                       (.replace current-user-dir "Code" "Code - Insiders"))]
+    {:prompt-sync/stable-dir stable-dir
+     :prompt-sync/insiders-dir insiders-dir
+     :prompt-sync/current-is-insiders? is-insiders?}))
+
 (defn get-user-prompts-dirs
   "Returns configuration map with stable and insiders prompt directory paths"
   ([] (get-user-prompts-dirs {}))
@@ -36,16 +49,11 @@
       :prompt-sync/test-mode? true}
      (let [current-user-dir (get-vscode-user-dir)
            is-insiders? (.includes current-user-dir "Insiders")
-           stable-dir (if is-insiders?
-                        (.replace current-user-dir "Code - Insiders" "Code")
-                        current-user-dir)
-           insiders-dir (if is-insiders?
-                          current-user-dir
-                          (.replace current-user-dir "Code" "Code - Insiders"))]
-       {:prompt-sync/stable-dir (path/join stable-dir "prompts")
-        :prompt-sync/insiders-dir (path/join insiders-dir "prompts")
-        :prompt-sync/current-is-insiders? is-insiders?
-        :prompt-sync/test-mode? false}))))
+           dir-paths (construct-directory-paths current-user-dir is-insiders?)]
+       (-> dir-paths
+           (update :prompt-sync/stable-dir #(path/join % "prompts"))
+           (update :prompt-sync/insiders-dir #(path/join % "prompts"))
+           (assoc :prompt-sync/test-mode? false))))))
 
 (defn classify-instruction-type
   "Determines instruction type from filename for appropriate icon"
@@ -97,6 +105,42 @@
                          :location/content nil
                          :location/error (.-message err)))))))
 
+(defn create-instruction-from-locations
+  "Pure function to create instruction from stable and insiders locations"
+  [filename stable-location insiders-location]
+  (cond
+    ;; File only in stable
+    (and stable-location (not insiders-location))
+    {:instruction/filename filename
+     :instruction/instruction-type (:location/instruction-type stable-location)
+     :instruction/status :status/missing-in-insiders
+     :instruction/action-needed :resolve
+     :instruction/original-status :original/missing-in-insiders
+     :instruction/stable stable-location
+     :instruction/insiders nil}
+
+    ;; File only in insiders
+    (and insiders-location (not stable-location))
+    {:instruction/filename filename
+     :instruction/instruction-type (:location/instruction-type insiders-location)
+     :instruction/status :status/missing-in-stable
+     :instruction/action-needed :resolve
+     :instruction/original-status :original/missing-in-stable
+     :instruction/stable nil
+     :instruction/insiders insiders-location}
+
+    ;; File in both
+    (and stable-location insiders-location)
+    (let [content-match? (= (:location/content stable-location)
+                            (:location/content insiders-location))]
+      {:instruction/filename filename
+       :instruction/instruction-type (:location/instruction-type stable-location)
+       :instruction/status (if content-match? :status/identical :status/conflict)
+       :instruction/action-needed (if content-match? :none :resolve)
+       :instruction/original-status (if content-match? :original/identical :original/conflict)
+       :instruction/stable stable-location
+       :instruction/insiders insiders-location})))
+
 (defn compare-directories!+
   "Compares two directories and returns symmetric instruction-centric structures"
   [{:prompt-sync/keys [stable-dir insiders-dir]}]
@@ -117,38 +161,7 @@
              (map (fn [filename]
                     (let [stable-location (get stable-map filename)
                           insiders-location (get insiders-map filename)]
-                      (cond
-                        ;; File only in stable
-                        (and stable-location (not insiders-location))
-                        {:instruction/filename filename
-                         :instruction/instruction-type (:location/instruction-type stable-location)
-                         :instruction/status :status/missing-in-insiders
-                         :instruction/action-needed :resolve
-                         :instruction/original-status :original/missing-in-insiders
-                         :instruction/stable stable-location
-                         :instruction/insiders nil}
-
-                        ;; File only in insiders
-                        (and insiders-location (not stable-location))
-                        {:instruction/filename filename
-                         :instruction/instruction-type (:location/instruction-type insiders-location)
-                         :instruction/status :status/missing-in-stable
-                         :instruction/action-needed :resolve
-                         :instruction/original-status :original/missing-in-stable
-                         :instruction/stable nil
-                         :instruction/insiders insiders-location}
-
-                        ;; File in both
-                        (and stable-location insiders-location)
-                        (let [content-match? (= (:location/content stable-location)
-                                                (:location/content insiders-location))]
-                          {:instruction/filename filename
-                           :instruction/instruction-type (:location/instruction-type stable-location)
-                           :instruction/status (if content-match? :status/identical :status/conflict)
-                           :instruction/action-needed (if content-match? :none :resolve)
-                           :instruction/original-status (if content-match? :original/identical :original/conflict)
-                           :instruction/stable stable-location
-                           :instruction/insiders insiders-location}))))
+                      (create-instruction-from-locations filename stable-location insiders-location)))
                   all-filenames))))
 
 (defn copy-file!+
@@ -234,8 +247,8 @@
        " • Resolved: " resolved
        " • Conflicts: " conflicts))
 
-(defn instructions->status-summary-item
-  "Creates a descriptive status menu item for the picker"
+(defn calculate-status-summary
+  "Pure function to calculate status counts and labels from instructions"
   [instructions]
   (let [status-counts (frequencies (map :instruction/status instructions))
         conflicts (:status/conflict status-counts 0)
@@ -244,8 +257,21 @@
         missing-insiders (:status/missing-in-insiders status-counts 0)
         identical (:status/identical status-counts 0)
         total (count instructions)]
-    #js {:label (format-status-counts total identical missing-stable missing-insiders resolved conflicts)
-         :description (format-status-description identical missing-stable missing-insiders resolved conflicts)
+    {:status-summary/total total
+     :status-summary/identical identical
+     :status-summary/missing-stable missing-stable
+     :status-summary/missing-insiders missing-insiders
+     :status-summary/resolved resolved
+     :status-summary/conflicts conflicts
+     :status-summary/label (format-status-counts total identical missing-stable missing-insiders resolved conflicts)
+     :status-summary/description (format-status-description identical missing-stable missing-insiders resolved conflicts)}))
+
+(defn instructions->status-summary-item
+  "Creates a descriptive status menu item for the picker"
+  [instructions]
+  (let [summary (calculate-status-summary instructions)]
+    #js {:label (:status-summary/label summary)
+         :description (:status-summary/description summary)
          :fileInfo #js {:isStatus true}
          :itemType "status"}))
 
@@ -558,18 +584,26 @@
                      (when choice
                        (keyword (.-action choice))))))))))
 
-(defn resolve-instruction!+
-  "Executes the chosen resolution action for conflicts and missing files, returns result data"
-  [instruction choice {:prompt-sync/keys [stable-dir insiders-dir]}]
-  (log! :debug "🔧 resolve-instruction!+ called with:")
-  (log! :debug "  Choice:" choice)
-  (log! :debug "  Choice type:" (type choice))
-  (log! :debug "  Instruction filename:" (:instruction/filename instruction))
+(defn construct-file-uris
+  "Pure function to construct file URIs from instruction and directories"
+  [instruction {:prompt-sync/keys [stable-dir insiders-dir]}]
   (let [{:instruction/keys [filename stable insiders]} instruction
         stable-uri (or (:location/uri stable)
                        (when stable-dir (vscode/Uri.file (path/join stable-dir filename))))
         insiders-uri (or (:location/uri insiders)
                          (when insiders-dir (vscode/Uri.file (path/join insiders-dir filename))))]
+    {:file-uris/stable-uri stable-uri
+     :file-uris/insiders-uri insiders-uri}))
+
+(defn resolve-instruction!+
+  "Executes the chosen resolution action for conflicts and missing files, returns result data"
+  [instruction choice dirs]
+  (log! :debug "🔧 resolve-instruction!+ called with:")
+  (log! :debug "  Choice:" choice)
+  (log! :debug "  Choice type:" (type choice))
+  (log! :debug "  Instruction filename:" (:instruction/filename instruction))
+  (let [{:instruction/keys [filename]} instruction
+        {:file-uris/keys [stable-uri insiders-uri]} (construct-file-uris instruction dirs)]
     (log! :debug "  Stable file URI:" stable-uri)
     (log! :debug "  Insiders file URI:" insiders-uri)
     (case choice
@@ -606,23 +640,35 @@
       (do (log! :debug "  → Cancelled")
           (p/resolved {:prompt-sync.resolution/action :cancelled :prompt-sync.resolution/filename filename :prompt-sync.resolution/success false})))))
 
+(defn filter-missing-stable
+  "Pure function to filter instructions missing in stable"
+  [instructions]
+  (filter #(= (:instruction/status %) :status/missing-in-stable) instructions))
+
+(defn filter-missing-insiders
+  "Pure function to filter instructions missing in insiders"
+  [instructions]
+  (filter #(= (:instruction/status %) :status/missing-in-insiders) instructions))
+
+(defn filter-all-missing
+  "Pure function to filter all missing instructions"
+  [instructions]
+  (filter #(#{:status/missing-in-stable :status/missing-in-insiders} (:instruction/status %)) instructions))
+
+(defn get-bulk-operation-targets
+  "Pure function to get target instructions for bulk operations"
+  [all-instructions choice]
+  (case choice
+    :prompt-sync.action/sync-all-to-stable (filter-missing-stable all-instructions)
+    :prompt-sync.action/sync-all-to-insiders (filter-missing-insiders all-instructions)
+    :prompt-sync.action/sync-all-missing (filter-all-missing all-instructions)
+    :prompt-sync.action/skip-all-missing (filter-all-missing all-instructions)
+    []))
+
 (defn apply-bulk-operation!+
   "Applies bulk resolution operation to multiple instructions"
   [all-instructions choice dirs]
-  (let [targets (case choice
-                  :prompt-sync.action/sync-all-to-stable
-                  (filter #(= (:instruction/status %) :status/missing-in-stable) all-instructions)
-
-                  :prompt-sync.action/sync-all-to-insiders
-                  (filter #(= (:instruction/status %) :status/missing-in-insiders) all-instructions)
-
-                  :prompt-sync.action/sync-all-missing
-                  (filter #(#{:status/missing-in-stable :status/missing-in-insiders} (:instruction/status %)) all-instructions)
-
-                  :prompt-sync.action/skip-all-missing
-                  (filter #(#{:status/missing-in-stable :status/missing-in-insiders} (:instruction/status %)) all-instructions)
-
-                  [])]
+  (let [targets (get-bulk-operation-targets all-instructions choice)]
     (if (empty? targets)
       (p/resolved all-instructions)
       (p/let [;; Execute all file operations in parallel
