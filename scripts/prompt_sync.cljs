@@ -503,9 +503,7 @@
                         (resolve nil)))
           (.show picker)))))))
 
-(defn build-conflict-actions
-  "Builds action items for conflict resolution"
-  []
+(def conflict-actions
   [{:label "Choose Stable"
     :iconPath (vscode/ThemeIcon. "arrow-right")
     :description "Copy stable version to insiders"
@@ -519,9 +517,7 @@
     :description "Leave both files as-is"
     :action "prompt-sync.action/skip"}])
 
-(defn build-missing-stable-actions
-  "Builds action items for missing stable files"
-  []
+(def missing-stable-actions
   [{:label "Sync to Stable"
     :iconPath (vscode/ThemeIcon. "arrow-left")
     :description "Copy file from insiders to stable"
@@ -531,9 +527,7 @@
     :description "Leave file only in insiders"
     :action "prompt-sync.action/skip"}])
 
-(defn build-missing-insiders-actions
-  "Builds action items for missing insiders files"
-  []
+(def missing-insiders-actions
   [{:label "Sync to Insiders"
     :iconPath (vscode/ThemeIcon. "arrow-right")
     :description "Copy file from stable to insiders"
@@ -543,9 +537,7 @@
     :description "Leave file only in stable"
     :action "prompt-sync.action/skip"}])
 
-(defn build-default-actions
-  "Builds default fallback actions"
-  []
+(def default-actions
   [{:label "Skip"
     :iconPath (vscode/ThemeIcon. "close")
     :description "No action available"
@@ -556,10 +548,10 @@
   [{:instruction/keys [filename status]}]
   (log! :debug "📋 show-resolution-menu!+ called for:" filename "status:" status)
   (let [actions (case status
-                  :status/conflict (build-conflict-actions)
-                  :status/missing-in-stable (build-missing-stable-actions)
-                  :status/missing-in-insiders (build-missing-insiders-actions)
-                  (build-default-actions))]
+                  :status/conflict conflict-actions
+                  :status/missing-in-stable missing-stable-actions
+                  :status/missing-in-insiders missing-insiders-actions
+                  default-actions)]
     (-> (vscode/window.showQuickPick
          (clj->js actions)
          #js {:placeHolder (str "How to resolve: " filename)
@@ -596,7 +588,7 @@
 
                       (seq all-missing)
                       (conj {:label (str "Sync All Missing (" (count all-missing) " files)")
-                             :iconPath (vscode/ThemeIcon. "sync")
+                             :iconPath (vscode/ThemeIcon. "arrow-swap")
                              :description "Copy all missing files to their appropriate destinations"
                              :action "prompt-sync.action/sync-all-missing"})
 
