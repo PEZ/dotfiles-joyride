@@ -600,7 +600,7 @@
    Keep showing the instructions menu until the user cancels"
   ([instructions dirs] (main-menu-loop!+ instructions dirs nil))
   ([instructions dirs last-active-item]
-   (def instructions instructions)
+   (def instructions instructions) ; excellent for interactive debugging
    (p/loop [current-instructions instructions
             last-active last-active-item]
      (p/let [selected-instruction (show-all-files-picker!+ current-instructions last-active)]
@@ -737,7 +737,6 @@
   (->
    (p/let [_ (cleanup-test-environment!+) ; Clean first, then create
            test-dirs (create-test-environment!+)
-           _ (def test-dirs test-dirs)
            _ (populate-test-files!+ test-dirs test-files)]
      (sync-prompts!+ {:prompt-sync/test-mode? true}))
    (.catch (fn [error]
