@@ -48,17 +48,17 @@
         :prompt-sync/current-is-insiders? is-insiders?
         :prompt-sync/test-mode? false}))))
 
-(defn classify-file-type
-  "Determines file type from filename for appropriate icon"
+(defn classify-instruction-type
+  "Determines instruction type from filename for appropriate icon"
   [filename]
   (cond
-    (.endsWith filename "prompt.md") :prompt-sync.type/prompt
-    (.endsWith filename "chatmode.md") :prompt-sync.type/chatmode
-    :else :prompt-sync.type/instruction))
+    (.endsWith filename "prompt.md") :instruction.type/prompt
+    (.endsWith filename "chatmode.md") :instruction.type/chatmode
+    :else :instruction.type/instruction))
 
 (defn scan-directory!+
   "Scans directory for .md files using workspace.fs, returns promise"
-  [{:prompt-sync/keys [dir-path]}]
+  [{:scan/keys [dir-path]}]
   (let [dir-uri (vscode/Uri.file dir-path)]
     (-> (vscode/workspace.fs.readDirectory dir-uri)
         (.then (fn [entries]
@@ -68,76 +68,82 @@
                                 (and (= type VSCODE-FILE-TYPE) ; Use semantic constant instead of magic number
                                      (.endsWith name ".md"))))
                       (map (fn [[filename _]]
-                             {:prompt-sync.file/filename filename
-                              :prompt-sync.file/path (path/join dir-path filename)
-                              :prompt-sync.file/uri (vscode/Uri.file (path/join dir-path filename))
-                              :prompt-sync.file/file-type (classify-file-type filename)})))))
+                             {:location/filename filename
+                              :location/path (path/join dir-path filename)
+                              :location/uri (vscode/Uri.file (path/join dir-path filename))
+                              :location/instruction-type (classify-instruction-type filename)})))))
         (.catch (fn [err]
                   (if (= (.-code err) "FileNotFound")
                     [] ; Return empty array if directory doesn't exist
                     (throw err)))))))
 
 (defn load-file-content!+
-  "Loads file content using workspace.fs, returns promise with updated file-info"
-  [file-info]
+  "Loads file content using workspace.fs, returns promise with updated location-info"
+  [location-info]
   (let [decoder (js/TextDecoder.)
-        {:prompt-sync.file/keys [uri]} file-info]
+        {:location/keys [uri]} location-info]
     (-> (vscode/workspace.fs.readFile uri)
         (.then (fn [uint8array]
-                 (assoc file-info :prompt-sync.file/content (.decode decoder uint8array))))
+                 (assoc location-info :location/content (.decode decoder uint8array))))
         (.catch (fn [err]
-                  (assoc file-info
-                         :prompt-sync.file/content nil
-                         :prompt-sync.file/error (.-message err)))))))
+                  (assoc location-info
+                         :location/content nil
+                         :location/error (.-message err)))))))
 
 (defn compare-directories!+
-  "Compares two directories and returns flat file list with statuses and :original-status metadata"
+  "Compares two directories and returns symmetric instruction-centric structures"
   [{:prompt-sync/keys [stable-dir insiders-dir]}]
-  (p/let [stable-files (scan-directory!+ {:prompt-sync/dir-path stable-dir})
-          insiders-files (scan-directory!+ {:prompt-sync/dir-path insiders-dir})
+  (p/let [stable-locations (scan-directory!+ {:scan/dir-path stable-dir})
+          insiders-locations (scan-directory!+ {:scan/dir-path insiders-dir})
 
-          ;; Load content for all files
-          stable-with-content (p/all (map load-file-content!+ stable-files))
-          insiders-with-content (p/all (map load-file-content!+ insiders-files))
+          ;; Load content for all locations
+          stable-with-content (p/all (map load-file-content!+ stable-locations))
+          insiders-with-content (p/all (map load-file-content!+ insiders-locations))
 
           ;; Create lookup maps by filename
-          stable-map (into {} (map (fn [f] [(:prompt-sync.file/filename f) f]) stable-with-content))
-          insiders-map (into {} (map (fn [f] [(:prompt-sync.file/filename f) f]) insiders-with-content))
+          stable-map (into {} (map (fn [loc] [(:location/filename loc) loc]) stable-with-content))
+          insiders-map (into {} (map (fn [loc] [(:location/filename loc) loc]) insiders-with-content))
 
-          filenames (set (concat (keys stable-map) (keys insiders-map)))]
-    ;; Return flat list with statuses and :original-status metadata
-    (sort-by :prompt-sync.file/filename
+          all-filenames (set (concat (keys stable-map) (keys insiders-map)))]
+
+    ;; Return instruction-centric symmetric structures
+    (sort-by :instruction/filename
              (map (fn [filename]
-                    (let [stable-file (get stable-map filename)
-                          insiders-file (get insiders-map filename)]
+                    (let [stable-location (get stable-map filename)
+                          insiders-location (get insiders-map filename)]
                       (cond
                         ;; File only in stable
-                        (and stable-file (not insiders-file))
-                        (assoc stable-file
-                               :prompt-sync.file/status :missing-in-insiders
-                               :prompt-sync.file/action-needed :copy-to-insiders
-                               :prompt-sync.file/original-status :original/missing-in-insiders)
+                        (and stable-location (not insiders-location))
+                        {:instruction/filename filename
+                         :instruction/instruction-type (:location/instruction-type stable-location)
+                         :instruction/status :missing-in-insiders
+                         :instruction/action-needed :copy-to-insiders
+                         :instruction/original-status :original/missing-in-insiders
+                         :instruction/stable stable-location
+                         :instruction/insiders nil}
 
                         ;; File only in insiders
-                        (and insiders-file (not stable-file))
-                        (assoc insiders-file
-                               :prompt-sync.file/status :missing-in-stable
-                               :prompt-sync.file/action-needed :copy-to-stable
-                               :prompt-sync.file/original-status :original/missing-in-stable)
+                        (and insiders-location (not stable-location))
+                        {:instruction/filename filename
+                         :instruction/instruction-type (:location/instruction-type insiders-location)
+                         :instruction/status :missing-in-stable
+                         :instruction/action-needed :copy-to-stable
+                         :instruction/original-status :original/missing-in-stable
+                         :instruction/stable nil
+                         :instruction/insiders insiders-location}
 
                         ;; File in both
-                        (and stable-file insiders-file)
-                        (merge stable-file
-                               {:prompt-sync.file/insiders-file insiders-file}
-                               (if (= (:prompt-sync.file/content stable-file)
-                                      (:prompt-sync.file/content insiders-file))
-                                 {:prompt-sync.file/status :identical
-                                  :prompt-sync.file/action-needed :none
-                                  :prompt-sync.file/original-status :original/identical}
-                                 {:prompt-sync.file/status :conflict
-                                  :prompt-sync.file/action-needed :resolve
-                                  :prompt-sync.file/original-status :original/conflict})))))
-                  filenames))))
+                        (and stable-location insiders-location)
+                        (let [content-match? (= (:location/content stable-location)
+                                                (:location/content insiders-location))]
+                          {:instruction/filename filename
+                           :instruction/instruction-type (:location/instruction-type stable-location)
+                           :instruction/status (if content-match? :identical :conflict)
+                           :instruction/action-needed (if content-match? :none :resolve)
+                           :instruction/original-status (if content-match? :original/identical :original/conflict)
+                           :instruction/stable stable-location
+                           :instruction/insiders insiders-location}))))
+                  all-filenames))))
 
 (defn copy-file!+
   "Copies file using workspace.fs"
@@ -147,49 +153,53 @@
                (vscode/workspace.fs.writeFile target-uri content)))))
 
 (defn copy-missing-files!+
-  "Copies files that need copying and updates their status using :original-status metadata"
-  [all-files {:prompt-sync/keys [stable-dir insiders-dir]}]
-  (p/let [files-to-copy (filter #(#{:missing-in-stable :missing-in-insiders}
-                                  (:prompt-sync.file/status %)) all-files)
+  "Copies files that need copying and updates their status using new instruction structure"
+  [all-instructions {:prompt-sync/keys [stable-dir insiders-dir]}]
+  (p/let [instructions-to-copy (filter #(#{:missing-in-stable :missing-in-insiders}
+                                         (:instruction/status %)) all-instructions)
 
           ;; Execute all copy operations
-          _ (p/all (map (fn [file-info]
-                          (case (:prompt-sync.file/status file-info)
+          _ (p/all (map (fn [instruction]
+                          (case (:instruction/status instruction)
                             :missing-in-stable
-                            (copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri file-info)
-                                          :prompt-sync/target-uri (vscode/Uri.file
-                                                                   (path/join stable-dir (:prompt-sync.file/filename file-info)))})
+                            (let [source-uri (-> instruction :instruction/insiders :location/uri)
+                                  target-uri (vscode/Uri.file
+                                             (path/join stable-dir (:instruction/filename instruction)))]
+                              (copy-file!+ {:prompt-sync/source-uri source-uri
+                                            :prompt-sync/target-uri target-uri}))
                             :missing-in-insiders
-                            (copy-file!+ {:prompt-sync/source-uri (:prompt-sync.file/uri file-info)
-                                          :prompt-sync/target-uri (vscode/Uri.file
-                                                                   (path/join insiders-dir (:prompt-sync.file/filename file-info)))})))
-                        files-to-copy))]
+                            (let [source-uri (-> instruction :instruction/stable :location/uri)
+                                  target-uri (vscode/Uri.file
+                                             (path/join insiders-dir (:instruction/filename instruction)))]
+                              (copy-file!+ {:prompt-sync/source-uri source-uri
+                                            :prompt-sync/target-uri target-uri}))))
+                        instructions-to-copy))]
 
-    ;; Transform statuses using :original-status metadata - clean transformation
-    (map (fn [file-info]
-           (case (:prompt-sync.file/status file-info)
+    ;; Transform statuses - mark copied files as completed
+    (map (fn [instruction]
+           (case (:instruction/status instruction)
              :missing-in-stable
-             (assoc file-info
-                    :prompt-sync.file/status :copied
-                    :prompt-sync.file/action-needed :none)
+             (assoc instruction
+                    :instruction/status :copied
+                    :instruction/action-needed :none)
 
              :missing-in-insiders
-             (assoc file-info
-                    :prompt-sync.file/status :copied
-                    :prompt-sync.file/action-needed :none)
+             (assoc instruction
+                    :instruction/status :copied
+                    :instruction/action-needed :none)
 
              ;; Other statuses unchanged
-             file-info))
-         all-files)))
+             instruction))
+         all-instructions)))
 
 ;; Obsolete functions removed - we now have flat data from the start!
 ;; The bucket-based approach required complex transformations that are no longer needed.
 
 (defn show-diff-preview!+
   "Opens VS Code diff editor for conflict preview with default positioning"
-  [{:prompt-sync.file/keys [filename uri insiders-file]}]
-  (let [stable-uri uri  ; Current file is the stable version
-        insiders-uri (:prompt-sync.file/uri insiders-file)
+  [{:instruction/keys [filename stable insiders]}]
+  (let [stable-uri (:location/uri stable)
+        insiders-uri (:location/uri insiders)
         title (str "Diff: " filename " (Stable ↔ Insiders)")]
     (vscode/commands.executeCommand "vscode.diff"
                                     stable-uri
@@ -198,31 +208,31 @@
                                     #js {:preview true
                                          :preserveFocus true})))
 
-(defn get-file-icon
-  "Gets appropriate VS Code icon for file type"
-  [file-type]
-  (case file-type
-    :prompt-sync.type/instruction (vscode/ThemeIcon. "list-ordered")
-    :prompt-sync.type/prompt (vscode/ThemeIcon. "chevron-right")
-    :prompt-sync.type/chatmode (vscode/ThemeIcon. "color-mode")
+(defn get-instruction-icon
+  "Gets appropriate VS Code icon for instruction type"
+  [instruction-type]
+  (case instruction-type
+    :instruction.type/instruction (vscode/ThemeIcon. "list-ordered")
+    :instruction.type/prompt (vscode/ThemeIcon. "chevron-right")
+    :instruction.type/chatmode (vscode/ThemeIcon. "color-mode")
     (vscode/ThemeIcon. "diff")))
 
 (defn create-picker-item
-  "Creates QuickPick item using :original-status for copy direction display"
-  [{:prompt-sync.file/keys [filename status file-type action-needed original-status]}]
-  (let [icon (get-file-icon file-type)
+  "Creates QuickPick item using new symmetric instruction structure"
+  [{:instruction/keys [filename status instruction-type action-needed original-status]}]
+  (let [icon (get-instruction-icon instruction-type)
         direction-string (case original-status
                            :original/missing-in-insiders "Stable → Insiders"
                            :original/missing-in-stable "Insiders → Stable"
                            "copied")
         detail (case status
                  :copied  direction-string
-                 :conflict (str (name file-type) " • has conflicts")
+                 :conflict (str (name instruction-type) " • has conflicts")
                  :identical "identical"
-                 :missing-in-stable (str (name file-type) " • missing in stable")
-                 :missing-in-insiders (str (name file-type) " • missing in insiders")
+                 :missing-in-stable (str (name instruction-type) " • missing in stable")
+                 :missing-in-insiders (str (name instruction-type) " • missing in insiders")
                  :resolved (str "resolved: " direction-string)
-                 (str (name file-type) " • " (name status)))
+                 (str (name instruction-type) " • " (name status)))
         description (case action-needed
                       :resolve "Select to choose resolution"
                       :copy-to-stable "Will be copied to stable"
@@ -235,23 +245,23 @@
          :detail detail
          :fileInfo #js {:filename filename
                         :status (name status)
-                        :file-type (name file-type)
+                        :instruction-type (name instruction-type)
                         :isConflict (= status :conflict)}}))
 
 (defn show-file-preview!+
   "Shows file preview for non-conflict files"
-  [{:prompt-sync.file/keys [uri insiders-file]}]
-  (let [file-uri (or uri (:prompt-sync.file/uri insiders-file))]
+  [{:instruction/keys [stable insiders]}]
+  (let [file-uri (or (:location/uri stable) (:location/uri insiders))]
     (when file-uri
       (vscode/commands.executeCommand "vscode.open" file-uri #js {:preview true
                                                                   :preserveFocus true}))))
 
 (defn show-all-files-picker!+
   "Shows QuickPick for all files with appropriate preview and selection behavior"
-  [all-files]
-  (if (empty? all-files)
+  [all-instructions]
+  (if (empty? all-instructions)
     (p/resolved nil)
-    (let [items (map create-picker-item all-files)
+    (let [items (map create-picker-item all-instructions)
           picker (vscode/window.createQuickPick)]
 
       (set! (.-items picker) (into-array items))
@@ -268,13 +278,13 @@
                                     is-conflict (.-isConflict file-info)]
                                 (if is-conflict
                                   ;; Show diff for conflicts
-                                  (let [conflict-info (first (filter #(= (:prompt-sync.file/filename %) filename) all-files))]
-                                    (when conflict-info
-                                      (show-diff-preview!+ conflict-info)))
+                                  (let [instruction-info (first (filter #(= (:instruction/filename %) filename) all-instructions))]
+                                    (when instruction-info
+                                      (show-diff-preview!+ instruction-info)))
                                   ;; Show simple preview for non-conflicts
-                                  (let [file-data (first (filter #(= (:prompt-sync.file/filename %) filename) all-files))]
-                                    (when file-data
-                                      (show-file-preview!+ file-data))))))))
+                                  (let [instruction-data (first (filter #(= (:instruction/filename %) filename) all-instructions))]
+                                    (when instruction-data
+                                      (show-file-preview!+ instruction-data))))))))
 
       (js/Promise.
        (fn [resolve _reject]
@@ -286,9 +296,9 @@
                              (if is-conflict
                                ;; Return conflict data for resolution
                                (let [filename (.-filename file-info)
-                                     conflict-info (first (filter #(= (:prompt-sync.file/filename %) filename) all-files))]
+                                     instruction-info (first (filter #(= (:instruction/filename %) filename) all-instructions))]
                                  (.hide picker)
-                                 (resolve conflict-info))
+                                 (resolve instruction-info))
                                ;; For non-conflicts, keep picker open (don't resolve)
                                (log! :debug "📁 Preview only:" (.-filename file-info)))))))
          (.onDidHide picker
@@ -298,7 +308,7 @@
 
 (defn show-resolution-menu!+
   "Shows resolution options menu"
-  [{:prompt-sync.file/keys [filename]}]
+  [{:instruction/keys [filename]}]
   (log! :debug "📋 show-resolution-menu!+ called for:" filename)
   (let [actions [{:label "Choose Stable"
                   :iconPath (vscode/ThemeIcon. "arrow-left")
@@ -326,14 +336,14 @@
 
 (defn resolve-conflict!+
   "Executes the chosen resolution action, returns result data"
-  [conflict choice]
+  [instruction choice]
   (log! :debug "🔧 resolve-conflict!+ called with:")
   (log! :debug "  Choice:" choice)
   (log! :debug "  Choice type:" (type choice))
-  (log! :debug "  Conflict filename:" (:prompt-sync.file/filename conflict))
-  (let [{:prompt-sync.file/keys [uri insiders-file filename]} conflict
-        stable-uri uri  ; Current file is the stable version
-        insiders-uri (:prompt-sync.file/uri insiders-file)]
+  (log! :debug "  Instruction filename:" (:instruction/filename instruction))
+  (let [{:instruction/keys [filename stable insiders]} instruction
+        stable-uri (:location/uri stable)
+        insiders-uri (:location/uri insiders)]
     (log! :debug "  Stable file URI:" stable-uri)
     (log! :debug "  Insiders file URI:" insiders-uri)
     (case choice
@@ -356,46 +366,46 @@
       (do (log! :debug "  → Cancelled")
           (p/resolved {:prompt-sync.resolution/action :cancelled :prompt-sync.resolution/filename filename :prompt-sync.resolution/success false})))))
 
-(defn update-file-status-after-resolution
-  "Pure function for updating file status after conflict resolution in flat list"
-  [all-files resolved-filename resolution-type]
-  (map (fn [file-info]
-         (if (= (:prompt-sync.file/filename file-info) resolved-filename)
-           (assoc file-info
-                  :prompt-sync.file/status :resolved
-                  :prompt-sync.file/resolution resolution-type
-                  :prompt-sync.file/action-needed :none)
-           file-info))
-       all-files))
+(defn update-instruction-status-after-resolution
+  "Pure function for updating instruction status after conflict resolution"
+  [all-instructions resolved-filename resolution-type]
+  (map (fn [instruction]
+         (if (= (:instruction/filename instruction) resolved-filename)
+           (assoc instruction
+                  :instruction/status :resolved
+                  :instruction/resolution resolution-type
+                  :instruction/action-needed :none)
+           instruction))
+       all-instructions))
 
 (defn resolve-single-conflict!+
   "Handles single conflict resolution with UI interaction"
-  [selected-conflict all-files]
-  (p/let [choice (show-resolution-menu!+ selected-conflict)]
+  [selected-instruction all-instructions]
+  (p/let [choice (show-resolution-menu!+ selected-instruction)]
     (if choice
-      (p/let [_ (resolve-conflict!+ selected-conflict choice)
+      (p/let [_ (resolve-conflict!+ selected-instruction choice)
               resolution-type (case choice
                                 :prompt-sync.action/choose-stable :resolution/choose-stable
                                 :prompt-sync.action/choose-insiders :resolution/choose-insiders
                                 :prompt-sync.action/skip :resolution/skipped)
-              updated-files (update-file-status-after-resolution all-files
-                                                                 (:prompt-sync.file/filename selected-conflict)
-                                                                 resolution-type)]
-        updated-files)
+              updated-instructions (update-instruction-status-after-resolution all-instructions
+                                                                              (:instruction/filename selected-instruction)
+                                                                              resolution-type)]
+        updated-instructions)
       (p/resolved :cancelled))))
 
 (defn main-menu-loop!+
-  "Show files picker offering conflict resolution actions for conclicts
-   Keep showing the files menu until the user cancels"
-  [files]
-  (def files files)
-  (p/loop [current-files files]
-    (p/let [selected-conflict (show-all-files-picker!+ current-files)]
-      (if selected-conflict
-        (p/let [updated-files (resolve-single-conflict!+ selected-conflict current-files)]
-          (if (= updated-files :cancelled)
-            (p/recur current-files)
-            (p/recur updated-files)))
+  "Show instructions picker offering conflict resolution actions for conflicts
+   Keep showing the instructions menu until the user cancels"
+  [instructions]
+  (def instructions instructions)
+  (p/loop [current-instructions instructions]
+    (p/let [selected-instruction (show-all-files-picker!+ current-instructions)]
+      (if selected-instruction
+        (p/let [updated-instructions (resolve-single-conflict!+ selected-instruction current-instructions)]
+          (if (= updated-instructions :cancelled)
+            (p/recur current-instructions)
+            (p/recur updated-instructions)))
         (p/resolved :cancelled)))))
 
 (defn sync-prompts!+
@@ -412,14 +422,14 @@
                                             :prompt-sync/insiders-dir insiders-dir})
            _ (def compared compared)
 
-           ;; Copy missing files automatically and get updated file list
-           updated-files (copy-missing-files!+ compared dirs)
+           ;; Copy missing files automatically and get updated instruction list
+           updated-instructions (copy-missing-files!+ compared dirs)
 
            ;; Count what was copied for logging
-           copied-count (count (filter #(= (:prompt-sync.file/status %) :copied) updated-files))]
+           copied-count (count (filter #(= (:instruction/status %) :copied) updated-instructions))]
      (do (log! :debug (str "Auto-copied: " copied-count " files"))
          nil)
-     (main-menu-loop!+ updated-files))))
+     (main-menu-loop!+ updated-instructions))))
 
 (def test-files [{:prompt-sync.file/filename "identical.prompt.md"
                   :prompt-sync.file/stable-content "# Identical\nThis file is the same in both"
