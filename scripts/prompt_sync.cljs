@@ -635,37 +635,61 @@
      (log! :debug (str "Found " (count compared) " instructions"))
      (main-menu-loop!+ compared dirs))))
 
-(def test-files [{:prompt-sync.file/filename "identical.prompt.md"
-                  :prompt-sync.file/stable-content "# Identical\nThis file is the same in both"
-                  :prompt-sync.file/insiders-content "# Identical\nThis file is the same in both"}
-                 {:prompt-sync.file/filename "conflict1.instruction.md"
-                  :prompt-sync.file/stable-content
-                  "# Stable Version - Instruction\nThis is from stable\n## Instructions\n- Use stable approach\n- Follow stable patterns"
-                  :prompt-sync.file/insiders-content
-                  "# Insiders Version - Instruction\nThis is from insiders\n## Instructions\n- Use insiders approach\n- Follow insiders patterns"}
-                 {:prompt-sync.file/filename "conflict2.prompt.md"
-                  :prompt-sync.file/stable-content
-                  "# Stable Prompt\nYou are a stable assistant.\n\n## Rules\n- Be conservative\n- Follow stable guidelines"
-                  :prompt-sync.file/insiders-content
-                  "# Insiders Prompt\nYou are an experimental assistant.\n\n## Rules\n- Be innovative\n- Try new approaches"}
-                 {:prompt-sync.file/filename "conflict3.chatmode.md"
-                  :prompt-sync.file/stable-content
-                  "# Stable Chat Mode\nconversational: true\ntemperature: 0.3\n\n## Description\nStable conversation mode"
-                  :prompt-sync.file/insiders-content
-                  "# Insiders Chat Mode\nconversational: true\ntemperature: 0.8\n\n## Description\nExperimental conversation mode"}
-                 {:prompt-sync.file/filename "conflict4.instruction.md"
-                  :prompt-sync.file/stable-content
-                  "# Another Stable Instruction\nThese are stable coding guidelines.\n\n- Always use stable APIs\n- Avoid experimental features"
-                  :prompt-sync.file/insiders-content
-                  "# Another Insiders Instruction\nThese are experimental coding guidelines.\n\n- Try new APIs\n- Embrace experimental features"}
-                 {:prompt-sync.file/filename "stable-only.chatmode.md"
-                  :prompt-sync.file/stable-content
-                  "# Stable Only\nThis file only exists in stable"
-                  :prompt-sync.file/location :stable-only}
-                 {:prompt-sync.file/filename "insiders-only.prompt.md"
-                  :prompt-sync.file/insiders-content
-                  "# Insiders Only\nThis file only exists in insiders"
-                  :prompt-sync.file/location :insiders-only}])
+(defn generate-stable-content
+  "Generates stable content for different file types"
+  [file-type index]
+  (case file-type
+    ".instruction.md" (str "# Stable Instruction " index "\nThese are stable coding guidelines.\n\n- Always use stable APIs\n- Avoid experimental features")
+    ".prompt.md" (str "# Stable Prompt " index "\nYou are a stable assistant.\n\n## Rules\n- Be conservative\n- Follow stable guidelines")
+    ".chatmode.md" (str "# Stable Chat Mode " index "\nconversational: true\ntemperature: 0.3\n\n## Description\nStable conversation mode")))
+
+(defn generate-insiders-content
+  "Generates insiders content for different file types"
+  [file-type index]
+  (case file-type
+    ".instruction.md" (str "# Insiders Instruction " index "\nThese are experimental coding guidelines.\n\n- Try new APIs\n- Embrace experimental features")
+    ".prompt.md" (str "# Insiders Prompt " index "\nYou are an experimental assistant.\n\n## Rules\n- Be innovative\n- Try new approaches")
+    ".chatmode.md" (str "# Insiders Chat Mode " index "\nconversational: true\ntemperature: 0.8\n\n## Description\nExperimental conversation mode")))
+
+(defn generate-test-files
+  "Generates test files based on status counts map.
+   Options: {:identical N :conflicts N :stable-only N :insiders-only N}
+   Defaults to current test pattern: 1 identical, 4 conflicts, 1 stable-only, 1 insiders-only"
+  [{:keys [identical conflicts stable-only insiders-only]
+    :or {identical 1 conflicts 4 stable-only 1 insiders-only 1}}]
+  (let [file-types [".instruction.md" ".prompt.md" ".chatmode.md"]]
+    (concat
+      ;; Generate identical files
+      (for [i (range identical)]
+        (let [file-type (nth file-types (mod i (count file-types)))
+              content (str "# Identical " (inc i) "\nThis file is the same in both")]
+          {:prompt-sync.file/filename (str "identical" (inc i) file-type)
+           :prompt-sync.file/stable-content content
+           :prompt-sync.file/insiders-content content}))
+
+      ;; Generate conflict files
+      (for [i (range conflicts)]
+        (let [file-type (nth file-types (mod i (count file-types)))]
+          {:prompt-sync.file/filename (str "conflict" (inc i) file-type)
+           :prompt-sync.file/stable-content (generate-stable-content file-type (inc i))
+           :prompt-sync.file/insiders-content (generate-insiders-content file-type (inc i))}))
+
+      ;; Generate stable-only files
+      (for [i (range stable-only)]
+        (let [file-type (nth file-types (mod i (count file-types)))]
+          {:prompt-sync.file/filename (str "stable-only" (inc i) file-type)
+           :prompt-sync.file/stable-content (str "# Stable Only " (inc i) "\nThis file only exists in stable")
+           :prompt-sync.file/location :stable-only}))
+
+      ;; Generate insiders-only files
+      (for [i (range insiders-only)]
+        (let [file-type (nth file-types (mod i (count file-types)))]
+          {:prompt-sync.file/filename (str "insiders-only" (inc i) file-type)
+           :prompt-sync.file/insiders-content (str "# Insiders Only " (inc i) "\nThis file only exists in insiders")
+           :prompt-sync.file/location :insiders-only})))))
+
+;; Default test files (maintains current behavior)
+(def test-files (generate-test-files {}))
 
 (defn populate-test-files!+
   "Creates sample test files using only stable-content and insiders-content keys"
@@ -732,16 +756,19 @@
      (js/console.error "Prompt sync error:" error))))
 
 (defn ^:export main-test
-  "Entry point for test mode - uses /tmp directories"
-  []
-  (->
-   (p/let [_ (cleanup-test-environment!+) ; Clean first, then create
-           test-dirs (create-test-environment!+)
-           _ (populate-test-files!+ test-dirs test-files)]
-     (sync-prompts!+ {:prompt-sync/test-mode? true}))
-   (.catch (fn [error]
-             (vscode/window.showErrorMessage (str "Test sync error: " (.-message error)))
-             (js/console.error "Test prompt sync error:" error)))))
+  "Entry point for test mode - uses /tmp directories.
+   Optionally accepts file-config map: {:identical N :conflicts N :stable-only N :insiders-only N}"
+  ([] (main-test {}))
+  ([file-config]
+   (let [test-files (generate-test-files file-config)]
+     (->
+      (p/let [_ (cleanup-test-environment!+) ; Clean first, then create
+              test-dirs (create-test-environment!+)
+              _ (populate-test-files!+ test-dirs test-files)]
+        (sync-prompts!+ {:prompt-sync/test-mode? true}))
+      (.catch (fn [error]
+                (vscode/window.showErrorMessage (str "Test sync error: " (.-message error)))
+                (js/console.error "Test prompt sync error:" error)))))))
 
 ;; Auto-run when script is invoked
 (when (= (joyride/invoked-script) joyride/*file*)
