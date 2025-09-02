@@ -430,21 +430,22 @@
                                            (show-file-preview!+ instruction-data)))))
                                    nil)))))
 
-       ;; Button event handling
-       (.onDidTriggerItemButton picker
-                                (fn [event]
-                                  (let [item (.-item event)
-                                        button (.-button event)
-                                        tooltip (.-tooltip button)
-                                        bulk-action (.-bulkAction item)]
-                                    (log! :debug "🔘 Button triggered! Tooltip:" tooltip "Action:" bulk-action)
-                                    (.hide picker)
-                                    (.resolve js/Promise #js {:bulk-action-request true
-                                                              :action bulk-action
-                                                              :all-instructions all-instructions}))))
-
        (js/Promise.
         (fn [resolve _reject]
+          ;; Button event handling - use the resolve function from the Promise
+          (.onDidTriggerItemButton picker
+                                   (fn [event]
+                                     (let [item (.-item event)
+                                           button (.-button event)
+                                           tooltip (.-tooltip button)
+                                           bulk-action (.-bulkAction item)]
+                                       (log! :debug "🔘 Button triggered! Tooltip:" tooltip "Action:" bulk-action)
+                                       ;; Hide picker and resolve with bulk action
+                                       (.hide picker)
+                                       (resolve {:bulk-action-request true
+                                                 :action bulk-action
+                                                 :all-instructions all-instructions}))))
+
           (.onDidAccept picker
                         (fn []
                           (when-let [selected (first (.-selectedItems picker))]
