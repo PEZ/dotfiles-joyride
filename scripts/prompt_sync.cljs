@@ -11,7 +11,7 @@
 
 (defn log!
   [level & messages]
-  (when (or (= :info level)
+  (when (or (= level :error)
             (= :debug *log-level*))
     (apply println (conj (vec messages) "\n"))))
 
@@ -117,7 +117,7 @@
                         {:instruction/filename filename
                          :instruction/instruction-type (:location/instruction-type stable-location)
                          :instruction/status :missing-in-insiders
-                         :instruction/action-needed :copy-to-insiders
+                         :instruction/action-needed :resolve
                          :instruction/original-status :original/missing-in-insiders
                          :instruction/stable stable-location
                          :instruction/insiders nil}
@@ -127,7 +127,7 @@
                         {:instruction/filename filename
                          :instruction/instruction-type (:location/instruction-type insiders-location)
                          :instruction/status :missing-in-stable
-                         :instruction/action-needed :copy-to-stable
+                         :instruction/action-needed :resolve
                          :instruction/original-status :original/missing-in-stable
                          :instruction/stable nil
                          :instruction/insiders insiders-location}
@@ -219,19 +219,19 @@
 
 (defn create-picker-item
   "Creates QuickPick item using new symmetric instruction structure"
-  [{:instruction/keys [filename status instruction-type action-needed original-status resolution]}]
+  [{:instruction/keys [filename status instruction-type action-needed resolution]}]
   (let [icon (get-instruction-icon instruction-type)
         status-string (case status
-                        :copied  (case original-status
-                                   :original/missing-in-insiders "Auto-copied: Stable → Insiders"
-                                   :original/missing-in-stable "Auto-copied: Stable ← Insiders"
-                                   "copied")
+                        :missing-in-stable "Missing in Stable"
+                        :missing-in-insiders "Missing in Insiders"
                         :conflict "Has conflicts"
                         :identical "Identical"
                         :resolved (case resolution
                                     :resolution/choose-stable "Conflict resolved, copied: Stable → Insiders"
                                     :resolution/choose-insiders "Conflict resolved, copied: Stable ← Insiders"
-                                    :resolution/skipped "Conflict skipped"
+                                    :resolution/sync-to-stable "Missing file synced: Insiders → Stable"
+                                    :resolution/sync-to-insiders "Missing file synced: Stable → Insiders"
+                                    :resolution/skipped "Skipped"
                                     "resolved")
                         (name status))
         description (when (= :resolve action-needed)
@@ -251,16 +251,19 @@
   (let [status-counts (frequencies (map :instruction/status instructions))
         conflicts (:conflict status-counts 0)
         resolved (:resolved status-counts 0)
-        copied (:copied status-counts 0)
+        missing-stable (:missing-in-stable status-counts 0)
+        missing-insiders (:missing-in-insiders status-counts 0)
         identical (:identical status-counts 0)
         total (count instructions)]
     #js {:label (str total " instructions: "
                      "I:" identical ", "
-                     "A:" copied ", "
-                     "CR:" resolved ", "
+                     "MS:" missing-stable ", "
+                     "MI:" missing-insiders ", "
+                     "R:" resolved ", "
                      "C:" conflicts)
          :description (str "Identical: " identical
-                      " • Auto-copied: " copied
+                      " • Missing in Stable: " missing-stable
+                      " • Missing in Insiders: " missing-insiders
                       " • Resolved: " resolved
                       " • Conflicts: " conflicts)
          :fileInfo #js {:isStatus true}}))
@@ -331,39 +334,70 @@
                           (when-let [selected (first (.-selectedItems picker))]
                             (let [file-info (.-fileInfo selected)]
                               (if (.-isStatus file-info)
-                                ;; Status item selected - ignore
-                                nil
+                                ;; Status item selected - return bulk operation marker
+                                (do
+                                  (.hide picker)
+                                  (resolve {:bulk-operation-request true
+                                           :all-instructions all-instructions}))
                                 ;; File item selected - process
-                                (let [is-conflict (.-isConflict file-info)]
-                                  (if is-conflict
-                                    ;; Return conflict data for resolution
-                                    (let [filename (.-filename file-info)
-                                          instruction-info (first (filter #(= (:instruction/filename %) filename) all-instructions))]
-                                      (.hide picker)
-                                      (resolve instruction-info))
-                                    ;; For non-conflicts, keep picker open (don't resolve)
-                                    (log! :debug "📁 Preview only:" (.-filename file-info)))))))))
+                                (let [filename (.-filename file-info)
+                                      instruction-info (first (filter #(= (:instruction/filename %) filename) all-instructions))
+                                      needs-resolution? (= (:instruction/action-needed instruction-info) :resolve)]
+                                  (if needs-resolution?
+                                    ;; Return instruction data for resolution (conflicts or missing files)
+                                    (do (.hide picker)
+                                        (resolve instruction-info))
+                                    ;; For files that don't need resolution, keep picker open (don't resolve)
+                                    (log! :debug "📁 Preview only:" filename))))))))
           (.onDidHide picker
                       (fn []
                         (resolve nil)))
           (.show picker)))))))
 
 (defn show-resolution-menu!+
-  "Shows resolution options menu"
-  [{:instruction/keys [filename]}]
-  (log! :debug "📋 show-resolution-menu!+ called for:" filename)
-  (let [actions [{:label "Choose Stable"
-                  :iconPath (vscode/ThemeIcon. "arrow-right")
-                  :description "Copy stable version to insiders"
-                  :action "prompt-sync.action/choose-stable"}
-                 {:label "Choose Insiders"
-                  :iconPath (vscode/ThemeIcon. "arrow-left")
-                  :description "Copy insiders version to stable"
-                  :action "prompt-sync.action/choose-insiders"}
-                 {:label "Skip"
-                  :iconPath (vscode/ThemeIcon. "close")
-                  :description "Leave both files as-is"
-                  :action "prompt-sync.action/skip"}]]
+  "Shows resolution options menu for conflicts and missing files"
+  [{:instruction/keys [filename status]}]
+  (log! :debug "📋 show-resolution-menu!+ called for:" filename "status:" status)
+  (let [actions (case status
+                  :conflict
+                  [{:label "Choose Stable"
+                    :iconPath (vscode/ThemeIcon. "arrow-right")
+                    :description "Copy stable version to insiders"
+                    :action "prompt-sync.action/choose-stable"}
+                   {:label "Choose Insiders"
+                    :iconPath (vscode/ThemeIcon. "arrow-left")
+                    :description "Copy insiders version to stable"
+                    :action "prompt-sync.action/choose-insiders"}
+                   {:label "Skip"
+                    :iconPath (vscode/ThemeIcon. "close")
+                    :description "Leave both files as-is"
+                    :action "prompt-sync.action/skip"}]
+
+                  :missing-in-stable
+                  [{:label "Sync to Stable"
+                    :iconPath (vscode/ThemeIcon. "arrow-left")
+                    :description "Copy file from insiders to stable"
+                    :action "prompt-sync.action/sync-to-stable"}
+                   {:label "Skip"
+                    :iconPath (vscode/ThemeIcon. "close")
+                    :description "Leave file only in insiders"
+                    :action "prompt-sync.action/skip"}]
+
+                  :missing-in-insiders
+                  [{:label "Sync to Insiders"
+                    :iconPath (vscode/ThemeIcon. "arrow-right")
+                    :description "Copy file from stable to insiders"
+                    :action "prompt-sync.action/sync-to-insiders"}
+                   {:label "Skip"
+                    :iconPath (vscode/ThemeIcon. "close")
+                    :description "Leave file only in stable"
+                    :action "prompt-sync.action/skip"}]
+
+                  ;; Default fallback for unknown statuses
+                  [{:label "Skip"
+                    :iconPath (vscode/ThemeIcon. "close")
+                    :description "No action available"
+                    :action "prompt-sync.action/skip"}])]
     (-> (vscode/window.showQuickPick
          (clj->js actions)
          #js {:placeHolder (str "How to resolve: " filename)
@@ -376,19 +410,63 @@
                      (log! :debug "📋 Action as keyword:" action-keyword)
                      action-keyword)))))))
 
-(defn resolve-conflict!+
-  "Executes the chosen resolution action, returns result data"
-  [instruction choice]
-  (log! :debug "🔧 resolve-conflict!+ called with:")
+(defn show-status-resolution-menu!+
+  "Shows bulk resolution options for all missing files based on status summary"
+  [instructions]
+  (let [missing-stable (filter #(= (:instruction/status %) :missing-in-stable) instructions)
+        missing-insiders (filter #(= (:instruction/status %) :missing-in-insiders) instructions)
+        all-missing (concat missing-stable missing-insiders)]
+    ;; Early return if no missing files to prevent QuickPick flash
+    (if-not (seq all-missing)
+      (p/resolved nil)
+      (let [actions (cond-> []
+                      (seq missing-stable)
+                      (conj {:label (str "Sync All to Stable (" (count missing-stable) " files)")
+                             :iconPath (vscode/ThemeIcon. "arrow-left")
+                             :description "Copy all missing files from Insiders to Stable"
+                             :action "prompt-sync.action/sync-all-to-stable"})
+
+                      (seq missing-insiders)
+                      (conj {:label (str "Sync All to Insiders (" (count missing-insiders) " files)")
+                             :iconPath (vscode/ThemeIcon. "arrow-right")
+                             :description "Copy all missing files from Stable to Insiders"
+                             :action "prompt-sync.action/sync-all-to-insiders"})
+
+                      (seq all-missing)
+                      (conj {:label (str "Sync All Missing (" (count all-missing) " files)")
+                             :iconPath (vscode/ThemeIcon. "sync")
+                             :description "Copy all missing files to their appropriate destinations"
+                             :action "prompt-sync.action/sync-all-missing"})
+
+                      (seq all-missing)
+                      (conj {:label "Skip All Missing"
+                             :iconPath (vscode/ThemeIcon. "close")
+                             :description "Leave all missing files as-is"
+                             :action "prompt-sync.action/skip-all-missing"}))]
+        (-> (vscode/window.showQuickPick
+             (clj->js actions)
+             #js {:placeHolder "Bulk operations for missing files"
+                  :ignoreFocusOut true})
+            (.then (fn [choice]
+                     (when choice
+                       (keyword (.-action choice))))))))))
+
+(defn resolve-instruction!+
+  "Executes the chosen resolution action for conflicts and missing files, returns result data"
+  [instruction choice {:prompt-sync/keys [stable-dir insiders-dir]}]
+  (log! :debug "🔧 resolve-instruction!+ called with:")
   (log! :debug "  Choice:" choice)
   (log! :debug "  Choice type:" (type choice))
   (log! :debug "  Instruction filename:" (:instruction/filename instruction))
   (let [{:instruction/keys [filename stable insiders]} instruction
-        stable-uri (:location/uri stable)
-        insiders-uri (:location/uri insiders)]
+        stable-uri (or (:location/uri stable)
+                       (when stable-dir (vscode/Uri.file (path/join stable-dir filename))))
+        insiders-uri (or (:location/uri insiders)
+                         (when insiders-dir (vscode/Uri.file (path/join insiders-dir filename))))]
     (log! :debug "  Stable file URI:" stable-uri)
     (log! :debug "  Insiders file URI:" insiders-uri)
     (case choice
+      ;; Conflict resolution actions
       :prompt-sync.action/choose-stable
       (do (log! :debug "  → Copying stable to insiders")
           (p/let [_ (copy-file!+ {:prompt-sync/source-uri stable-uri
@@ -401,12 +479,91 @@
                                   :prompt-sync/target-uri stable-uri})]
             {:prompt-sync.resolution/action :choose-insiders :prompt-sync.resolution/filename filename :prompt-sync.resolution/success true}))
 
+      ;; Missing file sync actions
+      :prompt-sync.action/sync-to-stable
+      (do (log! :debug "  → Syncing to stable (missing file)")
+          (p/let [_ (copy-file!+ {:prompt-sync/source-uri insiders-uri
+                                  :prompt-sync/target-uri stable-uri})]
+            {:prompt-sync.resolution/action :sync-to-stable :prompt-sync.resolution/filename filename :prompt-sync.resolution/success true}))
+
+      :prompt-sync.action/sync-to-insiders
+      (do (log! :debug "  → Syncing to insiders (missing file)")
+          (p/let [_ (copy-file!+ {:prompt-sync/source-uri stable-uri
+                                  :prompt-sync/target-uri insiders-uri})]
+            {:prompt-sync.resolution/action :sync-to-insiders :prompt-sync.resolution/filename filename :prompt-sync.resolution/success true}))
+
       :prompt-sync.action/skip
       (do (log! :debug "  → Skipping")
           (p/resolved {:prompt-sync.resolution/action :skip :prompt-sync.resolution/filename filename :prompt-sync.resolution/success true}))
 
       (do (log! :debug "  → Cancelled")
           (p/resolved {:prompt-sync.resolution/action :cancelled :prompt-sync.resolution/filename filename :prompt-sync.resolution/success false})))))
+
+(defn apply-bulk-operation!+
+  "Applies bulk resolution operation to multiple instructions"
+  [all-instructions choice dirs]
+  (let [targets (case choice
+                  :prompt-sync.action/sync-all-to-stable
+                  (filter #(= (:instruction/status %) :missing-in-stable) all-instructions)
+
+                  :prompt-sync.action/sync-all-to-insiders
+                  (filter #(= (:instruction/status %) :missing-in-insiders) all-instructions)
+
+                  :prompt-sync.action/sync-all-missing
+                  (filter #(#{:missing-in-stable :missing-in-insiders} (:instruction/status %)) all-instructions)
+
+                  :prompt-sync.action/skip-all-missing
+                  (filter #(#{:missing-in-stable :missing-in-insiders} (:instruction/status %)) all-instructions)
+
+                  [])]
+    (if (empty? targets)
+      (p/resolved all-instructions)
+      (p/let [;; Execute all file operations in parallel
+              _ (p/all (map (fn [instruction]
+                              (case choice
+                                :prompt-sync.action/sync-all-to-stable
+                                (resolve-instruction!+ instruction :prompt-sync.action/sync-to-stable dirs)
+
+                                :prompt-sync.action/sync-all-to-insiders
+                                (resolve-instruction!+ instruction :prompt-sync.action/sync-to-insiders dirs)
+
+                                :prompt-sync.action/sync-all-missing
+                                (let [action (case (:instruction/status instruction)
+                                               :missing-in-stable :prompt-sync.action/sync-to-stable
+                                               :missing-in-insiders :prompt-sync.action/sync-to-insiders)]
+                                  (resolve-instruction!+ instruction action dirs))
+
+                                :prompt-sync.action/skip-all-missing
+                                (resolve-instruction!+ instruction :prompt-sync.action/skip dirs)))
+                            targets))]
+        ;; Update all instruction statuses
+        (map (fn [instruction]
+               (if (some #(= (:instruction/filename %) (:instruction/filename instruction)) targets)
+                 (let [resolution (case choice
+                                    :prompt-sync.action/sync-all-to-stable :resolution/sync-to-stable
+                                    :prompt-sync.action/sync-all-to-insiders :resolution/sync-to-insiders
+                                    :prompt-sync.action/sync-all-missing
+                                    (case (:instruction/status instruction)
+                                      :missing-in-stable :resolution/sync-to-stable
+                                      :missing-in-insiders :resolution/sync-to-insiders)
+                                    :prompt-sync.action/skip-all-missing :resolution/skipped)]
+                   (assoc instruction
+                          :instruction/status :resolved
+                          :instruction/resolution resolution
+                          :instruction/action-needed :none))
+                 instruction))
+             all-instructions)))))
+
+(defn handle-bulk-operations!+
+  "Handles status item selection by showing bulk operation menu and applying chosen action"
+  [all-instructions dirs]
+  (p/let [choice (show-status-resolution-menu!+ all-instructions)]
+    (if choice
+      (p/let [updated-instructions (apply-bulk-operation!+ all-instructions choice dirs)]
+        {:bulk-operation-applied true
+         :choice choice
+         :updated-instructions updated-instructions})
+      {:bulk-operation-applied false})))
 
 (defn update-instruction-status-after-resolution
   "Pure function for updating instruction status after conflict resolution"
@@ -422,13 +579,15 @@
 
 (defn resolve-single-conflict!+
   "Handles single conflict resolution with UI interaction"
-  [selected-instruction all-instructions]
+  [selected-instruction all-instructions dirs]
   (p/let [choice (show-resolution-menu!+ selected-instruction)]
     (if choice
-      (p/let [_ (resolve-conflict!+ selected-instruction choice)
+      (p/let [_ (resolve-instruction!+ selected-instruction choice dirs)
               resolution-type (case choice
                                 :prompt-sync.action/choose-stable :resolution/choose-stable
                                 :prompt-sync.action/choose-insiders :resolution/choose-insiders
+                                :prompt-sync.action/sync-to-stable :resolution/sync-to-stable
+                                :prompt-sync.action/sync-to-insiders :resolution/sync-to-insiders
                                 :prompt-sync.action/skip :resolution/skipped)
               updated-instructions (update-instruction-status-after-resolution all-instructions
                                                                               (:instruction/filename selected-instruction)
@@ -439,17 +598,24 @@
 (defn main-menu-loop!+
   "Show instructions picker offering conflict resolution actions for conflicts
    Keep showing the instructions menu until the user cancels"
-  ([instructions] (main-menu-loop!+ instructions nil))
-  ([instructions last-active-item]
+  ([instructions dirs] (main-menu-loop!+ instructions dirs nil))
+  ([instructions dirs last-active-item]
    (def instructions instructions)
    (p/loop [current-instructions instructions
             last-active last-active-item]
      (p/let [selected-instruction (show-all-files-picker!+ current-instructions last-active)]
        (if selected-instruction
-         (p/let [updated-instructions (resolve-single-conflict!+ selected-instruction current-instructions)]
-           (if (= updated-instructions :cancelled)
-             (p/recur current-instructions selected-instruction) ; Keep the selected item as the last active
-             (p/recur updated-instructions selected-instruction))) ; Pass along the selected item for memory
+         (if (:bulk-operation-request selected-instruction)
+           ;; Handle bulk operations
+           (p/let [bulk-result (handle-bulk-operations!+ (:all-instructions selected-instruction) dirs)]
+             (if (:bulk-operation-applied bulk-result)
+               (p/recur (:updated-instructions bulk-result) nil) ; Updated instructions, no last active
+               (p/recur current-instructions last-active))) ; No changes, keep last active
+           ;; Handle single instruction resolution
+           (p/let [updated-instructions (resolve-single-conflict!+ selected-instruction current-instructions dirs)]
+             (if (= updated-instructions :cancelled)
+               (p/recur current-instructions selected-instruction) ; Keep the selected item as the last active
+               (p/recur updated-instructions selected-instruction)))) ; Pass along the selected item for memory
          (p/resolved :cancelled))))))
 
 (defn sync-prompts!+
@@ -464,16 +630,10 @@
 
            compared (compare-directories!+ {:prompt-sync/stable-dir stable-dir
                                             :prompt-sync/insiders-dir insiders-dir})
-           _ (def compared compared)
+           _ (def compared compared)]
 
-           ;; Copy missing files automatically and get updated instruction list
-           updated-instructions (copy-missing-files!+ compared dirs)
-
-           ;; Count what was copied for logging
-           copied-count (count (filter #(= (:instruction/status %) :copied) updated-instructions))]
-     (do (log! :debug (str "Auto-copied: " copied-count " files"))
-         nil)
-     (main-menu-loop!+ updated-instructions))))
+     (log! :debug (str "Found " (count compared) " instructions"))
+     (main-menu-loop!+ compared dirs))))
 
 (def test-files [{:prompt-sync.file/filename "identical.prompt.md"
                   :prompt-sync.file/stable-content "# Identical\nThis file is the same in both"
