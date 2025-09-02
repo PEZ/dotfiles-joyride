@@ -230,7 +230,7 @@
                         :identical "Identical"
                         :resolved (case resolution
                                     :resolution/choose-stable "Conflict resolved, copied: Stable → Insiders"
-                                    :resolution/choose-insiders "Conflict resolved, copied: Insiders → Stable"
+                                    :resolution/choose-insiders "Conflict resolved, copied: Stable ← Insiders"
                                     :resolution/skipped "Conflict skipped"
                                     "resolved")
                         (name status))
@@ -244,6 +244,26 @@
                         :status (name status)
                         :instruction-type (name instruction-type)
                         :isConflict (= status :conflict)}}))
+
+(defn create-status-item
+  "Creates a descriptive status menu item for the picker"
+  [instructions]
+  (let [status-counts (frequencies (map :instruction/status instructions))
+        conflicts (:conflict status-counts 0)
+        resolved (:resolved status-counts 0)
+        copied (:copied status-counts 0)
+        identical (:identical status-counts 0)
+        total (count instructions)]
+    #js {:label (str total " instructions: "
+                     "I:" identical ", "
+                     "A:" copied ", "
+                     "CR:" resolved ", "
+                     "C:" conflicts)
+         :description (str "Identical: " identical
+                      " • Auto-copied: " copied
+                      " • Resolved: " resolved
+                      " • Conflicts: " conflicts)
+         :fileInfo #js {:isStatus true}}))
 
 (defn show-file-preview!+
   "Shows file preview for non-conflict files"
@@ -259,20 +279,23 @@
   ([all-instructions last-active-item]
    (if (empty? all-instructions)
      (p/resolved nil)
-     (let [items (map create-picker-item all-instructions)
+     (let [file-items (map create-picker-item all-instructions)
+           status-item (create-status-item all-instructions)
+           items (into [status-item] file-items)  ; Status item first
            picker (vscode/window.createQuickPick)
-           ;; Find the index of the last active item if provided
+           ;; Find the index of the last active item if provided (offset by 1 for status item)
            last-active-index (when last-active-item
-                               (->> items
-                                    (map-indexed vector)
-                                    (filter (fn [[_idx item]]
-                                              (= (.-filename (.-fileInfo item))
-                                                 (:instruction/filename last-active-item))))
-                                    (first)
-                                    (first)))]
+                               (when-let [file-index (->> file-items
+                                                          (map-indexed vector)
+                                                          (filter (fn [[_idx item]]
+                                                                    (= (.-filename (.-fileInfo item))
+                                                                       (:instruction/filename last-active-item))))
+                                                          (first)
+                                                          (first))]
+                                 (inc file-index)))]  ; Add 1 to account for status item
 
        (set! (.-items picker) (into-array items))
-       (set! (.-title picker) "Prompt Sync - All Files")
+       (set! (.-title picker) "Prompt Sync: Stable ↔ Insiders")
        (set! (.-placeholder picker) "Select conflicts to resolve, others for preview")
        (set! (.-ignoreFocusOut picker) true)
 
@@ -284,34 +307,42 @@
        (.onDidChangeActive picker
                            (fn [active-items]
                              (when-let [first-item (first active-items)]
-                               (let [file-info (.-fileInfo first-item)
-                                     filename (.-filename file-info)
-                                     is-conflict (.-isConflict file-info)]
-                                 (if is-conflict
-                                   ;; Show diff for conflicts
-                                   (let [instruction-info (first (filter #(= (:instruction/filename %) filename) all-instructions))]
-                                     (when instruction-info
-                                       (show-diff-preview!+ instruction-info)))
-                                   ;; Show simple preview for non-conflicts
-                                   (let [instruction-data (first (filter #(= (:instruction/filename %) filename) all-instructions))]
-                                     (when instruction-data
-                                       (show-file-preview!+ instruction-data))))))))
+                               (let [file-info (.-fileInfo first-item)]
+                                 (if (.-isStatus file-info)
+                                   ;; Status item selected - no preview
+                                   nil
+                                   ;; File item selected - show preview
+                                   (let [filename (.-filename file-info)
+                                         is-conflict (.-isConflict file-info)]
+                                     (if is-conflict
+                                       ;; Show diff for conflicts
+                                       (let [instruction-info (first (filter #(= (:instruction/filename %) filename) all-instructions))]
+                                         (when instruction-info
+                                           (show-diff-preview!+ instruction-info)))
+                                       ;; Show simple preview for non-conflicts
+                                       (let [instruction-data (first (filter #(= (:instruction/filename %) filename) all-instructions))]
+                                         (when instruction-data
+                                           (show-file-preview!+ instruction-data))))))))))
 
        (js/Promise.
         (fn [resolve _reject]
           (.onDidAccept picker
                         (fn []
                           (when-let [selected (first (.-selectedItems picker))]
-                            (let [file-info (.-fileInfo selected)
-                                  is-conflict (.-isConflict file-info)]
-                              (if is-conflict
-                                ;; Return conflict data for resolution
-                                (let [filename (.-filename file-info)
-                                      instruction-info (first (filter #(= (:instruction/filename %) filename) all-instructions))]
-                                  (.hide picker)
-                                  (resolve instruction-info))
-                                ;; For non-conflicts, keep picker open (don't resolve)
-                                (log! :debug "📁 Preview only:" (.-filename file-info)))))))
+                            (let [file-info (.-fileInfo selected)]
+                              (if (.-isStatus file-info)
+                                ;; Status item selected - ignore
+                                nil
+                                ;; File item selected - process
+                                (let [is-conflict (.-isConflict file-info)]
+                                  (if is-conflict
+                                    ;; Return conflict data for resolution
+                                    (let [filename (.-filename file-info)
+                                          instruction-info (first (filter #(= (:instruction/filename %) filename) all-instructions))]
+                                      (.hide picker)
+                                      (resolve instruction-info))
+                                    ;; For non-conflicts, keep picker open (don't resolve)
+                                    (log! :debug "📁 Preview only:" (.-filename file-info)))))))))
           (.onDidHide picker
                       (fn []
                         (resolve nil)))
@@ -322,11 +353,11 @@
   [{:instruction/keys [filename]}]
   (log! :debug "📋 show-resolution-menu!+ called for:" filename)
   (let [actions [{:label "Choose Stable"
-                  :iconPath (vscode/ThemeIcon. "arrow-left")
+                  :iconPath (vscode/ThemeIcon. "arrow-right")
                   :description "Copy stable version to insiders"
                   :action "prompt-sync.action/choose-stable"}
                  {:label "Choose Insiders"
-                  :iconPath (vscode/ThemeIcon. "arrow-right")
+                  :iconPath (vscode/ThemeIcon. "arrow-left")
                   :description "Copy insiders version to stable"
                   :action "prompt-sync.action/choose-insiders"}
                  {:label "Skip"
