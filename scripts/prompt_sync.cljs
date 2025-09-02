@@ -219,30 +219,29 @@
 
 (defn create-picker-item
   "Creates QuickPick item using new symmetric instruction structure"
-  [{:instruction/keys [filename status instruction-type action-needed original-status]}]
+  [{:instruction/keys [filename status instruction-type action-needed original-status resolution]}]
   (let [icon (get-instruction-icon instruction-type)
-        direction-string (case original-status
-                           :original/missing-in-insiders "Stable → Insiders"
-                           :original/missing-in-stable "Insiders → Stable"
-                           "copied")
-        detail (case status
-                 :copied  direction-string
-                 :conflict (str (name instruction-type) " • has conflicts")
-                 :identical "identical"
-                 :missing-in-stable (str (name instruction-type) " • missing in stable")
-                 :missing-in-insiders (str (name instruction-type) " • missing in insiders")
-                 :resolved (str "resolved: " direction-string)
-                 (str (name instruction-type) " • " (name status)))
-        description (case action-needed
-                      :resolve "Select to choose resolution"
-                      :copy-to-stable "Will be copied to stable"
-                      :copy-to-insiders "Will be copied to insiders"
-                      :none "Preview only"
-                      "")]
+        status-string (case status
+                        :copied  (case original-status
+                                   :original/missing-in-insiders "auto-copied: Stable → Insiders"
+                                   :original/missing-in-stable "auto-copied: Stable ← Insiders"
+                                   "copied")
+                        :conflict "Has conflicts"
+                        :identical "Identical"
+                        :missing-in-stable "Missing in stable"
+                        :missing-in-insiders "Missing in insiders"
+                        :resolved (case resolution
+                                    :resolution/choose-stable "copied: Stable → Insiders"
+                                    :resolution/choose-insiders "copied: Insiders → Stable"
+                                    :resolution/skipped "resolved: Skipped"
+                                    "resolved")
+                        (name status))
+        description (when (= :resolve action-needed)
+                      "Select to choose resolution")]
     #js {:label filename
          :iconPath icon
          :description description
-         :detail detail
+         :detail (str (name instruction-type) " • " status-string)
          :fileInfo #js {:filename filename
                         :status (name status)
                         :instruction-type (name instruction-type)
