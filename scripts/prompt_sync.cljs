@@ -4,7 +4,6 @@
             [promesa.core :as p]
             [joyride.core :as joyride]))
 
-;; VS Code FileType constants for semantic clarity
 (def ^:const VSCODE-FILE-TYPE vscode/FileType.File)
 
 (def ^:dynamic *log-level* :debug)
@@ -106,7 +105,6 @@
 
           all-filenames (set (concat (keys stable-map) (keys insiders-map)))]
 
-    ;; Return instruction-centric symmetric structures
     (sort-by :instruction/filename
              (map (fn [filename]
                     (let [stable-location (get stable-map filename)
@@ -153,7 +151,7 @@
                (vscode/workspace.fs.writeFile target-uri content)))))
 
 (defn show-diff-preview!+
-  "Opens VS Code diff editor for conflict preview with default positioning"
+  "Opens VS Code diff editor for conflict preview"
   [{:instruction/keys [filename stable insiders]}]
   (let [stable-uri (:location/uri stable)
         insiders-uri (:location/uri insiders)
@@ -250,18 +248,19 @@
 
 (defn create-section-header-item
   "Creates a section header item for grouped display"
-  [original-status file-count]
-  (let [header-text (case original-status
-                      :original/conflict (str "Originally Conflicting (" file-count " files)")
-                      :original/missing-in-stable (str "Originally Missing in Stable (" file-count " files)")
-                      :original/missing-in-insiders (str "Originally Missing in Insiders (" file-count " files)")
-                      :original/identical (str "Originally Identical (" file-count " files)")
-                      (str "Unknown Status (" file-count " files)"))]
+  [original-status total-count unresolved-count]
+  (let [resolved-count (- total-count unresolved-count)
+        header-text (case original-status
+                      :original/conflict (str "Conflicting (" resolved-count "/" total-count " resolved")
+                      :original/missing-in-stable (str "Missing in Stable (" resolved-count "/" total-count " resolved")
+                      :original/missing-in-insiders (str "Missing in Insiders (" resolved-count "/" total-count " resolved")
+                      :original/identical (str "Identical (" total-count " instructions)")
+                      (str "Unknown Status (" total-count " instructions)"))]
     #js {:label header-text
          :kind vscode/QuickPickItemKind.Separator
          :itemType "section-header"
          :sectionInfo #js {:originalStatus (name original-status)
-                           :totalCount file-count}}))
+                           :totalCount total-count}}))
 
 (defn count-unresolved-in-group
   "Counts unresolved files in a group (not :status/resolved status)"
@@ -279,10 +278,10 @@
          (mapcat (fn [[original-status group]]
                    (let [total-count (count group)
                          unresolved-count (count-unresolved-in-group group)
-                         section-header (create-section-header-item original-status total-count)
+                         section-header (create-section-header-item original-status total-count unresolved-count)
                          file-items (map instruction->quickpick-item group)
                          ;; Add button to first file item if we have unresolved items and it's a missing group
-                         enhanced-file-items (if (and (> unresolved-count 0)
+                         actioned-file-items (if (and (> unresolved-count 0)
                                                       (#{:original/missing-in-stable :original/missing-in-insiders} original-status)
                                                       (seq file-items))
                                                (let [first-item (first file-items)
@@ -294,7 +293,7 @@
                                                                    :original/missing-in-insiders
                                                                    #js {:iconPath (vscode/ThemeIcon. "arrow-right")
                                                                         :tooltip (str "Sync All to Insiders (" unresolved-count " files)")})
-                                                     enhanced-first-item #js {:label (.-label first-item)
+                                                     actioned-first-item #js {:label (.-label first-item)
                                                                               :iconPath (.-iconPath first-item)
                                                                               :description (.-description first-item)
                                                                               :detail (.-detail first-item)
@@ -304,9 +303,9 @@
                                                                               :bulkAction (case original-status
                                                                                             :original/missing-in-stable "sync-all-to-stable"
                                                                                             :original/missing-in-insiders "sync-all-to-insiders")}]
-                                                 (concat [enhanced-first-item] rest-items))
+                                                 (concat [actioned-first-item] rest-items))
                                                file-items)]
-                     (concat [section-header] enhanced-file-items))))
+                     (concat [section-header] actioned-file-items))))
          (into []))))
 
 (defn show-file-preview!+
