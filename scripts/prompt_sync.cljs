@@ -65,7 +65,7 @@
                  (->> entries
                       (js->clj)
                       (filter (fn [[name type]]
-                                (and (= type VSCODE-FILE-TYPE) ; Use semantic constant instead of magic number
+                                (and (= type VSCODE-FILE-TYPE)
                                      (.endsWith name ".md"))))
                       (map (fn [[filename _]]
                              {:location/filename filename
@@ -152,49 +152,6 @@
       (.then (fn [content]
                (vscode/workspace.fs.writeFile target-uri content)))))
 
-(defn copy-missing-files!+
-  "Copies files that need copying and updates their status using new instruction structure"
-  [all-instructions {:prompt-sync/keys [stable-dir insiders-dir]}]
-  (p/let [instructions-to-copy (filter #(#{:missing-in-stable :missing-in-insiders}
-                                         (:instruction/status %)) all-instructions)
-
-          ;; Execute all copy operations
-          _ (p/all (map (fn [instruction]
-                          (case (:instruction/status instruction)
-                            :missing-in-stable
-                            (let [source-uri (-> instruction :instruction/insiders :location/uri)
-                                  target-uri (vscode/Uri.file
-                                              (path/join stable-dir (:instruction/filename instruction)))]
-                              (copy-file!+ {:prompt-sync/source-uri source-uri
-                                            :prompt-sync/target-uri target-uri}))
-                            :missing-in-insiders
-                            (let [source-uri (-> instruction :instruction/stable :location/uri)
-                                  target-uri (vscode/Uri.file
-                                              (path/join insiders-dir (:instruction/filename instruction)))]
-                              (copy-file!+ {:prompt-sync/source-uri source-uri
-                                            :prompt-sync/target-uri target-uri}))))
-                        instructions-to-copy))]
-
-    ;; Transform statuses - mark copied files as completed
-    (map (fn [instruction]
-           (case (:instruction/status instruction)
-             :missing-in-stable
-             (assoc instruction
-                    :instruction/status :copied
-                    :instruction/action-needed :none)
-
-             :missing-in-insiders
-             (assoc instruction
-                    :instruction/status :copied
-                    :instruction/action-needed :none)
-
-             ;; Other statuses unchanged
-             instruction))
-         all-instructions)))
-
-;; Obsolete functions removed - we now have flat data from the start!
-;; The bucket-based approach required complex transformations that are no longer needed.
-
 (defn show-diff-preview!+
   "Opens VS Code diff editor for conflict preview with default positioning"
   [{:instruction/keys [filename stable insiders]}]
@@ -269,8 +226,6 @@
                            " • Conflicts: " conflicts)
          :fileInfo #js {:isStatus true}}))
 
-;; Grouping and hierarchical menu functions
-
 (def ^:const original-status-priority
   "Priority order for displaying original status groups"
   {:original/conflict 1
@@ -305,26 +260,6 @@
          :itemType "section-header"
          :sectionInfo #js {:originalStatus (name original-status)
                            :totalCount file-count}}))
-
-(defn create-bulk-action-item
-  "Creates a bulk action button for missing file groups"
-  [original-status unresolved-count]
-  (case original-status
-    :original/missing-in-stable
-    #js {:label (str "Sync All to Stable (" unresolved-count " files)")
-         :iconPath (vscode/ThemeIcon. "arrow-left")
-         :itemType "bulk-action"
-         :bulkAction "sync-all-to-stable"
-         :targetCount unresolved-count}
-
-    :original/missing-in-insiders
-    #js {:label (str "Sync All to Insiders (" unresolved-count " files)")
-         :iconPath (vscode/ThemeIcon. "arrow-right")
-         :itemType "bulk-action"
-         :bulkAction "sync-all-to-insiders"
-         :targetCount unresolved-count}
-
-    nil))
 
 (defn count-unresolved-in-group
   "Counts unresolved files in a group (not :resolved status)"
@@ -883,7 +818,7 @@
         (.then (fn [_] (log! :info "Cleaned up test environment")))
         (.catch (fn [err] (log! :info "Cleanup error:" (.-message err)))))))
 
-;; Export for use (disabled until we're ready making sure the test mode works)
+;; Entry point for script execution (disabled until we're ready, making sure the test mode works)
 (defn ^:export main-disabled []
   (p/catch
    (sync-prompts!+ {:prompt-sync/test-mode? false})
@@ -903,6 +838,5 @@
                 (vscode/window.showErrorMessage (str "Test sync error: " (.-message error)))
                 (js/console.error "Test prompt sync error:" error)))))
 
-;; Auto-run when script is invoked
-(when (= (joyride/invoked-script) joyride/*file*)
+(when (= (joyride/invoked-script) joyride/*file*) ; Auto-run when script is invoked
   (main-test))
