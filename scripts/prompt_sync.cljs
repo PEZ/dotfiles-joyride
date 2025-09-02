@@ -223,17 +223,15 @@
   (let [icon (get-instruction-icon instruction-type)
         status-string (case status
                         :copied  (case original-status
-                                   :original/missing-in-insiders "auto-copied: Stable → Insiders"
-                                   :original/missing-in-stable "auto-copied: Stable ← Insiders"
+                                   :original/missing-in-insiders "Auto-copied: Stable → Insiders"
+                                   :original/missing-in-stable "Auto-copied: Stable ← Insiders"
                                    "copied")
                         :conflict "Has conflicts"
                         :identical "Identical"
-                        :missing-in-stable "Missing in stable"
-                        :missing-in-insiders "Missing in insiders"
                         :resolved (case resolution
-                                    :resolution/choose-stable "copied: Stable → Insiders"
-                                    :resolution/choose-insiders "copied: Insiders → Stable"
-                                    :resolution/skipped "resolved: Skipped"
+                                    :resolution/choose-stable "Conflict resolved, copied: Stable → Insiders"
+                                    :resolution/choose-insiders "Conflict resolved, copied: Insiders → Stable"
+                                    :resolution/skipped "Conflict skipped"
                                     "resolved")
                         (name status))
         description (when (= :resolve action-needed)
