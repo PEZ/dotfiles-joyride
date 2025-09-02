@@ -294,16 +294,16 @@
                                                                    :original/missing-in-insiders
                                                                    #js {:iconPath (vscode/ThemeIcon. "arrow-right")
                                                                         :tooltip (str "Sync All to Insiders (" unresolved-count " files)")})
-                                                     enhanced-first-item (js-obj "label" (.-label first-item)
-                                                                                 "iconPath" (.-iconPath first-item)
-                                                                                 "description" (.-description first-item)
-                                                                                 "detail" (.-detail first-item)
-                                                                                 "itemType" "file-with-bulk-button"
-                                                                                 "buttons" #js [bulk-button]
-                                                                                 "fileInfo" (.-fileInfo first-item)
-                                                                                 "bulkAction" (case original-status
-                                                                                                :original/missing-in-stable "sync-all-to-stable"
-                                                                                                :original/missing-in-insiders "sync-all-to-insiders"))]
+                                                     enhanced-first-item #js {:label (.-label first-item)
+                                                                              :iconPath (.-iconPath first-item)
+                                                                              :description (.-description first-item)
+                                                                              :detail (.-detail first-item)
+                                                                              :itemType "file-with-bulk-button"
+                                                                              :buttons #js [bulk-button]
+                                                                              :fileInfo (.-fileInfo first-item)
+                                                                              :bulkAction (case original-status
+                                                                                            :original/missing-in-stable "sync-all-to-stable"
+                                                                                            :original/missing-in-insiders "sync-all-to-insiders")}]
                                                  (concat [enhanced-first-item] rest-items))
                                                file-items)]
                      (concat [section-header] enhanced-file-items))))
