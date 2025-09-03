@@ -230,22 +230,22 @@
 
 (defn format-status-counts
   "Formats status counts for the summary label"
-  [total identical missing-stable missing-insiders resolved conflicts]
+  [total identical missing-stable missing-insiders _resolved conflicts]
   (str total " instructions: "
-       "I:" identical ", "
+       ;"R:" resolved ", "
+       "C:" conflicts ", "
        "MS:" missing-stable ", "
        "MI:" missing-insiders ", "
-       "R:" resolved ", "
-       "C:" conflicts))
+       "I:" identical ", "))
 
 (defn format-status-description
   "Formats detailed status description"
-  [identical missing-stable missing-insiders resolved conflicts]
-  (str "Identical: " identical
+  [identical missing-stable missing-insiders _resolved conflicts]
+  (str "Conflicts: " conflicts
        " • Missing in Stable: " missing-stable
        " • Missing in Insiders: " missing-insiders
-       " • Resolved: " resolved
-       " • Conflicts: " conflicts))
+       ;" • Resolved: " resolved
+       " • Identical: " identical))
 
 (defn calculate-status-summary
   "Pure function to calculate status counts and labels from instructions"
@@ -772,8 +772,8 @@
                                 :prompt-sync.action/sync-to-insiders :resolution/sync-to-insiders
                                 :prompt-sync.action/skip :resolution/skipped)
               updated-instructions (record-resolution all-instructions
-                                                                               (:instruction/filename selected-instruction)
-                                                                               resolution-type)]
+                                                      (:instruction/filename selected-instruction)
+                                                      resolution-type)]
         updated-instructions)
       (p/resolved :cancelled))))
 
