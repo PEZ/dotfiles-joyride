@@ -1,9 +1,11 @@
 (ns markdown-paste-provider
   "Add Markdown formatting options to VS Code's 'Paste As...' command"
   (:require
+   ["turndown" :as TurndownService]
    ["vscode" :as vscode]
    [clojure.string :as s]
-   [joyride.core :as joyride]))
+   [joyride.core :as joyride]
+   [promesa.core :as p]))
 
 ;; Keep tally on VS Code disposables we register
 (defonce !db (atom {:disposables []}))
@@ -26,77 +28,52 @@
       .-subscriptions
       (.push disposable)))
 
-(defn format-as-bold
-  "Wrap text in markdown bold formatting"
-  [text]
-  (str "**" text "**"))
+(defn convert-to-markdown
+  "Intelligently convert clipboard content to markdown using turndown"
+  [dataTransfer]
+  (def dataTransfer dataTransfer) ; For debugging in REPL
+  (p/let [html (some-> dataTransfer
+                       (.get "text/html")
+                       (.asString))
+          plain-text (some-> dataTransfer
+                             (.get "text/plain")
+                             (.asString))
+          turndown-service (TurndownService.)]
+    (def html html)
+    (def plain-text plain-text)
+    (def turndown-service turndown-service)
+    (if (and html (not (s/blank? html)))
+      (.turndown turndown-service html)
+      plain-text)))
 
-(defn format-as-italic
-  "Wrap text in markdown italic formatting"
-  [text]
-  (str "*" text "*"))
+(comment
+  (p/let [html (some-> dataTransfer
+                       (.get "text/html")
+                       (.asString))]
+    (def html html))
+  (joyride.core/js-properties (some-> dataTransfer
+                                      (.get "text/html")))
 
-(defn format-as-code
-  "Wrap text in markdown inline code formatting"
-  [text]
-  (str "`" text "`"))
-
-(defn format-as-code-block
-  "Wrap text in markdown code block formatting"
-  [text]
-  (str "```\n" text "\n```"))
-
-(defn format-as-quote
-  "Format text as markdown blockquote"
-  [text]
-  (->> (s/split-lines text)
-       (map #(str "> " %))
-       (s/join "\n")))
-
-(defn format-as-link
-  "Format text as markdown link (assumes text is a URL)"
-  [text]
-  (if (re-find #"^https?://" text)
-    (str "[" text "](" text ")")
-    (str "[link text](" text ")")))
+  :rcf)
 
 (defn create-markdown-paste-edits
-  "Create multiple paste edit options for markdown formatting"
-  [text]
-  (let [formats [{:formatter format-as-bold
-                  :title "Paste as Markdown Bold"
-                  :kind vscode/DocumentDropOrPasteEditKind.Empty}
-                 {:formatter format-as-italic
-                  :title "Paste as Markdown Italic"
-                  :kind vscode/DocumentDropOrPasteEditKind.Empty}
-                 {:formatter format-as-code
-                  :title "Paste as Markdown Inline Code"
-                  :kind vscode/DocumentDropOrPasteEditKind.Empty}
-                 {:formatter format-as-code-block
-                  :title "Paste as Markdown Code Block"
-                  :kind vscode/DocumentDropOrPasteEditKind.Empty}
-                 {:formatter format-as-quote
-                  :title "Paste as Markdown Quote"
-                  :kind vscode/DocumentDropOrPasteEditKind.Empty}
-                 {:formatter format-as-link
-                  :title "Paste as Markdown Link"
-                  :kind vscode/DocumentDropOrPasteEditKind.Empty}]]
-    (->> formats
-         (map (fn [{:keys [formatter title kind]}]
-                (new vscode/DocumentPasteEdit
-                     (formatter text)
-                     title
-                     kind)))
-         (into-array))))
+  "Create a single markdown paste edit with intelligent formatting"
+  [dataTransfer]
+  (let [markdown-content (convert-to-markdown dataTransfer)]
+    #js [(new vscode/DocumentPasteEdit
+              markdown-content
+              "Paste as Markdown"
+              vscode/DocumentDropOrPasteEditKind.Text)]))
 
 (defn create-markdown-paste-provider
-  "Create a paste provider that offers markdown formatting options"
+  "Create a paste provider that intelligently converts rich text to markdown"
   []
   #js {:provideDocumentPasteEdits
        (fn [_document _ranges dataTransfer _context _token]
-         (when-let [text (.get dataTransfer "text/plain")]
-           (when (and text (not (s/blank? text)))
-             (create-markdown-paste-edits text))))})
+         (when-let [raw-text (.get dataTransfer "text/plain")]
+           (let [text (if (string? raw-text) raw-text (str raw-text))]
+             (when (and text (not (s/blank? text)))
+               (create-markdown-paste-edits dataTransfer)))))})
 
 (defn register-markdown-paste-provider!
   "Register the markdown paste provider with VS Code"
@@ -106,8 +83,8 @@
         disposable (vscode/languages.registerDocumentPasteEditProvider
                     "*"  ; Apply to all file types
                     provider
-                    #js {:providedPasteEditKinds #js [vscode/DocumentDropOrPasteEditKind.Empty]
-                         :pasteMimeTypes #js ["text/plain"]})]
+                    #js {:providedPasteEditKinds #js [vscode/DocumentDropOrPasteEditKind.Text]
+                         :pasteMimeTypes #js ["text/plain" "text/html"]})]
     (push-disposable! disposable)
 
     (vscode/window.showInformationMessage
@@ -153,13 +130,5 @@
 
   ;; Check what disposables are registered
   (:disposables @!db)
-
-  ;; Test individual formatters
-  (format-as-bold "Hello World")
-  (format-as-italic "Hello World")
-  (format-as-code "console.log('hello')")
-  (format-as-code-block "function test() {\n  return 'hello';\n}")
-  (format-as-quote "This is a quote\nwith multiple lines")
-  (format-as-link "https://github.com")
 
   :rcf)
