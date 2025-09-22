@@ -32,19 +32,27 @@
   "Intelligently convert clipboard content to markdown using turndown"
   [dataTransfer]
   (def dataTransfer dataTransfer) ; For debugging in REPL
-  (p/let [html (some-> dataTransfer
-                       (.get "text/html")
-                       (.asString))
-          plain-text (some-> dataTransfer
-                             (.get "text/plain")
-                             (.asString))
-          turndown-service (TurndownService.)]
-    (def html html)
-    (def plain-text plain-text)
-    (def turndown-service turndown-service)
-    (if (and html (not (s/blank? html)))
-      (.turndown turndown-service html)
-      plain-text)))
+  (let [html-item (.get dataTransfer "text/html")
+        plain-item (.get dataTransfer "text/plain")]
+    ;; Return a promise that VS Code can handle
+    (p/let [html (when html-item (.asString html-item))
+            plain-text (when plain-item (.asString plain-item))
+            turndown-service (TurndownService.)]
+      (def html html)
+      (def plain-text plain-text)
+      (def turndown-service turndown-service)
+      (cond
+        ;; If we have HTML content, use turndown to convert it
+        (and html (not (s/blank? html)))
+        (.turndown turndown-service html)
+
+        ;; If it looks like a URL, format as link
+        (and plain-text (re-find #"^https?://" plain-text))
+        (str "[" plain-text "](" plain-text ")")
+
+        ;; Otherwise return plain text
+        :else
+        (str plain-text)))))
 
 (comment
   (p/let [html (some-> dataTransfer
@@ -59,7 +67,8 @@
 (defn create-markdown-paste-edits
   "Create a single markdown paste edit with intelligent formatting"
   [dataTransfer]
-  (let [markdown-content (convert-to-markdown dataTransfer)]
+  ;; Return a promise since convert-to-markdown is now async
+  (p/let [markdown-content (convert-to-markdown dataTransfer)]
     #js [(new vscode/DocumentPasteEdit
               markdown-content
               "Paste as Markdown"
