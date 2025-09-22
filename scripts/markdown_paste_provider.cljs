@@ -1,7 +1,10 @@
+;; npm install turndown turndown-plugin-gfm
+
 (ns markdown-paste-provider
   "Add Markdown formatting options to VS Code's 'Paste As...' command"
   (:require
    ["turndown" :as TurndownService]
+   ["turndown-plugin-gfm" :as gfm]
    ["vscode" :as vscode]
    [clojure.string :as s]
    [joyride.core :as joyride]
@@ -29,20 +32,16 @@
       (.push disposable)))
 
 (defn convert-to-markdown
-  "Intelligently convert clipboard content to markdown using turndown"
+  "Intelligently convert clipboard content to markdown using turndown with GFM tables"
   [dataTransfer]
-  (def dataTransfer dataTransfer) ; For debugging in REPL
   (let [html-item (.get dataTransfer "text/html")
         plain-item (.get dataTransfer "text/plain")]
-    ;; Return a promise that VS Code can handle
     (p/let [html (when html-item (.asString html-item))
             plain-text (when plain-item (.asString plain-item))
             turndown-service (TurndownService.)]
-      (def html html)
-      (def plain-text plain-text)
-      (def turndown-service turndown-service)
+      ;; Add GFM table support
+      (.use turndown-service (.-tables gfm))
       (cond
-        ;; If we have HTML content, use turndown to convert it
         (and html (not (s/blank? html)))
         (.turndown turndown-service html)
 
@@ -50,19 +49,8 @@
         (and plain-text (re-find #"^https?://" plain-text))
         (str "[" plain-text "](" plain-text ")")
 
-        ;; Otherwise return plain text
         :else
         (str plain-text)))))
-
-(comment
-  (p/let [html (some-> dataTransfer
-                       (.get "text/html")
-                       (.asString))]
-    (def html html))
-  (joyride.core/js-properties (some-> dataTransfer
-                                      (.get "text/html")))
-
-  :rcf)
 
 (defn create-markdown-paste-edits
   "Create a single markdown paste edit with intelligent formatting"
@@ -116,14 +104,14 @@
      :providers-count count
      :disposables (:disposables @!db)}))
 
-(defn main
+(defn activate!
   "Main function to register the markdown paste provider"
   []
   (register-markdown-paste-provider!))
 
 ;; Auto-run when script is invoked
 (when (= (joyride/invoked-script) joyride/*file*)
-  (main))
+  (activate!))
 
 (comment
   ;; Manual management examples:
@@ -132,7 +120,7 @@
   (status)
 
   ;; Register the provider
-  (register-markdown-paste-provider!)
+  (activate!)
 
   ;; Remove all providers
   (deactivate!)
