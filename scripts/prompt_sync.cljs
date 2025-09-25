@@ -27,30 +27,21 @@
 
 (defn construct-directory-paths
   "Pure function to construct directory paths from user directory and insiders check"
-  [current-user-dir is-insiders?]
-  (let [stable-dir (if is-insiders?
-                     (.replace current-user-dir "Code - Insiders" "Code")
-                     current-user-dir)
-        insiders-dir (if is-insiders?
-                       current-user-dir
-                       (.replace current-user-dir "Code" "Code - Insiders"))]
-    {:prompt-sync/stable-dir stable-dir
-     :prompt-sync/insiders-dir insiders-dir
-     :prompt-sync/current-is-insiders? is-insiders?}))
+  [current-user-dir]
+  (let [base-dir (-> current-user-dir path/dirname path/dirname)]
+    {:prompt-sync/stable-dir (path/join base-dir "Code" "User")
+     :prompt-sync/insiders-dir (path/join base-dir "Code - Insiders" "User")}))
 
 (defn get-user-prompts-dirs
   "Returns configuration map with stable and insiders prompt directory paths"
   ([] (get-user-prompts-dirs {}))
   ([{:prompt-sync/keys [test-mode?]}]
-   (if test-mode?
-     {:prompt-sync/stable-dir "/tmp/prompt-sync-test/stable/prompts"
-      :prompt-sync/insiders-dir "/tmp/prompt-sync-test/insiders/prompts"
-      :prompt-sync/current-is-insiders? false
-      :prompt-sync/test-mode? true}
-     (let [current-user-dir (get-vscode-user-dir)
-           is-insiders? (.includes current-user-dir "Insiders")
-           dir-paths (construct-directory-paths current-user-dir is-insiders?)]
-       (-> dir-paths
+   (let [current-user-dir (get-vscode-user-dir)]
+     (if test-mode?
+       {:prompt-sync/stable-dir "/tmp/prompt-sync-test/stable/prompts"
+        :prompt-sync/insiders-dir "/tmp/prompt-sync-test/insiders/prompts"
+        :prompt-sync/test-mode? true}
+       (-> (construct-directory-paths current-user-dir)
            (update :prompt-sync/stable-dir #(path/join % "prompts"))
            (update :prompt-sync/insiders-dir #(path/join % "prompts"))
            (assoc :prompt-sync/test-mode? false))))))
@@ -173,13 +164,14 @@
 
 (defn show-diff-preview!+
   "Opens VS Code diff editor for conflict preview"
-  [{:instruction/keys [filename stable insiders]}]
+  [{:instruction/keys [filename stable insiders]}
+   {:prompt-sync/keys [stable?]}]
   (let [stable-uri (:location/uri stable)
         insiders-uri (:location/uri insiders)
-        title (str "Diff: " filename " (Stable ↔ Insiders)")]
+        title (str "Diff: " filename " " (if stable? "(Insiders ↔ Stable)" "(Stable ↔ Insiders)"))]
     (vscode/commands.executeCommand "vscode.diff"
-                                    stable-uri
-                                    insiders-uri
+                                    (if stable? insiders-uri stable-uri)
+                                    (if stable? stable-uri insiders-uri)
                                     title
                                     #js {:preview true
                                          :preserveFocus true})))
@@ -325,7 +317,7 @@
 
 (defn instructions->menu-items
   "Creates hierarchical menu structure with buttons on first items"
-  [instructions]
+  [instructions conf]
   (let [grouped (group-by-original-status instructions)
         sorted-groups (sort-groups-by-priority grouped)]
     (->> sorted-groups
@@ -398,11 +390,11 @@
 (defn show-instructions-picker!+
   "Shows QuickPick for all files with appropriate preview and selection behavior"
   ([all-instructions] (show-instructions-picker!+ all-instructions nil))
-  ([all-instructions last-active-item]
+  ([all-instructions {:prompt-sync/keys [last-active-item stable?] :as conf}]
    (if (empty? all-instructions)
      (p/resolved nil)
      (let [status-item (instructions->status-summary-item all-instructions)
-           grouped-items (instructions->menu-items all-instructions)
+           grouped-items (instructions->menu-items all-instructions conf)
            items (into [status-item] grouped-items)
            picker (vscode/window.createQuickPick)
            last-active-index (when last-active-item
@@ -418,7 +410,7 @@
                                  item-index))]
 
        (set! (.-items picker) (into-array items))
-       (set! (.-title picker) "Prompt Sync: Stable ↔ Insiders")
+       (set! (.-title picker) (str "Prompt Sync: " (if stable? "Stable ↔ Insiders" "Insiders ↔ Stable")))
        (set! (.-placeholder picker) "Select conflicts to resolve, others for preview")
        (set! (.-ignoreFocusOut picker) true)
 
@@ -440,7 +432,7 @@
                                      (if is-conflict
                                        (let [instruction-info (first (filter #(= (:instruction/filename %) filename) all-instructions))]
                                          (when instruction-info
-                                           (show-diff-preview!+ instruction-info)))
+                                           (show-diff-preview!+ instruction-info conf)))
                                        (let [instruction-data (first (filter #(= (:instruction/filename %) filename) all-instructions))]
                                          (when instruction-data
                                            (show-file-preview!+ instruction-data)))))
@@ -780,17 +772,18 @@
 (defn main-menu-loop!+
   "Show instructions picker offering conflict resolution actions for conflicts
    Keep showing the instructions menu until the user cancels"
-  ([instructions dirs] (main-menu-loop!+ instructions dirs nil))
-  ([instructions dirs last-active-item]
-   (def instructions instructions) ; excellent for interactive debugging
+  ([instructions conf] (main-menu-loop!+ instructions conf nil))
+  ([instructions conf last-active-item]
+   (def instructions instructions) ; interactive debugging
    (p/loop [current-instructions instructions
             last-active last-active-item]
-     (p/let [selected-instruction (show-instructions-picker!+ current-instructions last-active)]
+     (p/let [selected-instruction (show-instructions-picker!+ current-instructions (merge conf
+                                                                                          {:last-active-item last-active}))]
        (if selected-instruction
          (cond
            (:bulk-operation-request selected-instruction)
            ;; Handle bulk operations from status item
-           (p/let [bulk-result (handle-bulk-operations!+ (:all-instructions selected-instruction) dirs)]
+           (p/let [bulk-result (handle-bulk-operations!+ (:all-instructions selected-instruction) conf)]
              (if (:bulk-operation-applied bulk-result)
                (p/recur (:updated-instructions bulk-result) nil) ; Updated instructions, no last active
                (p/recur current-instructions last-active))) ; No changes, keep last active
@@ -798,7 +791,7 @@
            (:bulk-action-request selected-instruction)
            ;; Handle direct bulk actions from embedded buttons
            (p/let [action-keyword (keyword (str "prompt-sync.action/" (:action selected-instruction)))
-                   updated-instructions (apply-bulk-operation!+ (:all-instructions selected-instruction) action-keyword dirs)
+                   updated-instructions (apply-bulk-operation!+ (:all-instructions selected-instruction) action-keyword conf)
                    ;; Preserve the item that had the button clicked, if available
                    button-item (when-let [filename (:button-item-filename selected-instruction)]
                                  (first (filter #(= (:instruction/filename %) filename) updated-instructions)))]
@@ -806,7 +799,7 @@
 
            :else
            ;; Handle single instruction resolution
-           (p/let [updated-instructions (resolve-conflict!+ selected-instruction current-instructions dirs)]
+           (p/let [updated-instructions (resolve-conflict!+ selected-instruction current-instructions conf)]
              (if (= updated-instructions :cancelled)
                (p/recur current-instructions selected-instruction) ; Keep the selected item as the last active
                (p/recur updated-instructions selected-instruction)))) ; Pass along the selected item for memory
@@ -815,19 +808,17 @@
 (defn sync-prompts!+
   "Main entry point - orchestrates the entire sync process"
   ([] (sync-prompts!+ {}))
-  ([{:prompt-sync/keys [test-mode?]}]
+  ([{:prompt-sync/keys [test-mode?]
+     :as conf}]
    (if test-mode?
      (log! :info "🧪 TEST MODE: Using /tmp directories")
      (log! :debug "Starting prompt sync..."))
-   (p/let [dirs (get-user-prompts-dirs {:prompt-sync/test-mode? test-mode?})
-           {:prompt-sync/keys [stable-dir insiders-dir]} dirs
-
-           compared (compare-directories!+ {:prompt-sync/stable-dir stable-dir
-                                            :prompt-sync/insiders-dir insiders-dir})
-           _ (def compared compared)]
-
+   (p/let [stable? (not (.includes (get-vscode-user-dir) "Insiders"))
+           dirs (get-user-prompts-dirs conf)
+           compared (compare-directories!+ dirs)]
      (log! :debug (str "Found " (count compared) " instructions"))
-     (main-menu-loop!+ compared dirs))))
+     (main-menu-loop!+ compared (merge dirs
+                                       {:prompt-sync/stable? stable?})))))
 
 (defn generate-stable-content
   "Generates stable content for different file types"
