@@ -12,7 +12,8 @@
    {:timezone/label "London (GMT)" :timezone/id "Europe/London"}
    {:timezone/label "Berlin (CET)" :timezone/id "Europe/Berlin"}
    {:timezone/label "Tokyo (JST)" :timezone/id "Asia/Tokyo"}
-   {:timezone/label "Sydney (AEST)" :timezone/id "Australia/Sydney"}])
+   {:timezone/label "Sydney (AEST)" :timezone/id "Australia/Sydney"}
+   {:timezone/label "São Paulo (BRT)" :timezone/id "America/Sao_Paulo"}])
 
 (defn format-current-time-for-input
   "Format current time as YYYY-MM-DD HH:MM for easy editing"
