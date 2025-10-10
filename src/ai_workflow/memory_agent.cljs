@@ -102,11 +102,14 @@ Work systematically. Research first, then craft the complete solution.
 ## Action steps
 
 1. **Parse input** - Extract domain (if `>domain-name` specified)
-2. **Glob and Read** existing memory and instruction files using **ABSOLUTE PATHS** with glob patterns:
-   - IMPORTANT: Use absolute paths like `{SEARCH_DIRECTORY}/*.instructions.md` NOT relative paths like `*.instructions.md`
-   - Search for: `{SEARCH_DIRECTORY}/memory.instructions.md`
-   - Search for: `{SEARCH_DIRECTORY}/*-memory.instructions.md`
-   - Search for: `{SEARCH_DIRECTORY}/*.instructions.md`
+2. **Find existing files** in the search directory ONLY (do not search subdirectories):
+   - CRITICAL: Only search files directly in `{SEARCH_DIRECTORY}`, NOT in subdirectories
+   - Use tools to list files: `copilot_findFiles` with pattern `{SEARCH_DIRECTORY}/*.instructions.md`
+   - Read specific files: `copilot_readFile` with exact paths like `{SEARCH_DIRECTORY}/memory.instructions.md`
+   - Files to look for:
+     - `{SEARCH_DIRECTORY}/memory.instructions.md` (universal memories)
+     - `{SEARCH_DIRECTORY}/*-memory.instructions.md` (domain-specific memories)
+     - `{SEARCH_DIRECTORY}/*.instructions.md` (domain instructions for context)
 3. **Analyze** the specific lesson learned from user input
 4. **Categorize** the learning:
    - New gotcha/common mistake

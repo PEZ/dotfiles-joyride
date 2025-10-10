@@ -49,29 +49,42 @@ CONVERSATION FLOW:
 Be proactive, creative, and goal-oriented. Drive the conversation forward!")
 
 (defn build-agentic-messages
-  "Build message history for agentic conversation with actionable tool feedback"
-  [history goal turn-count]
-  (let [initial-message {:role :user
-                         :content (str "GOAL: " goal
-                                       "\n\nPlease work autonomously toward this goal. "
-                                       "Take initiative, use tools as needed, and continue "
-                                       "until the goal is achieved. This is turn " turn-count ".")}]
+  "Build message history for agentic conversation with actionable tool feedback.
+
+  The goal is kept separate from history and injected as the first message on every turn,
+  ensuring the LM always has context about what it's trying to accomplish. The history
+  vector contains only assistant responses and tool results.
+
+  Args:
+    history - Vector of conversation entries with :role :assistant or :tool-results
+    goal - String describing the task (immutable, never stored in history)
+
+  Returns:
+    Vector of messages formatted for LM API with goal first, followed by conversation"
+  [history goal]
+  (let [goal-message {:role :user
+                      :content (str "GOAL: " goal
+                                    "\n\nPlease work autonomously toward this goal. "
+                                    "Take initiative, use tools as needed, and continue "
+                                    "until the goal is achieved.")}]
     (if (empty? history)
-      [initial-message]
-      ;; Convert history to message format with processed tool results
-      (concat [initial-message]
-              (mapcat (fn [entry]
-                        (case (:role entry)
-                          :assistant [{:role :assistant :content (:content entry)}]
-                          :tool-results
-                          (map (fn [result]
-                                 {:role :user
-                                  :content (str "TOOL RESULT: " result
-                                                "\n\nAnalyze this result. If it shows the goal is achieved, conclude. "
-                                                "If not, adapt your approach and try something different.")})
-                               (:processed-results entry))
-                          [])) ; skip other roles
-                      history)))))
+      ;; Turn 1: Just the initial goal
+      [goal-message]
+      ;; Subsequent turns: Goal message + conversation history
+      (cons goal-message
+            (mapcat (fn [entry]
+                      (case (:role entry)
+                        :assistant [{:role :assistant :content (:content entry)}]
+                        :tool-results
+                        (map (fn [result]
+                               {:role :user
+                                :content (str "TOOL RESULT: " result
+                                              "\n\nAnalyze this result and continue toward the goal. "
+                                              "If the goal is achieved, state completion clearly. "
+                                              "If not, adapt your approach based on these results.")})
+                             (:processed-results entry))
+                        [])) ; skip other roles
+                    history)))))
 
 (defn agent-indicates-completion?
   "Check if AI agent indicates the task is complete"
@@ -84,7 +97,10 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
     (re-find #"(?i)(next.*(step|action)|i'll|i.will|let.me|continu|proceed)" ai-text)))
 
 (defn add-assistant-response
-  "Add AI assistant response to conversation history"
+  "Add AI assistant response to conversation history.
+
+  Note: History contains only assistant responses and tool results, not the goal.
+  The goal is kept separate and injected into messages by build-agentic-messages."
   [history ai-text tool-calls turn-count]
   (conj history
         {:role :assistant
@@ -131,7 +147,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
   "Execute a single conversation turn - handles request/response cycle"
   [{:keys [model-id goal history turn-count tools-args]}]
   (p/catch
-   (p/let [messages (build-agentic-messages history goal turn-count)
+   (p/let [messages (build-agentic-messages history goal)
            response (util/send-prompt-request!+
                      {:model-id model-id
                       :system-prompt agentic-system-prompt
@@ -179,7 +195,11 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
        (clj->js)))
 
 (defn continue-conversation-loop
-  "Main conversation loop"
+  "Main conversation loop.
+
+  The goal parameter is passed separately through all turns and combined with history
+  by build-agentic-messages. This keeps the immutable goal separate from the growing
+  conversation history."
   [{:keys [model-id goal max-turns progress-callback tools-args]} history turn-count last-response]
   (progress-callback (str "Turn " turn-count "/" max-turns))
 
