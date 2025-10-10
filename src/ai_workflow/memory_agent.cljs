@@ -89,7 +89,10 @@ Each distinct lesson has its own level 2 headline. E.g.: `## Prefer Evaluation R
 - **Search thoroughly** - Use tools to find existing files
 - **Read before deciding** - Always read existing files to understand structure
 - **Integrate carefully** - Place new lessons in logical sections
-- **Complete content** - Return the ENTIRE file content, not just the addition
+- **🚨 COMPLETE CONTENT REQUIRED 🚨** - You MUST return the ENTIRE file content, NEVER just the new addition
+  - For existing files: Include ALL existing content + the new memory integrated into it
+  - Verify your output includes ALL sections from the existing file
+  - DO NOT return only the new memory section
 - **Use absolute paths** - FILE_PATH must be absolute like `{SEARCH_DIRECTORY}/clojure-memory.instructions.md`
 - **Be concise** - Memory entries should be scannable and actionable
 - **Extract patterns** - Generalize from specific instances
@@ -130,10 +133,15 @@ Work systematically. Research first, then craft the complete solution.
       - Tool usage patterns
       - Reusable problem-solving approaches
 8. **Craft complete new memory file content**:
-   - If it is an existing memory file, merge the memory into the exsting content
+   - 🚨 CRITICAL: Return the COMPLETE file including ALL existing content
+   - If it is an existing memory file:
+     * Read the ENTIRE existing file
+     * Merge the new memory into the appropriate section
+     * Return ALL existing sections + the new memory
+     * Verify your output has the same or more content than the original
    - If it is a new memory file, create the content following [Memory File Structure](#memory-file-structure)
    - Update `applyTo` frontmatter if needed
-9. When you have the file path and the new content, you are done. Stop and return the result.
+9. When you have the file path and the COMPLETE content, you are done. Stop and return the result.
 
 ## Result format
 
@@ -231,6 +239,48 @@ Prompt to transform:")
     (str ">" domain " " summary)
     summary))
 
+(defn validate-file-content
+  "Validates that new content is substantially complete compared to existing.
+
+  Args:
+    new-content - New content from agent
+    existing-content - Existing file content (or nil for new files)
+
+  Returns: {:valid? true} or {:valid? false :reason string}"
+  [new-content existing-content]
+  (if (or (nil? existing-content) (string/blank? existing-content))
+    ;; New file - always valid
+    {:valid? true}
+    ;; Existing file - validate completeness
+    (let [new-lines (count (string/split-lines new-content))
+          existing-lines (count (string/split-lines existing-content))
+          ratio (if (pos? existing-lines) (/ new-lines existing-lines) 1.0)]
+      (cond
+        ;; New content is significantly shorter - likely incomplete
+        (< ratio 0.75)
+        {:valid? false
+         :reason (str "⚠️  VALIDATION FAILED: New content (" new-lines " lines) is "
+                     "significantly shorter than existing (" existing-lines " lines). "
+                     "Agent likely returned incomplete content instead of merging.")}
+
+        ;; Content looks valid
+        :else
+        {:valid? true}))))
+
+(defn read-existing-file!+
+  "Read existing file content if it exists.
+
+  Returns: Promise of file content string, or nil if file doesn't exist"
+  [file-path]
+  (p/catch
+    (p/let [uri (vscode/Uri.file file-path)
+            content-bytes (vscode/workspace.fs.readFile uri)
+            decoder (js/TextDecoder.)]
+      (.decode decoder content-bytes))
+    (fn [_error]
+      ;; File doesn't exist
+      nil)))
+
 (defn write-memory-file!+
   "Write memory file using workspace.fs API.
 
@@ -312,14 +362,23 @@ Prompt to transform:")
           parsed (parse-agent-response final-text)]
 
     (if parsed
-      ;; Step 8: Execute file write operation
-      (p/let [write-result (write-memory-file!+ (:file-path parsed) (:content parsed))]
-        (if (:success write-result)
-          {:success true
-           :file-path (:file-path write-result)
-           :agent-result agent-result}
-          {:error (:error write-result)
-           :agent-result agent-result}))
+      ;; Step 8: Validate content before writing
+      (p/let [existing-content (read-existing-file!+ (:file-path parsed))
+              validation (validate-file-content (:content parsed) existing-content)]
+        (if (:valid? validation)
+          ;; Step 9: Execute file write operation
+          (p/let [write-result (write-memory-file!+ (:file-path parsed) (:content parsed))]
+            (if (:success write-result)
+              {:success true
+               :file-path (:file-path write-result)
+               :agent-result agent-result}
+              {:error (:error write-result)
+               :agent-result agent-result}))
+          ;; Validation failed
+          {:error (:reason validation)
+           :agent-result agent-result
+           :existing-content existing-content
+           :new-content (:content parsed)}))
       ;; Parsing failed
       {:error "Failed to parse agent response. Agent did not return expected format."
        :agent-result agent-result
