@@ -1,10 +1,10 @@
-(ns memory-agent2
+(ns ai-workflow.memory-agent
   "Autonomous memory recording agent using agentic workflow"
   (:require
    [clojure.string :as string]
    [promesa.core :as p]
    [joyride.core :as joy]
-   [ai-workflow2.agents :as agents]
+   [ai-workflow.agents :as agents]
    ["vscode" :as vscode]))
 
 (def agent-model "grok-code-fast-1")
@@ -99,8 +99,11 @@ Work systematically. Research first, then craft the complete solution.
 ## Action steps
 
 1. **Parse input** - Extract domain (if `>domain-name` specified)
-2. **Glob and Read the start of** existing memory and instruction files to understand current domain structure:
-   - `{SEARCH_DIRECTORY}/memory.instructions.md`, `{SEARCH_DIRECTORY}/*-memory.instructions.md`, and `{SEARCH_DIRECTORY}/*.instructions.md`
+2. **Glob and Read** existing memory and instruction files using **ABSOLUTE PATHS** with glob patterns:
+   - IMPORTANT: Use absolute paths like `{SEARCH_DIRECTORY}/*.instructions.md` NOT relative paths like `*.instructions.md`
+   - Search for: `{SEARCH_DIRECTORY}/memory.instructions.md`
+   - Search for: `{SEARCH_DIRECTORY}/*-memory.instructions.md`
+   - Search for: `{SEARCH_DIRECTORY}/*.instructions.md`
 3. **Analyze** the specific lesson learned from user input
 4. **Categorize** the learning:
    - New gotcha/common mistake
@@ -200,6 +203,34 @@ Prompt to transform:")
         {:file-path file-path
          :content (second content-match)}))))
 
+(defn determine-search-directory
+  "Pure function to determine search directory from scope.
+
+  Args:
+    scope - :global, :workspace, or nil (defaults to :global)
+    workspace-root - Workspace root path or nil
+    user-prompts-dir - Global user prompts directory path
+
+  Returns: Absolute path to search directory"
+  [scope workspace-root user-prompts-dir]
+  (case scope
+    :global user-prompts-dir
+    :workspace (or workspace-root user-prompts-dir)
+    user-prompts-dir)) ; fallback for nil or other values
+
+(defn prepare-context
+  "Pure function to prepare context with optional domain hint.
+
+  Args:
+    summary - The lesson summary
+    domain - Optional domain string
+
+  Returns: Context string with domain prefix if provided"
+  [summary domain]
+  (if domain
+    (str ">" domain " " summary)
+    summary))
+
 (defn write-memory-file!+
   "Write memory file using workspace.fs API.
 
@@ -244,21 +275,16 @@ Prompt to transform:")
   (p/let [;; Step 1: Determine search directory from scope
           path (js/require "path")
           user-prompts-dir (let [global-storage-path (-> (joy/extension-context)
-                                                        .-globalStorageUri .-fsPath)
-                                user-dir (.join path global-storage-path ".." "..")]
-                            (.join path user-dir "prompts"))
+                                                         .-globalStorageUri .-fsPath)
+                                 user-dir (.join path global-storage-path ".." "..")]
+                             (.join path user-dir "prompts"))
           workspace-root (when-let [folders vscode/workspace.workspaceFolders]
-                          (when (seq folders)
-                            (-> folders first .-uri .-fsPath)))
-          search-dir (case scope
-                      :global user-prompts-dir
-                      :workspace (or workspace-root user-prompts-dir)
-                      user-prompts-dir) ; default fallback
+                           (when (seq folders)
+                             (-> folders first .-uri .-fsPath)))
+          search-dir (determine-search-directory scope workspace-root user-prompts-dir)
 
           ;; Step 2: Prepare context with optional domain hint
-          context (if domain
-                   (str ">" domain " " summary)
-                   summary)
+          context (prepare-context summary domain)
 
           ;; Step 3: Template the prompt with search directory
           goal (-> remember-prompt
@@ -303,8 +329,7 @@ Prompt to transform:")
   ;; Basic usage - global memory with domain hint
   (record-memory!+
    {:summary "Use REPL evaluation of subexpressions instead of println for debugging"
-    :domain "clojure"
-    :scope :global})
+    :domain "clojure"})
 
   ;; Without domain hint (universal memory)
   (record-memory!+

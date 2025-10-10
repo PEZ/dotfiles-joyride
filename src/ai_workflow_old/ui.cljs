@@ -1,4 +1,4 @@
-(ns ai-workflow.ui
+(ns ai-workflow-old.ui
   (:require
    ["vscode" :as vscode]
    [ai-workflow.chat-util :as util]

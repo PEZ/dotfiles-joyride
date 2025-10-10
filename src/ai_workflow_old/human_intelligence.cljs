@@ -1,4 +1,4 @@
-(ns ai-workflow2.human-intelligence
+(ns ai-workflow-old.human-intelligence
   (:require [promesa.core :as p]
             ["vscode" :as vscode]))
 

@@ -1,4 +1,4 @@
-(ns ai-workflow.mood-selector
+(ns ai-workflow-old.mood-selector
   (:require ["vscode" :as vscode]
             [promesa.core :as p]
             [clojure.string :as string]))

@@ -1,4 +1,4 @@
-(ns ai-workflow2.agents
+(ns ai-workflow.agents
   "Autonomous AI conversation system with improved error handling and adaptability"
   (:require
    ["vscode" :as vscode]
@@ -231,12 +231,11 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
 
 (defn agentic-conversation!+
   "Create an autonomous AI conversation that drives itself toward a goal"
-  [{:keys [model-id goal tool-ids max-turns progress-callback allow-unsafe-tools?]
+  [{:keys [model-id goal tool-ids max-turns progress-callback]
     :or {max-turns 10
-         allow-unsafe-tools? false
          progress-callback (fn [step]
                              (println "Progress:" step))}}]
-  (p/let [tools-args (util/enable-specific-tools tool-ids allow-unsafe-tools?)
+  (p/let [tools-args (util/enable-specific-tools tool-ids)
           model-info (util/get-model-by-id!+ model-id)]
     (if-not model-info
       {:history []
@@ -262,11 +261,10 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
    (autonomous-conversation!+ goal
                               {}))
 
-  ([goal {:keys [model-id max-turns tool-ids progress-callback allow-unsafe-tools?]
+  ([goal {:keys [model-id max-turns tool-ids progress-callback]
           :or {model-id "gpt-4o-mini"
                tool-ids []
                max-turns 6
-               allow-unsafe-tools? false
                progress-callback #(println % "\n")}}]
 
    (p/let [result (agentic-conversation!+
@@ -274,7 +272,6 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                     :goal goal
                     :max-turns max-turns
                     :tool-ids tool-ids
-                    :allow-unsafe-tools? allow-unsafe-tools?
                     :progress-callback progress-callback})]
      ;; Check for model error first
      (if (:error? result)
@@ -296,17 +293,16 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
 (comment
 
   (require '[ai-workflow.ui :as ui])
-  (p/let [use-tool-ids (ui/tools-picker+ ["joyride_evaluate_code"
-                                          "copilot_searchCodebase"
-                                          "copilot_searchWorkspaceSymbols"
-                                          "copilot_listCodeUsages"
-                                          "copilot_getVSCodeAPI"
+  (p/let [use-tool-ids (ui/tools-picker+ ["copilot_applyPatch"
                                           "copilot_findFiles"
                                           "copilot_findTextInFiles"
-                                          "copilot_readFile"
                                           "copilot_listDirectory"
-                                          "copilot_insertEdit"
-                                          "copilot_createFile"])]
+                                          "copilot_multiReplaceString"
+                                          "copilot_readFile"
+                                          "copilot_replaceString"
+                                          "copilot_searchCodebase"
+                                          "copilot_searchWorkspaceSymbols"
+                                          "manage_todo_list"])]
     (def use-tool-ids (set use-tool-ids))
     (println (pr-str use-tool-ids) "\n"))
 
@@ -335,7 +331,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                               :tool-ids use-tool-ids})
 
   (autonomous-conversation!+ "Create a file docs/greeting.md with a greeting to Clojurians"
-                             {:model-id "claude-sonnet-4"
+                             {:model-id "grok-code-fast-1"
                               :max-turns 15
                               :progress-callback (fn [step]
                                                    (println "🔄" step)

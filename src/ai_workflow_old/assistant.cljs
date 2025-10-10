@@ -1,4 +1,4 @@
-(ns ai-workflow2.assistant
+(ns ai-workflow-old.assistant
   "General-purpose AI prompting utilities for VS Code Language Model API.
    Handles model selection, message creation, and system instruction integration."
   (:require

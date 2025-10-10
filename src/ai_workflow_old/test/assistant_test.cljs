@@ -1,4 +1,4 @@
-(ns ai-workflow2.test.assistant-test
+(ns ai-workflow-old.test.assistant-test
   (:require
    [cljs.test :refer [deftest is testing]]
    [ai-workflow.agents :as agents]))

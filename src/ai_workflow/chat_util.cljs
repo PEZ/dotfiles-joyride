@@ -96,8 +96,18 @@
            (apply str))
       (str raw-result))))
 
+(defn promise-with-timeout
+  "Wrap a promise with a timeout. Returns timeout-value if promise doesn't resolve in time."
+  [promise timeout-ms timeout-value]
+  (js/Promise.race
+   #js [promise
+        (js/Promise. (fn [resolve _reject]
+                       (js/setTimeout
+                        #(resolve timeout-value)
+                        timeout-ms)))]))
+
 (defn execute-tool-calls!+
-  "Execute tool calls using the official VS Code Language Model API - Fixed version"
+  "Execute tool calls using the official VS Code Language Model API with 30s timeout per tool"
   [tool-calls]
   (def tool-calls tool-calls)
   (if (seq tool-calls)
@@ -108,17 +118,27 @@
         (map (fn [tool-call]
                (let [tool-name (.-name tool-call)
                      call-id (.-callId tool-call)
-                     input (.-input tool-call)]
+                     input (.-input tool-call)
+                     timeout-ms 30000] ; 30 second timeout
                  (println "🎯 Invoking tool:" tool-name)
                  (println "📝 Input:" (pr-str input))
-                 (-> (vscode/lm.invokeTool tool-name #js {:input input})
+                 (-> (promise-with-timeout
+                      (vscode/lm.invokeTool tool-name #js {:input input})
+                      timeout-ms
+                      {:timeout true :tool-name tool-name})
                      (.then (fn [raw-result]
-                              (let [result (extract-tool-result-content raw-result)]
-                                (println "✅ Tool execution result for" tool-name ":")
-                                (println result)
-                                {:call-id call-id
-                                 :tool-name tool-name
-                                 :result result})))
+                              (if (:timeout raw-result)
+                                (do
+                                  (println "⏱️  Tool" tool-name "timed out after" (/ timeout-ms 1000) "seconds")
+                                  {:call-id call-id
+                                   :tool-name tool-name
+                                   :result (str "Tool execution timed out after " (/ timeout-ms 1000) " seconds. Try a simpler approach.")})
+                                (let [result (extract-tool-result-content raw-result)]
+                                  (println "✅ Tool execution result for" tool-name ":")
+                                  (println result)
+                                  {:call-id call-id
+                                   :tool-name tool-name
+                                   :result result}))))
                      (.catch (fn [error]
                                (println "❌ Tool execution error for" tool-name ":" error)
                                {:call-id call-id
@@ -203,12 +223,17 @@
        filter-available-tools))
 
 (defn enable-specific-tools
-  "Enable only specific tools by name"
-  [tool-names]
-  (let [available-tools (get-available-tools)
-        filtered-tools (filter #(contains? (set tool-names) (.-name %)) available-tools)]
-    {:tools (into-array filtered-tools)
-     :toolMode vscode/LanguageModelChatToolMode.Auto}))
+  "Enable only specific tools by name.
+   When allow-unsafe? is true, skips the safety filter to allow file write operations."
+  ([tool-names]
+   (enable-specific-tools tool-names false))
+  ([tool-names allow-unsafe?]
+   (let [all-tools (if allow-unsafe?
+                     vscode/lm.tools
+                     (get-available-tools))
+         filtered-tools (filter #(contains? (set tool-names) (.-name %)) all-tools)]
+     {:tools (into-array filtered-tools)
+      :toolMode vscode/LanguageModelChatToolMode.Auto})))
 
 (defn enable-joyride-tools
   "Get only the Joyride evaluation tool"

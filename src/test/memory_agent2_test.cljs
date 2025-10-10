@@ -1,62 +1,83 @@
 (ns test.memory-agent2-test
   (:require
-   [cljs.test :refer [deftest is testing run-tests async]]
+   [cljs.test :refer [deftest is testing run-tests]]
    [clojure.string :as string]
-   [memory-agent2 :as ma]
-   [promesa.core :as p]))
+   [memory-agent2 :as ma]))
 
-(deftest autonomize-prompt-removes-human-input-test
-  (async done
-    (testing "Removes 'request human input' instructions"
-      (p/let [test-prompt "Step 1: Do X.\nIf uncertain, request human input.\nStep 2: Do Y."
-              result (ma/autonomize-prompt!+ test-prompt)]
-        (is (string? result) "Should return a string")
-        (is (not (string/includes? (string/lower-case result) "request human input"))
-            "Should not contain 'request human input'")
-        (is (string/includes? result "Do X") "Should preserve other instructions")
-        (is (string/includes? result "Do Y") "Should preserve other instructions")
-        (done)))))
+;; Pure function tests
 
-(deftest autonomize-remember-prompt-test
-  (async done
-    (testing "Transforms actual remember-prompt"
-      (p/let [result (ma/autonomize-prompt!+ ma/remember-prompt)]
-        (is (string? result) "Should return a string")
-        (is (> (count result) 1000) "Should preserve most of the prompt")
-        (is (not (string/includes? (string/lower-case result) "request human input"))
-            "Should remove all 'request human input' instructions")
-        (done)))))
+(deftest determine-search-directory-test
+  (testing "Returns global directory when scope is :global"
+    (is (= "/global/path"
+           (ma/determine-search-directory :global "/workspace" "/global/path"))))
 
-(deftest goal-construction-test
-  (testing "Goal combines context and autonomous prompt correctly"
-    (let [test-context "Test context here"
-          test-autonomous-prompt "Autonomous instructions here"
-          ;; Simulate what record-memory!+ does
-          expected-goal (str "CONTEXT TO REMEMBER:\n" test-context "\n\n" test-autonomous-prompt)]
-      (is (string/starts-with? expected-goal "CONTEXT TO REMEMBER:")
-          "Goal should start with context marker")
-      (is (string/includes? expected-goal test-context)
-          "Goal should include the context")
-      (is (string/includes? expected-goal test-autonomous-prompt)
-          "Goal should include the autonomous prompt"))))
+  (testing "Returns workspace directory when scope is :workspace and workspace exists"
+    (is (= "/workspace"
+           (ma/determine-search-directory :workspace "/workspace" "/global/path"))))
 
-(deftest record-memory-integration-test
-  (async done
-    (testing "Creates autonomous goal and calls agents"
-      ;; Integration test with minimal turns to verify structure
-      (p/let [test-context "Mistake: Did X. Correction: Do Y."
-              result (ma/record-memory!+ test-context {:max-turns 1
-                                                        :model-id "gpt-4o-mini"})]
-        (is (map? result) "Should return a result map")
-        (is (contains? result :history) "Should have history")
-        (is (contains? result :reason) "Should have reason")
-        (done)))))
+  (testing "Falls back to global when scope is :workspace but workspace is nil"
+    (is (= "/global/path"
+           (ma/determine-search-directory :workspace nil "/global/path"))))
+
+  (testing "Defaults to global directory when scope is nil"
+    (is (= "/global/path"
+           (ma/determine-search-directory nil "/workspace" "/global/path"))))
+
+  (testing "Defaults to global directory for invalid scope"
+    (is (= "/global/path"
+           (ma/determine-search-directory :invalid "/workspace" "/global/path")))))
+
+(deftest prepare-context-test
+  (testing "Prepends domain marker when domain is provided"
+    (is (= ">clojure Use REPL evaluation"
+           (ma/prepare-context "Use REPL evaluation" "clojure"))))
+
+  (testing "Returns summary as-is when domain is nil"
+    (is (= "Use REPL evaluation"
+           (ma/prepare-context "Use REPL evaluation" nil))))
+
+  (testing "Handles empty summary"
+    (is (= ""
+           (ma/prepare-context "" nil)))
+    (is (= ">clojure "
+           (ma/prepare-context "" "clojure")))))
+
+(deftest parse-agent-response-test
+  (testing "Parses valid response with file path and content"
+    (let [response "FILE_PATH: /path/to/file.md\n---FILE_CONTENT---\nContent here\n---END_CONTENT---"
+          result (ma/parse-agent-response response)]
+      (is (= "/path/to/file.md" (:file-path result)))
+      (is (= "Content here\n" (:content result)))))
+
+  (testing "Parses multiline content correctly"
+    (let [response "FILE_PATH: /path/to/file.md\n---FILE_CONTENT---\nLine 1\nLine 2\nLine 3\n---END_CONTENT---"
+          result (ma/parse-agent-response response)]
+      (is (string/includes? (:content result) "Line 1"))
+      (is (string/includes? (:content result) "Line 2"))
+      (is (string/includes? (:content result) "Line 3"))))
+
+  (testing "Handles extra whitespace in file path"
+    (let [response "FILE_PATH:   /path/to/file.md  \n---FILE_CONTENT---\nContent\n---END_CONTENT---"
+          result (ma/parse-agent-response response)]
+      (is (= "/path/to/file.md" (:file-path result)))))
+
+  (testing "Returns nil when FILE_PATH is missing"
+    (let [response "---FILE_CONTENT---\nContent\n---END_CONTENT---"
+          result (ma/parse-agent-response response)]
+      (is (nil? result))))
+
+  (testing "Returns nil when content markers are missing"
+    (let [response "FILE_PATH: /path/to/file.md\nSome content"
+          result (ma/parse-agent-response response)]
+      (is (nil? result)))))
 
 (comment
   ;; Run all tests
-  (run-tests 'memory-agent2-test)
+  (run-tests 'test.memory-agent2-test)
 
   ;; Run specific test
-  (autonomize-prompt-removes-human-input-test (fn [] (println "Done!")))
+  (determine-search-directory-test)
+  (prepare-context-test)
+  (parse-agent-response-test)
 
   :rcf)
