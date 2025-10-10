@@ -2,11 +2,25 @@
   "Background memory creation agent using Language Model API"
   (:require
    [promesa.core :as p]
+   [joyride.core :as joy]
+   [ai-workflow.agents :as agents]
    ["vscode" :as vscode]))
 
-;; ============================================================================
-;; Core Async Iterator Utilities
-;; ============================================================================
+(def agent-model "grok-code")
+
+(defn user-data-uri [relative-path]
+  (let [path (js/require "path")
+        global-storage-path (-> (joy/extension-context)
+                                .-globalStorageUri .-fsPath)
+        user-dir (.join path global-storage-path ".." "..")
+        full-path (.join path user-dir relative-path)]
+    (vscode/Uri.file full-path)))
+
+(p/let [uri (user-data-uri "prompts/remember.prompt.md")
+        content (vscode/workspace.fs.readFile uri)
+        decoder (js/TextDecoder. "utf-8")
+        prompt (.decode decoder content)]
+  (def remember-prompt prompt))
 
 (defn async-iterator-seq
   "Consumes an async generator/iterator and returns a promise of all values.
@@ -25,10 +39,6 @@
           (do (swap! results conj (.-value v))
               (p/recur)))))))
 
-;; ============================================================================
-;; Language Model API Integration
-;; ============================================================================
-
 (defn consume-lm-response
   "Consumes a Language Model response stream and returns the complete text.
 
@@ -40,24 +50,6 @@
   (p/let [chunks (async-iterator-seq (.-text response))]
     (apply str chunks)))
 
-(defn select-model
-  "Selects a language model. Returns first available model or nil.
-
-  Options:
-    :vendor - e.g., \"copilot\"
-    :family - e.g., \"gpt-4o\", \"claude-sonnet-4\", \"gpt-4o-mini\"
-
-  Example:
-    (p/let [[model] (select-model {:vendor \"copilot\" :family \"gpt-4o\"})]
-      (when model
-        (prn \"Model ID:\" (.-id model))))"
-  [{:keys [vendor family] :or {vendor "copilot" family "gpt-4o"}}]
-  (vscode/lm.selectChatModels #js {:vendor vendor :family family}))
-
-;; ============================================================================
-;; Memory Creation Agent
-;; ============================================================================
-
 (defn create-memory-from-context!
   "Spawns an LLM request to create a memory entry from mistake/correction context.
 
@@ -67,18 +59,14 @@
 
   Args:
     context - String containing the mistake/correction/pattern to remember
-    opts - Optional map:
-      :model-family - Model to use (default: \"gpt-4o\")
-      :format - How to format the memory (default: instructions-file)
 
   Example:
     (p/let [result (create-memory-from-context!
                      \"Mistake: Did X. Correction: Do Y instead.\")]
       (when (:success result)
         (prn (:memory result))))"
-  ([context] (create-memory-from-context! context {}))
-  ([context {:keys [model-family] :or {model-family "gpt-4o"}}]
-   (p/let [[model] (select-model {:family model-family})]
+  ([context]
+   (p/let [[model] (vscode/lm.selectChatModels #js {:vendor "copilot" :family agent-model})]
      (if model
        (let [memory-prompt (str "You are a memory creation assistant for AI coding agents.
 
@@ -105,34 +93,24 @@ Keep it concise and actionable. Do not include file paths or metadata headers.")
             :model-id (.-id model)}))
        {:error "No language model available"}))))
 
-;; ============================================================================
-;; User Interaction Workflows
-;; ============================================================================
-
 (defn create-and-show-memory!
-  "Creates memory and shows it in a new editor for review/editing.
-
-  Example:
-    (create-and-show-memory! \"Context about mistake...\")"
+  "Creates memory and shows it in a new editor for review/editing."
   [context]
   (p/let [result (create-memory-from-context! context)]
     (if (:success result)
       (p/do
         (p/let [doc (vscode/workspace.openTextDocument
-                      #js {:content (:memory result)
-                           :language "markdown"})]
+                     #js {:content (:memory result)
+                          :language "markdown"})]
           (vscode/window.showTextDocument doc))
         result)
       (do
         (vscode/window.showErrorMessage
-          (str "Failed to create memory: " (:error result)))
+         (str "Failed to create memory: " (:error result)))
         result))))
 
 (defn create-and-copy-memory!
-  "Creates memory and copies it to clipboard.
-
-  Example:
-    (create-and-copy-memory! \"Context about mistake...\")"
+  "Creates memory and copies it to clipboard."
   [context]
   (p/let [result (create-memory-from-context! context)]
     (if (:success result)
@@ -142,7 +120,7 @@ Keep it concise and actionable. Do not include file paths or metadata headers.")
         result)
       (do
         (vscode/window.showErrorMessage
-          (str "Failed to create memory: " (:error result)))
+         (str "Failed to create memory: " (:error result)))
         result))))
 
 (defn create-and-handle-memory!
@@ -151,19 +129,15 @@ Keep it concise and actionable. Do not include file paths or metadata headers.")
   Presents user with options:
     - Copy to Clipboard
     - Show in Editor
-    - Append to File
-
-  Example:
-    (create-and-handle-memory!
-      \"Mistake: Used X. Correction: Use Y instead.\")"
+    - Append to File"
   [context]
   (p/let [result (create-memory-from-context! context)]
     (if (:success result)
       (p/let [choice (vscode/window.showInformationMessage
-                       "✨ Memory entry created! What next?"
-                       "Copy to Clipboard"
-                       "Show in Editor"
-                       "Append to File")]
+                      "✨ Memory entry created! What next?"
+                      "Copy to Clipboard"
+                      "Show in Editor"
+                      "Append to File")]
         (case choice
           "Copy to Clipboard"
           (p/do
@@ -173,16 +147,16 @@ Keep it concise and actionable. Do not include file paths or metadata headers.")
 
           "Show in Editor"
           (p/let [doc (vscode/workspace.openTextDocument
-                        #js {:content (:memory result)
-                             :language "markdown"})]
+                       #js {:content (:memory result)
+                            :language "markdown"})]
             (vscode/window.showTextDocument doc)
             result)
 
           "Append to File"
           (p/let [file-uri (vscode/window.showOpenDialog
-                             #js {:canSelectMany false
-                                  :filters #js {:Markdown #js ["md"]}
-                                  :openLabel "Append Memory To"})]
+                            #js {:canSelectMany false
+                                 :filters #js {:Markdown #js ["md"]}
+                                 :openLabel "Append Memory To"})]
             (if (seq file-uri)
               (let [uri (first file-uri)]
                 (p/let [content (vscode/workspace.fs.readFile uri)
@@ -190,8 +164,8 @@ Keep it concise and actionable. Do not include file paths or metadata headers.")
                         existing (.decode text content)
                         new-content (str existing "\n\n" (:memory result))]
                   (vscode/workspace.fs.writeFile
-                    uri
-                    (.encode (js/TextEncoder.) new-content))
+                   uri
+                   (.encode (js/TextEncoder.) new-content))
                   (vscode/window.showInformationMessage "✅ Memory appended!")
                   result))
               result))
@@ -199,7 +173,7 @@ Keep it concise and actionable. Do not include file paths or metadata headers.")
           nil))
       (do
         (vscode/window.showErrorMessage
-          (str "Failed to create memory: " (:error result)))
+         (str "Failed to create memory: " (:error result)))
         result))))
 
 (defn append-to-instructions-file!
@@ -234,37 +208,17 @@ Keep it concise and actionable. Do not include file paths or metadata headers.")
           (vscode/window.showInformationMessage
            (str "✅ Memory appended to " file-path)))))))
 
-;; ============================================================================
-;; Export Public API
-;; ============================================================================
-
-(def public-api
-  {:async-iterate async-iterator-seq
-   :consume-lm-response consume-lm-response
-   :select-model select-model
-   :create-memory-from-context! create-memory-from-context!
-   :create-and-show-memory! create-and-show-memory!
-   :create-and-copy-memory! create-and-copy-memory!
-   :create-and-handle-memory! create-and-handle-memory!
-   :append-to-instructions-file! append-to-instructions-file!})
-
 (comment
-  ;; Quick test
-  (require '[memory-agent :as ma])
+  (create-and-copy-memory!
+   "Mistake: Did X. Correction: Do Y instead.")
 
-  ;; Simple usage
-  (ma/create-and-copy-memory!
-    "Mistake: Did X. Correction: Do Y instead.")
+  (create-and-handle-memory!
+   "Discovery: Found new pattern Z that improves performance.")
 
-  ;; Interactive workflow
-  (ma/create-and-handle-memory!
-    "Discovery: Found new pattern Z that improves performance.")
-
-  ;; Background append
-  (p/let [result (ma/create-memory-from-context! "Context...")]
+  (p/let [result (create-memory-from-context! "Context...")]
     (when (:success result)
-      (ma/append-to-instructions-file!
-        (:memory result)
-        ".github/instructions/patterns.instructions.md")))
+      (append-to-instructions-file!
+       (:memory result)
+       ".github/instructions/patterns.instructions.md")))
 
   :rcf)
