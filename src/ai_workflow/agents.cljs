@@ -293,17 +293,16 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
 (comment
 
   (require '[ai-workflow.ui :as ui])
-  (p/let [use-tool-ids (ui/tools-picker+ ["joyride_evaluate_code"
-                                          "copilot_searchCodebase"
-                                          "copilot_searchWorkspaceSymbols"
-                                          "copilot_listCodeUsages"
-                                          "copilot_getVSCodeAPI"
+  (p/let [use-tool-ids (ui/tools-picker+ ["copilot_applyPatch"
                                           "copilot_findFiles"
                                           "copilot_findTextInFiles"
-                                          "copilot_readFile"
                                           "copilot_listDirectory"
-                                          "copilot_insertEdit"
-                                          "copilot_createFile"])]
+                                          "copilot_multiReplaceString"
+                                          "copilot_readFile"
+                                          "copilot_replaceString"
+                                          "copilot_searchCodebase"
+                                          "copilot_searchWorkspaceSymbols"
+                                          "manage_todo_list"])]
     (def use-tool-ids (set use-tool-ids))
     (println (pr-str use-tool-ids) "\n"))
 
@@ -332,7 +331,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                               :tool-ids use-tool-ids})
 
   (autonomous-conversation!+ "Create a file docs/greeting.md with a greeting to Clojurians"
-                             {:model-id "claude-sonnet-4"
+                             {:model-id "grok-code-fast-1"
                               :max-turns 15
                               :progress-callback (fn [step]
                                                    (println "🔄" step)
