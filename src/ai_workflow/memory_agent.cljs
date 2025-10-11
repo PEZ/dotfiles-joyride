@@ -312,12 +312,12 @@
 (defn find-edn-in-messages
   "Searches agent messages from last to first for EDN wrapped in markers.
   Args:
-    agent-messages - Sequence of JS message objects with .role and .content
+    agent-messages - Sequence of message maps with :role and :content keys
   Returns: Message content string from first message (searching backwards) containing END marker, or nil"
   [agent-messages]
   (some (fn [msg]
-          (let [content (.-content msg)]
-            (when (string/includes? content "---END RESULTS---")
+          (let [content (:content msg)]
+            (when (and content (string/includes? content "---END RESULTS---"))
               content)))
         (reverse agent-messages)))
 
@@ -446,8 +446,8 @@
 
           ;; Step 6: Search agent messages backwards for EDN structure
           ;; Agent may include EDN in any message, not just the last one
-          all-messages (get-in agent-result [:conversation :messages] [])
-          agent-messages (filter #(= "assistant" (.-role %)) all-messages)
+          all-messages (get-in agent-result [:history] [])
+          agent-messages (filter #(= :assistant (:role %)) all-messages)
           message-with-edn (find-edn-in-messages agent-messages)
 
           ;; Step 7: Parse agent's decision (handles wrapped or direct EDN)
