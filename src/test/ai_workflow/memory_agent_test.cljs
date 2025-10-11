@@ -80,8 +80,12 @@
                   {:ma/summary "Test"
                    :ma/domain "git"
                    :ma/search-dir "/my/custom/dir"})]
-      (is (string/includes? result "/my/custom/dir"))
-      (is (not (string/includes? result "{SEARCH_DIRECTORY}")))))
+      (is (string/includes? result "/my/custom/dir")
+          "Should contain actual search directory path")
+      (is (not (string/includes? result "{SEARCH-DIRECTORY}"))
+          "Should not contain unreplaced {SEARCH-DIRECTORY} placeholder")
+      (is (not (string/includes? result "{SEARCH_DIRECTORY}"))
+          "Should not contain old {SEARCH_DIRECTORY} placeholder either")))
 
   (testing "Different domains produce domain-specific prompts"
     (let [clj-result (ma/build-goal-prompt

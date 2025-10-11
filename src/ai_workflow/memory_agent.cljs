@@ -64,7 +64,7 @@
    "- **Search thoroughly** - Use tools to find existing files\n"
    "- **Read before deciding** - Always use tools to read existing files to understand structure\n"
    "- **Integrate carefully** - Place new memories in logical sections\n"
-   "- **Use absolute paths** - FILE_PATH must be absolute like `{SEARCH_DIRECTORY}/clojure-memory.instructions.md`\n"
+   "- **Use absolute paths** - FILE_PATH must be absolute like `{SEARCH-DIRECTORY}/clojure-memory.instructions.md`\n"
    "- **Be concise** - Memory entries should be scannable and actionable\n"
    "- **Extract patterns** - Generalize from specific instances\n"
    "- Work systematically. Research first, then craft the complete solution.\n\n"
@@ -81,13 +81,13 @@
      "\n\n### 1. Read up on existing domain knowledge")
 
    "\n1. Read these files:\n"
-   "   - **General instructions**; `{SEARCH_DIRECTORY}/copilot.instructions.md`\n"
-   "   - **General memories**; `{SEARCH_DIRECTORY}/memory.instructions.md`\n"
+   "   - **General instructions**; `{SEARCH-DIRECTORY}/copilot.instructions.md`\n"
+   "   - **General memories**; `{SEARCH-DIRECTORY}/memory.instructions.md`\n"
    (if domain
-     (str "   - **Domain instructions**: `{SEARCH_DIRECTORY}/" domain ".instructions.md`\n"
-          "   - **Domain memory**; `{SEARCH_DIRECTORY}/" domain "-memory.instructions.md`\n")
-     (str "   - **Domain instructions**: `{SEARCH_DIRECTORY}/<domain>.instructions.md`\n"
-          "   - **Domain memory**; `{SEARCH_DIRECTORY}/<domain>-memory.instructions.md`\n"))
+     (str "   - **Domain instructions**: `{SEARCH-DIRECTORY}/" domain ".instructions.md`\n"
+          "   - **Domain memory**; `{SEARCH-DIRECTORY}/" domain "-memory.instructions.md`\n")
+     (str "   - **Domain instructions**: `{SEARCH-DIRECTORY}/<domain>.instructions.md`\n"
+          "   - **Domain memory**; `{SEARCH-DIRECTORY}/<domain>-memory.instructions.md`\n"))
 
    "\n   **Critical**: Always use absolute paths when globbing, searching and reading files.\n"
    "3. **Analyze** the specific `SESSION-LESSON` learned from user input, as it fits with your knowledge about the domain.\n"
@@ -189,7 +189,7 @@
     Complete goal prompt string ready for the autonomous agent"
   [{:ma/keys [summary domain search-dir]}]
   (-> (remember-prompt {:ma/domain domain})
-      (string/replace "{SEARCH_DIRECTORY}" search-dir)
+      (string/replace "{SEARCH-DIRECTORY}" search-dir)
       (string/replace "{LESSON}" summary)))
 
 (defn validate-file-content
@@ -311,35 +311,35 @@
                          "")
 
           ;; Step 7: Parse agent's decision
-          parsed (edn/read-string final-text)]
+          {:keys [file-path] :as parsed} (edn/read-string final-text)]
 
     (if parsed
       ;; Step 8: Handle existing file vs new file
       (if (:new-file parsed)
         (p/let [complete-content (build-new-file-content parsed)
-                write-result (write-memory-file!+ (:file-path parsed) complete-content)]
+                write-result (write-memory-file!+ file-path complete-content)]
           (if (:success write-result)
             {:success true
-             :file-path (:file-path write-result)}
+             :file-path file-path}
             {:success false
              :error (:error write-result)
              :error-type :write-failed
-             :file-path (:file-path parsed)}))
-        (p/let [existing-content (read-existing-file!+ (:file-path parsed))
+             :file-path file-path}))
+        (p/let [existing-content (read-existing-file!+ file-path)
                 validation (validate-file-content (:content parsed) existing-content)]
           (if (:valid? validation)
-            (p/let [write-result (write-memory-file!+ (:file-path parsed) (:content parsed))]
+            (p/let [write-result (write-memory-file!+ file-path (:content parsed))]
               (if (:success write-result)
                 {:success true
-                 :file-path (:file-path write-result)}
+                 :file-path file-path}
                 {:success false
                  :error (:error write-result)
                  :error-type :write-failed
-                 :file-path (:file-path parsed)}))
+                 :file-path file-path}))
             {:success false
              :error (:reason validation)
              :error-type :validation-failed
-             :file-path (:file-path parsed)})))
+             :file-path file-path})))
       ;; Parsing failed
       {:success false
        :error "Failed to parse agent response. Agent did not return expected format."
@@ -347,6 +347,9 @@
 
 (comment
   ;; Basic usage - global memory with domain hint
+  (record-memory!+
+   {:summary "Use REPL evaluation of subexpressions instead of println for debugging"})
+
   (record-memory!+
    {:summary "Use REPL evaluation of subexpressions instead of println for debugging"
     :domain "clojure"})
