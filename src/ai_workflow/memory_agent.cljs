@@ -191,17 +191,7 @@ Prompt to transform:")
       nil)))
 
 (defn build-new-file-content
-  "Build complete file content with frontmatter from new file response.
-
-  Args:
-    new-file-data - Map with keys:
-      :description - File description for frontmatter
-      :domain-tagline - Title for the file
-      :applyTo - Vector of glob patterns
-      :heading - First heading
-      :content - Markdown content
-
-  Returns: Complete file content string with frontmatter"
+  "Build complete file content with frontmatter from new file response"
   [{:keys [description domain-tagline applyTo heading content]}]
   (str "---\n"
        "description: '" description "'\n"
@@ -211,28 +201,10 @@ Prompt to transform:")
        "## " heading "\n\n"
        content))
 
-(defn determine-search-directory
-  "Determine search directory from scope.
-
-  Args:
-    scope - :global, :workspace, or nil (defaults to :global)
-
-  Returns: Absolute path to search directory
-
-  Throws: Error if scope is :workspace but no workspace is available"
-  [scope]
-  (case scope
-    :global (user-data-instructions-path)
-    :workspace (workspace-instructions-path)
-    (user-data-instructions-path)))
-
-
-
 (defn build-goal-prompt
   "Build the complete goal prompt for the memory agent.
 
   Combines the prompt template, search directory, and lesson summary into the final goal string.
-  This function encapsulates steps 1-3 of record-memory!+ for testability.
 
   Args:
     config - Map with keys:
@@ -326,14 +298,24 @@ Prompt to transform:")
       :progress-callback - Optional progress function
 
   Returns:
-    Promise of {:success true :file-path string :agent-result map} or {:error string}"
+    Promise of result map:
+    - Success: {:success true :file-path string}
+    - Failure: {:success false :error string :error-type keyword :file-path string}
+      Error types:
+      - :write-failed - File write operation failed
+      - :validation-failed - Content validation failed
+      - :unknown-response-type - Agent returned unexpected type
+      - :parse-failed - Could not parse agent response"
   [{:keys [summary domain scope model-id max-turns progress-callback]
     :or {scope :global
          model-id agent-model
          max-turns 10
          progress-callback #(println "📝" %)}}]
   (p/let [;; Step 1: Determine search directory from scope
-          search-dir (determine-search-directory scope)
+          search-dir (case scope
+                       :global (user-data-instructions-path)
+                       :workspace (workspace-instructions-path)
+                       (user-data-instructions-path))
 
           ;; Steps 2-3: Build complete goal prompt
           goal (build-goal-prompt {:ma/summary summary
@@ -371,14 +353,15 @@ Prompt to transform:")
             (p/let [write-result (write-memory-file!+ (:file-path parsed) (:file-content parsed))]
               (if (:success write-result)
                 {:success true
-                 :file-path (:file-path write-result)
-                 :agent-result agent-result}
-                {:error (:error write-result)
-                 :agent-result agent-result}))
-            {:error (:reason validation)
-             :agent-result agent-result
-             :existing-content existing-content
-             :new-content (:file-content parsed)}))
+                 :file-path (:file-path write-result)}
+                {:success false
+                 :error (:error write-result)
+                 :error-type :write-failed
+                 :file-path (:file-path parsed)}))
+            {:success false
+             :error (:reason validation)
+             :error-type :validation-failed
+             :file-path (:file-path parsed)}))
 
         :new-file
         ;; New file - build complete content with frontmatter
@@ -386,19 +369,21 @@ Prompt to transform:")
                 write-result (write-memory-file!+ (:file-path parsed) complete-content)]
           (if (:success write-result)
             {:success true
-             :file-path (:file-path write-result)
-             :agent-result agent-result}
-            {:error (:error write-result)
-             :agent-result agent-result}))
+             :file-path (:file-path write-result)}
+            {:success false
+             :error (:error write-result)
+             :error-type :write-failed
+             :file-path (:file-path parsed)}))
 
         ;; Unknown type
-        {:error "Unknown response type"
-         :agent-result agent-result
-         :parsed parsed})
+        {:success false
+         :error "Unknown response type"
+         :error-type :unknown-response-type
+         :file-path (:file-path parsed)})
       ;; Parsing failed
-      {:error "Failed to parse agent response. Agent did not return expected format."
-       :agent-result agent-result
-       :response-text final-text})))
+      {:success false
+       :error "Failed to parse agent response. Agent did not return expected format."
+       :error-type :parse-failed})))
 
 (comment
   ;; Basic usage - global memory with domain hint
