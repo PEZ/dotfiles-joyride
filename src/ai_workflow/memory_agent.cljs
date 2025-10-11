@@ -73,10 +73,10 @@
 
    (if-not domain
      (str "\n\n### 1. Determine the memory domain\n"
-          "1. Search all `{SEARCH-DIRECTORY}/*.instructions.md` files for lines starting with `description: `\n"
+          "1. Review the \"Available Memory Files\" section below - it lists all existing memory files with their descriptions.\n"
           "2. Consider if any of these descriptions matches the lesson.\n"
-          "   - If so: pick the best match\n"
-          "   - Else: decide on a domain and domain slug for this memory\n\n"
+          "   - If so: pick the best match and read that file\n"
+          "   - Else: decide on a domain and domain slug for this new memory\n\n"
           "### 2. Read up on existing domain knowledge")
      "\n\n### 1. Read up on existing domain knowledge")
 
@@ -103,6 +103,9 @@
    (if domain
      "### 2. Deliver results"
      "### 3. Deliver results")
+
+   "\n\n**IMPORTANT**: Wrap your EDN deliverable in markers:\n\n"
+   "```\n---BEGIN RESULTS---\n{your EDN structure here}\n---END RESULTS---\n```\n\n"
 
    "- IF a memory file already exist:\n"
    "  - Provide a new memory section to append to the file\n"
@@ -247,10 +250,11 @@
   (p/catch
    (p/let [uri (vscode/Uri.file file-path)
            encoder (js/TextEncoder.)
-           encoded-content (.encode encoder content)]
-     (p/let [_ (vscode/workspace.fs.writeFile uri encoded-content)]
-       (vscode/window.showInformationMessage (str "✅ Memory recorded: " file-path))
-       {:success true :file-path file-path}))
+           encoded-content (.encode encoder content)
+           _ (vscode/workspace.fs.writeFile uri encoded-content)]
+     ;; Show message without blocking return
+     (vscode/window.showInformationMessage (str "✅ Memory recorded: " file-path))
+     {:success true :file-path file-path})
    (fn [error]
      {:error (str "Failed to write file: " (.-message error))
       :file-path file-path})))
@@ -286,6 +290,92 @@
          "\n\n## " heading
          "\n\n" content)))
 
+(defn extract-edn-from-response
+  "Extracts EDN structure from agent response, handling wrapped format or direct EDN.
+
+  Args:
+    response - Agent response string, may contain BEGIN/END markers or direct EDN
+
+  Returns: Parsed EDN map or nil if parsing fails or result is not a map"
+  [response]
+  (let [marker-match (re-find #"(?s)---BEGIN RESULTS---\s*(.*?)\s*---END RESULTS---" response)
+        edn-string (if marker-match
+                     (string/trim (second marker-match))
+                     (string/trim response))]
+    (try
+      (let [parsed (edn/read-string edn-string)]
+        (when (map? parsed)
+          parsed))
+      (catch js/Error _
+        nil))))
+
+(defn extract-description-from-content
+  "Extract description from file content frontmatter.
+
+  Args:
+    content - File content string
+
+  Returns: Description string or nil if not found"
+  [content]
+  (when content
+    (second (re-find #"description:\s*'([^']*)'" content))))
+
+(defn list-instruction-files!+
+  "List all .instructions.md files in the target directory.
+
+  Args:
+    dir-path - Absolute path to directory
+
+  Returns: Promise of vector of filenames"
+  [dir-path]
+  (p/catch
+   (p/let [uri (vscode/Uri.file dir-path)
+           files (vscode/workspace.fs.readDirectory uri)]
+     (->> files
+          (filter #(string/ends-with? (first %) ".instructions.md"))
+          (map first)
+          vec))
+   (fn [_error]
+     [])))
+
+(defn build-file-descriptions-map!+
+  "Build a map of file descriptions from instruction files.
+
+  Args:
+    dir-path - Absolute path to directory
+
+  Returns: Promise of vector of {:file string :description string} maps"
+  [dir-path]
+  (p/let [files (list-instruction-files!+ dir-path)
+          ;; Read each file and extract description
+          file-data (p/all
+                     (for [filename files]
+                       (p/let [content (read-existing-file!+ (str dir-path "/" filename))
+                               description (extract-description-from-content content)]
+                         {:file filename
+                          :description description})))]
+    ;; Filter out files without descriptions
+    (filterv :description file-data)))
+
+(defn format-description-listing
+  "Format file descriptions into a text listing for the prompt.
+
+  Args:
+    descriptions - Vector of {:file string :description string} maps
+    search-dir - Base directory path
+
+  Returns: Formatted string or empty string if no descriptions"
+  [descriptions search-dir]
+  (if (seq descriptions)
+    (str "\n\n## Available Memory Files\n\n"
+         "The following memory instruction files exist. Match the lesson to the most appropriate domain:\n\n"
+         (string/join "\n"
+                     (for [{:keys [file description]} descriptions]
+                       (str "- `" file "` - " description)))
+         "\n\n**To read a file**: Use `copilot_readFile` with absolute path like `"
+         search-dir "/" (:file (first descriptions)) "`\n")
+    ""))
+
 (defn record-memory!+
   "Records a memory using autonomous agent workflow with orchestrator pattern.
 
@@ -319,10 +409,15 @@
                        :workspace (workspace-instructions-path)
                        (user-data-instructions-path))
 
-          ;; Steps 2-3: Build complete goal prompt
-          goal (build-goal-prompt {:ma/summary summary
-                                   :ma/domain domain
-                                   :ma/search-dir search-dir})
+          ;; Step 1b: Build description listing for available files
+          file-descriptions (build-file-descriptions-map!+ search-dir)
+          description-listing (format-description-listing file-descriptions search-dir)
+
+          ;; Steps 2-3: Build complete goal prompt with description listing
+          goal (str (build-goal-prompt {:ma/summary summary
+                                        :ma/domain domain
+                                        :ma/search-dir search-dir})
+                    description-listing)
 
           ;; Step 4: Define read-only tools for analysis
           tool-ids ["copilot_findFiles"
@@ -341,8 +436,8 @@
           final-text (or (get-in agent-result [:final-response :text])
                          "")
 
-          ;; Step 7: Parse agent's decision
-          {:keys [file-path] :as parsed} (edn/read-string final-text)]
+          ;; Step 7: Parse agent's decision (handles wrapped or direct EDN)
+          {:keys [file-path] :as parsed} (extract-edn-from-response final-text)]
 
     (if parsed
       ;; Step 8: Check if file exists first (handles agent misidentifying new vs existing)
@@ -422,7 +517,4 @@
     (println "File path:" (:file-path result)))
 
   :rcf)
-
-
-
 

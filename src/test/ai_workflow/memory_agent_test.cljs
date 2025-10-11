@@ -160,3 +160,73 @@
               "Should preserve original applyTo (not update to .cljs)")
           (is (not (string/includes? result "**/*.cljs"))
               "Should not include agent's suggested applyTo"))))))
+
+(deftest extract-file-descriptions-test
+  (testing "Extracts descriptions from instruction files"
+    (testing "Should extract description from frontmatter"
+      (let [content "---\ndescription: 'Test description here'\napplyTo: '**/*.clj'\n---\n\n# Content"]
+        (is (= "Test description here"
+               (ma/extract-description-from-content content)))))
+
+    (testing "Should handle missing description"
+      (let [content "---\napplyTo: '**/*.clj'\n---\n\n# Content"]
+        (is (nil? (ma/extract-description-from-content content)))))
+
+    (testing "Should handle malformed frontmatter"
+      (let [content "# Just a heading\n\nNo frontmatter"]
+        (is (nil? (ma/extract-description-from-content content)))))))
+
+(deftest format-description-listing-test
+  (testing "Formats description listing for prompt"
+    (testing "Should format non-empty descriptions"
+      (let [descriptions [{:file "clojure-memory.instructions.md"
+                           :description "Clojure best practices"}
+                          {:file "git-workflow-memory.instructions.md"
+                           :description "Git workflow patterns"}]
+            result (ma/format-description-listing descriptions "/test/dir")]
+        (is (string/includes? result "## Available Memory Files"))
+        (is (string/includes? result "clojure-memory.instructions.md"))
+        (is (string/includes? result "Clojure best practices"))
+        (is (string/includes? result "git-workflow-memory.instructions.md"))
+        (is (string/includes? result "Git workflow patterns"))
+        (is (string/includes? result "/test/dir/clojure-memory.instructions.md"))))
+
+    (testing "Should return empty string for empty descriptions"
+      (let [result (ma/format-description-listing [] "/test/dir")]
+        (is (= "" result))))))
+
+(deftest integration-description-listing-test
+  (testing "Integration: description listing in goal prompt"
+    (testing "Should include file descriptions in prompt"
+      (let [test-dir "/fake/dir"
+            descriptions [{:file "clojure-memory.instructions.md"
+                           :description "Clojure patterns"}
+                          {:file "git-workflow-memory.instructions.md"
+                           :description "Git workflows"}]
+            listing (ma/format-description-listing descriptions test-dir)
+            prompt (ma/build-goal-prompt {:ma/summary "Test"
+                                          :ma/domain nil
+                                          :ma/search-dir test-dir})
+            full-goal (str prompt listing)]
+        (is (string/includes? full-goal "## Available Memory Files"))
+        (is (string/includes? full-goal "clojure-memory.instructions.md"))
+        (is (string/includes? full-goal "Review the \"Available Memory Files\" section"))
+        (is (not (string/includes? full-goal "Search all `{SEARCH-DIRECTORY}/*.instructions.md`"))
+            "Should not contain old search instruction")))))
+
+(deftest extract-edn-from-response-test
+  (testing "Extracts EDN from wrapped response"
+    (testing "Should extract from BEGIN/END markers"
+      (let [response "Some preamble text\n---BEGIN RESULTS---\n{:domain \"test\" :file-path \"/test.md\"}\n---END RESULTS---\nSome trailing text"
+            result (ma/extract-edn-from-response response)]
+        (is (= {:domain "test" :file-path "/test.md"} result))))
+
+    (testing "Should handle response with just EDN"
+      (let [response "{:domain \"test\" :file-path \"/test.md\"}"
+            result (ma/extract-edn-from-response response)]
+        (is (= {:domain "test" :file-path "/test.md"} result))))
+
+    (testing "Should return nil for invalid EDN"
+      (let [response "---BEGIN RESULTS---\nNot valid EDN\n---END RESULTS---"
+            result (ma/extract-edn-from-response response)]
+        (is (nil? result))))))
