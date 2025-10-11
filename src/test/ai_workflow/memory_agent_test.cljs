@@ -110,3 +110,57 @@
   (validate-file-content-test)
 
   :rcf)
+
+(deftest build-goal-prompt-test
+  (testing "With domain - includes domain tag and prefix"
+    (let [result (ma/build-goal-prompt
+                  {:ma/summary "Use REPL for debugging"
+                   :ma/domain "clojure"
+                   :ma/search-dir "/test/prompts"})]
+      (is (string? result))
+      (is (string/includes? result "<DOMAIN>clojure</DOMAIN>"))
+      (is (string/includes? result "CONTEXT TO REMEMBER"))
+      (is (string/includes? result "Use REPL for debugging"))
+      (is (string/includes? result ">clojure Use REPL"))
+      (is (string/includes? result "/test/prompts"))))
+
+  (testing "Without domain - includes determine step, no domain tag"
+    (let [result (ma/build-goal-prompt
+                  {:ma/summary "Verify API responses"
+                   :ma/domain nil
+                   :ma/search-dir "/test/prompts"})]
+      (is (string? result))
+      (is (not (string/includes? result "<DOMAIN>")))
+      (is (string/includes? result "Determine the memory domain"))
+      (is (string/includes? result "CONTEXT TO REMEMBER"))
+      (is (string/includes? result "Verify API responses"))))
+
+  (testing "Without domain - context has no domain prefix"
+    (let [result (ma/build-goal-prompt
+                  {:ma/summary "Verify API responses"
+                   :ma/domain nil
+                   :ma/search-dir "/test/prompts"})
+          context (second (re-find #"CONTEXT TO REMEMBER:\n(.+?)$" result))]
+      (is (= context "Verify API responses"))))
+
+  (testing "Search directory replacement - no placeholder remains"
+    (let [result (ma/build-goal-prompt
+                  {:ma/summary "Test"
+                   :ma/domain "git"
+                   :ma/search-dir "/my/custom/dir"})]
+      (is (string/includes? result "/my/custom/dir"))
+      (is (not (string/includes? result "{SEARCH_DIRECTORY}")))))
+
+  (testing "Different domains produce domain-specific prompts"
+    (let [clj-result (ma/build-goal-prompt
+                      {:ma/summary "Test"
+                       :ma/domain "clojure"
+                       :ma/search-dir "/dir"})
+          git-result (ma/build-goal-prompt
+                      {:ma/summary "Test"
+                       :ma/domain "git-workflow"
+                       :ma/search-dir "/dir"})]
+      (is (string/includes? clj-result "<DOMAIN>clojure</DOMAIN>"))
+      (is (string/includes? git-result "<DOMAIN>git-workflow</DOMAIN>"))
+      (is (string/includes? clj-result "clojure.instructions.md"))
+      (is (string/includes? git-result "git-workflow.instructions.md")))))

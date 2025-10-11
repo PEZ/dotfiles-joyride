@@ -218,6 +218,29 @@ Prompt to transform:")
     (str ">" domain " " summary)
     summary))
 
+(defn build-goal-prompt
+  "Build the complete goal prompt for the memory agent.
+
+  Combines the prompt template, search directory, and context into the final goal string.
+  This function encapsulates steps 1-3 of record-memory!+ for testability.
+
+  Args:
+    config - Map with keys:
+      :ma/summary - String describing the lesson learned (required)
+      :ma/domain - Optional string for domain hint (e.g., 'clojure', 'git-workflow')
+      :ma/search-dir - Absolute path to search directory (required)
+
+  Returns:
+    Complete goal prompt string ready for the autonomous agent"
+  [{:ma/keys [summary domain search-dir]}]
+  (let [context (prepare-context summary domain)
+        prompt (remember-prompt {:ma/domain domain})]
+    (-> prompt
+        (string/replace "{SEARCH_DIRECTORY}" search-dir)
+        (str "\n\n---\n\nCONTEXT TO REMEMBER:\n" context))))
+
+
+
 (defn validate-file-content
   "Validates that new content is substantially complete compared to existing.
 
@@ -239,8 +262,8 @@ Prompt to transform:")
         (< ratio 0.75)
         {:valid? false
          :reason (str "⚠️  VALIDATION FAILED: New content (" new-lines " lines) is "
-                     "significantly shorter than existing (" existing-lines " lines). "
-                     "Agent likely returned incomplete content instead of merging.")}
+                      "significantly shorter than existing (" existing-lines " lines). "
+                      "Agent likely returned incomplete content instead of merging.")}
 
         ;; Content looks valid
         :else
@@ -312,13 +335,10 @@ Prompt to transform:")
                              (-> folders first .-uri .-fsPath)))
           search-dir (determine-search-directory scope workspace-root user-prompts-dir)
 
-          ;; Step 2: Prepare context with optional domain hint
-          context (prepare-context summary domain)
-
-          ;; Step 3: Template the prompt with search directory
-          goal (-> (remember-prompt domain)
-                   (string/replace "{SEARCH_DIRECTORY}" search-dir)
-                   (str "\n\n---\n\nCONTEXT TO REMEMBER:\n" context))
+          ;; Steps 2-3: Build complete goal prompt
+          goal (build-goal-prompt {:ma/summary summary
+                                   :ma/domain domain
+                                   :ma/search-dir search-dir})
 
           ;; Step 4: Define read-only tools for analysis
           tool-ids ["copilot_findFiles"
