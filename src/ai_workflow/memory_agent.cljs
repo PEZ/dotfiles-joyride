@@ -309,6 +309,18 @@
       (catch js/Error _
         nil))))
 
+(defn find-edn-in-messages
+  "Searches agent messages from last to first for EDN wrapped in markers.
+  Args:
+    agent-messages - Sequence of JS message objects with .role and .content
+  Returns: Message content string from first message (searching backwards) containing END marker, or nil"
+  [agent-messages]
+  (some (fn [msg]
+          (let [content (.-content msg)]
+            (when (string/includes? content "---END RESULTS---")
+              content)))
+        (reverse agent-messages)))
+
 (defn extract-description-from-content
   "Extract description from file content frontmatter.
 
@@ -432,12 +444,15 @@
                          :tool-ids tool-ids
                          :progress-callback progress-callback})
 
-          ;; Step 6: Extract final response text
-          final-text (or (get-in agent-result [:final-response :text])
-                         "")
+          ;; Step 6: Search agent messages backwards for EDN structure
+          ;; Agent may include EDN in any message, not just the last one
+          all-messages (get-in agent-result [:conversation :messages] [])
+          agent-messages (filter #(= "assistant" (.-role %)) all-messages)
+          message-with-edn (find-edn-in-messages agent-messages)
 
           ;; Step 7: Parse agent's decision (handles wrapped or direct EDN)
-          {:keys [file-path] :as parsed} (extract-edn-from-response final-text)]
+          {:keys [file-path] :as parsed} (when message-with-edn
+                                            (extract-edn-from-response message-with-edn))]
 
     (if parsed
       ;; Step 8: Check if file exists first (handles agent misidentifying new vs existing)

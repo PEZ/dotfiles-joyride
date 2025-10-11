@@ -230,3 +230,36 @@
       (let [response "---BEGIN RESULTS---\nNot valid EDN\n---END RESULTS---"
             result (ma/extract-edn-from-response response)]
         (is (nil? result))))))
+
+(deftest extract-edn-from-multi-turn-conversation-test
+  (testing "Extracts EDN from multiple agent messages"
+    (testing "Should find EDN in middle message when agent continues in later turns"
+      (let [;; Simulate multi-turn conversation
+            msg1 "Let me analyze this..."
+            msg2 "~~~CONTINUING~~~\n\n---BEGIN RESULTS---\n{:domain \"test\" :file-path \"/test.md\" :heading \"Test\" :content \"Content\"}\n---END RESULTS---"
+            msg3 "~~~GOAL-ACHIEVED~~~"
+            combined (str msg1 "\n\n" msg2 "\n\n" msg3)
+            result (ma/extract-edn-from-response combined)]
+        (is (= {:domain "test" :file-path "/test.md" :heading "Test" :content "Content"} result))))
+
+    (testing "Should handle EDN in first message"
+      (let [msg1 "---BEGIN RESULTS---\n{:domain \"test\" :file-path \"/test.md\"}\n---END RESULTS---"
+            msg2 "Task complete!"
+            combined (str msg1 "\n\n" msg2)
+            result (ma/extract-edn-from-response combined)]
+        (is (= {:domain "test" :file-path "/test.md"} result))))
+
+    (testing "Should handle EDN in last message"
+      (let [msg1 "Analyzing..."
+            msg2 "---BEGIN RESULTS---\n{:domain \"test\" :file-path \"/test.md\"}\n---END RESULTS---"
+            combined (str msg1 "\n\n" msg2)
+            result (ma/extract-edn-from-response combined)]
+        (is (= {:domain "test" :file-path "/test.md"} result))))
+
+    (testing "Should return nil when no EDN in any message"
+      (let [msg1 "Analyzing..."
+            msg2 "Still working..."
+            msg3 "Done!"
+            combined (str msg1 "\n\n" msg2 "\n\n" msg3)
+            result (ma/extract-edn-from-response combined)]
+        (is (nil? result))))))
