@@ -104,14 +104,15 @@
      "### 2. Deliver results"
      "### 3. Deliver results")
 
-   "\n- IF a memory file already exist:\n"
-   "  - Add the memory to the existing file content where it fits\n"
-   "  - If the `applyTo:` frontmatter of the file needs updating, do so. It should be a single quoted, comma separated, list of glob patterns.\n"
+   "- IF a memory file already exist:\n"
+   "  - Provide a new memory section to append to the file\n"
    "  - Your deliverable is an EDN structure:\n\n"
    "    ```clojure\n"
-   "    {:domain                                          ; string\n"
-   "     :file-path path                                  ; string, absolute path to memory file\n"
-   "     :content complete-merged-file-content-here       ; string\n"
+   "    {:domain                                  ; string\n"
+   "     :file-path path                          ; string, absolute path to memory file\n"
+   "     :heading memory-heading                  ; string, H2 heading for the new section\n"
+   "     :content memory-content-markdown         ; string, the new memory content\n"
+   "     :applyTo [glob-patterns ...]             ; vector of strings, OPTIONAL - only if frontmatter needs updating\n"
    "     }\n"
    "    ```\n"
    "  - Your task is complete!\n"
@@ -254,6 +255,37 @@
      {:error (str "Failed to write file: " (.-message error))
       :file-path file-path})))
 
+(defn update-frontmatter-applyTo
+  "Update applyTo field in frontmatter if present.
+
+  Args:
+    content - File content with frontmatter
+    new-applyTo - Vector of new glob patterns
+
+  Returns: Updated content with new applyTo, or original if no frontmatter"
+  [content new-applyTo]
+  (if-let [[_ before _ after] (re-find #"(?s)(---\n.*?applyTo: )'([^']*)'(.*?---.*)" content)]
+    (str before "'" (string/join ", " new-applyTo) "'" after)
+    content))
+
+(defn append-memory-section
+  "Append new memory section to existing file content.
+
+  Args:
+    existing-content - Current file content
+    heading - H2 heading for new section
+    content - Memory content markdown
+    applyTo - Optional vector of glob patterns to update frontmatter
+
+  Returns: Complete updated file content"
+  [{:keys [existing-content heading content applyTo]}]
+  (let [with-frontmatter (if applyTo
+                           (update-frontmatter-applyTo existing-content applyTo)
+                           existing-content)]
+    (str with-frontmatter
+         "\n\n## " heading
+         "\n\n" content)))
+
 (defn record-memory!+
   "Records a memory using autonomous agent workflow with orchestrator pattern.
 
@@ -274,8 +306,7 @@
     - Failure: {:success false :error string :error-type keyword :file-path string}
       Error types:
       - :write-failed - File write operation failed
-      - :validation-failed - Content validation failed
-      - :unknown-response-type - Agent returned unexpected type
+      - :file-not-found - Tried to append to non-existent file
       - :parse-failed - Could not parse agent response"
   [{:keys [summary domain scope model-id max-turns progress-callback]
     :or {scope :global
@@ -314,21 +345,28 @@
           {:keys [file-path] :as parsed} (edn/read-string final-text)]
 
     (if parsed
-      ;; Step 8: Handle existing file vs new file
-      (if (:new-file parsed)
-        (p/let [complete-content (build-new-file-content parsed)
-                write-result (write-memory-file!+ file-path complete-content)]
-          (if (:success write-result)
-            {:success true
-             :file-path file-path}
-            {:success false
-             :error (:error write-result)
-             :error-type :write-failed
-             :file-path file-path}))
-        (p/let [existing-content (read-existing-file!+ file-path)
-                validation (validate-file-content (:content parsed) existing-content)]
-          (if (:valid? validation)
-            (p/let [write-result (write-memory-file!+ file-path (:content parsed))]
+      ;; Step 8: Check if file exists first (handles agent misidentifying new vs existing)
+      (p/let [existing-content (read-existing-file!+ file-path)]
+        (if existing-content
+          ;; File exists - always append (even if agent said :new-file true)
+          ;; Don't trust agent's applyTo when appending to existing unread file
+          (p/let [updated-content (append-memory-section
+                                   {:existing-content existing-content
+                                    :heading (:heading parsed)
+                                    :content (:content parsed)
+                                    :applyTo nil}) ; Ignore applyTo - agent hasn't read existing frontmatter
+                  write-result (write-memory-file!+ file-path updated-content)]
+            (if (:success write-result)
+              {:success true
+               :file-path file-path}
+              {:success false
+               :error (:error write-result)
+               :error-type :write-failed
+               :file-path file-path}))
+          ;; File doesn't exist - create new file
+          (if (:new-file parsed)
+            (p/let [complete-content (build-new-file-content parsed)
+                    write-result (write-memory-file!+ file-path complete-content)]
               (if (:success write-result)
                 {:success true
                  :file-path file-path}
@@ -337,8 +375,8 @@
                  :error-type :write-failed
                  :file-path file-path}))
             {:success false
-             :error (:reason validation)
-             :error-type :validation-failed
+             :error "File does not exist but agent didn't provide new-file structure"
+             :error-type :file-not-found
              :file-path file-path})))
       ;; Parsing failed
       {:success false
@@ -384,3 +422,7 @@
     (println "File path:" (:file-path result)))
 
   :rcf)
+
+
+
+

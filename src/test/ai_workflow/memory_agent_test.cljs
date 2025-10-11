@@ -4,40 +4,42 @@
    [clojure.string :as string]
    [ai-workflow.memory-agent :as ma]))
 
-(deftest validate-file-content-test
-  (testing "Accepts new files (nil existing content)"
-    (is (:valid? (ma/validate-file-content "new content" nil))))
+(deftest append-memory-section-test
+  (testing "Appends new section to existing content"
+    (let [existing "---\ndescription: 'Test'\napplyTo: '**'\n---\n\n# Test\n\n## Old Section\n\nOld content"
+          result (ma/append-memory-section
+                  {:existing-content existing
+                   :heading "New Section"
+                   :content "New content here"})]
+      (is (string/includes? result "## Old Section"))
+      (is (string/includes? result "## New Section"))
+      (is (string/includes? result "New content here"))))
 
-  (testing "Accepts new files (empty existing content)"
-    (is (:valid? (ma/validate-file-content "new content" ""))))
+  (testing "Updates applyTo frontmatter when provided"
+    (let [existing "---\ndescription: 'Test'\napplyTo: '**/*.clj'\n---\n\n# Test"
+          result (ma/append-memory-section
+                  {:existing-content existing
+                   :heading "New Section"
+                   :content "Content"
+                   :applyTo ["**/*.clj" "**/*.cljs"]})]
+      (is (string/includes? result "applyTo: '**/*.clj, **/*.cljs'"))
+      (is (string/includes? result "## New Section"))))
 
-  (testing "Accepts content with same or more lines"
-    (let [existing "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
-          new-same "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
-          new-more "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6"]
-      (is (:valid? (ma/validate-file-content new-same existing)))
-      (is (:valid? (ma/validate-file-content new-more existing)))))
-
-  (testing "Accepts content with 75% or more lines (minor edits)"
-    (let [existing "Line 1\nLine 2\nLine 3\nLine 4"
-          new-content "Line 1\nLine 2\nLine 3"]
-      (is (:valid? (ma/validate-file-content new-content existing)))))
-
-  (testing "Rejects content significantly shorter (< 75%)"
-    (let [existing "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
-          incomplete "Line 1\nLine 2"
-          result (ma/validate-file-content incomplete existing)]
-      (is (not (:valid? result)))
-      (is (string/includes? (:reason result) "VALIDATION FAILED"))
-      (is (string/includes? (:reason result) "2 lines"))
-      (is (string/includes? (:reason result) "5 lines")))))
+  (testing "Leaves frontmatter unchanged when applyTo not provided"
+    (let [existing "---\ndescription: 'Test'\napplyTo: '**/*.clj'\n---\n\n# Test"
+          result (ma/append-memory-section
+                  {:existing-content existing
+                   :heading "New Section"
+                   :content "Content"})]
+      (is (string/includes? result "applyTo: '**/*.clj'"))
+      (is (not (string/includes? result "**/*.cljs"))))))
 
 (comment
   ;; Run all tests
   (run-tests 'test.ai-workflow.memory-agent-test)
 
   ;; Run specific test
-  (validate-file-content-test)
+  (append-memory-section-test)
   (build-goal-prompt-test)
 
   :rcf)
@@ -133,3 +135,28 @@
                          :content "Line 1\nLine 2\nLine 3"}
           result (ma/build-new-file-content new-file-data)]
       (is (string/includes? result "Line 1\nLine 2\nLine 3")))))
+
+(deftest agent-misidentifies-existing-as-new-test
+  (testing "When agent says :new-file true but file exists"
+    (let [existing-content "---\ndescription: 'Old'\napplyTo: '**/*.clj'\n---\n\n# Old\n\n## Section 1\n\nOld content"
+          parsed-as-new {:new-file true
+                         :domain "test"
+                         :file-path "/fake/path.md"
+                         :heading "New Section"
+                         :content "New content"
+                         :applyTo ["**/*.cljs"]}]
+      ;; Simulate the fixed logic
+      (testing "Should append instead of overwrite"
+        (let [result (ma/append-memory-section
+                      {:existing-content existing-content
+                       :heading (:heading parsed-as-new)
+                       :content (:content parsed-as-new)
+                       :applyTo nil})] ; Should ignore applyTo
+          (is (string/includes? result "## Section 1")
+              "Should preserve existing sections")
+          (is (string/includes? result "## New Section")
+              "Should add new section")
+          (is (string/includes? result "applyTo: '**/*.clj'")
+              "Should preserve original applyTo (not update to .cljs)")
+          (is (not (string/includes? result "**/*.cljs"))
+              "Should not include agent's suggested applyTo"))))))
