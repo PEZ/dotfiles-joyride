@@ -2,6 +2,7 @@
   "Autonomous memory recording agent using agentic workflow"
   (:require
    [clojure.string :as string]
+   [clojure.edn :as edn]
    [promesa.core :as p]
    [joyride.core :as joy]
    [ai-workflow.agents :as agents]
@@ -173,22 +174,42 @@
 Prompt to transform:")
 
 (defn parse-agent-response
-  "Parse agent's response to extract file path and content.
+  "Parse agent's EDN response and tag with type.
 
-  Expected format:
-  FILE_PATH: /absolute/path/to/file.md
-  ---FILE_CONTENT---
-  {content here}
-  ---END_CONTENT---
-
-  Returns: {:file-path string :content string} or nil if parsing fails"
+  Returns one of:
+  - {:type :existing-file ...response-with-file-content...}
+  - {:type :new-file ...response-with-content-and-metadata...}
+  - nil if parsing fails"
   [response-text]
-  (when-let [path-match (re-find #"FILE_PATH:\s*(.+?)\n" response-text)]
-    (let [file-path (string/trim (second path-match))
-          content-match (re-find #"---FILE_CONTENT---\n([\s\S]+?)---END_CONTENT---" response-text)]
-      (when content-match
-        {:file-path file-path
-         :content (second content-match)}))))
+  (try
+    (let [parsed (edn/read-string response-text)]
+      (when (and (map? parsed) (:file-path parsed))
+        (if (:file-content parsed)
+          (assoc parsed :type :existing-file)
+          (assoc parsed :type :new-file))))
+    (catch :default _e
+      nil)))
+
+(defn build-new-file-content
+  "Build complete file content with frontmatter from new file response.
+
+  Args:
+    new-file-data - Map with keys:
+      :description - File description for frontmatter
+      :domain-tagline - Title for the file
+      :applyTo - Vector of glob patterns
+      :heading - First heading
+      :content - Markdown content
+
+  Returns: Complete file content string with frontmatter"
+  [{:keys [description domain-tagline applyTo heading content]}]
+  (str "---\n"
+       "description: '" description "'\n"
+       "applyTo: '" (string/join ", " applyTo) "'\n"
+       "---\n\n"
+       "# " domain-tagline "\n\n"
+       "## " heading "\n\n"
+       content))
 
 (defn determine-search-directory
   "Determine search directory from scope.
@@ -340,23 +361,40 @@ Prompt to transform:")
           parsed (parse-agent-response final-text)]
 
     (if parsed
-      ;; Step 8: Validate content before writing
-      (p/let [existing-content (read-existing-file!+ (:file-path parsed))
-              validation (validate-file-content (:content parsed) existing-content)]
-        (if (:valid? validation)
-          ;; Step 9: Execute file write operation
-          (p/let [write-result (write-memory-file!+ (:file-path parsed) (:content parsed))]
-            (if (:success write-result)
-              {:success true
-               :file-path (:file-path write-result)
-               :agent-result agent-result}
-              {:error (:error write-result)
-               :agent-result agent-result}))
-          ;; Validation failed
-          {:error (:reason validation)
-           :agent-result agent-result
-           :existing-content existing-content
-           :new-content (:content parsed)}))
+      ;; Step 8: Handle existing file vs new file
+      (case (:type parsed)
+        :existing-file
+        ;; Existing file - validate and write merged content
+        (p/let [existing-content (read-existing-file!+ (:file-path parsed))
+                validation (validate-file-content (:file-content parsed) existing-content)]
+          (if (:valid? validation)
+            (p/let [write-result (write-memory-file!+ (:file-path parsed) (:file-content parsed))]
+              (if (:success write-result)
+                {:success true
+                 :file-path (:file-path write-result)
+                 :agent-result agent-result}
+                {:error (:error write-result)
+                 :agent-result agent-result}))
+            {:error (:reason validation)
+             :agent-result agent-result
+             :existing-content existing-content
+             :new-content (:file-content parsed)}))
+
+        :new-file
+        ;; New file - build complete content with frontmatter
+        (p/let [complete-content (build-new-file-content parsed)
+                write-result (write-memory-file!+ (:file-path parsed) complete-content)]
+          (if (:success write-result)
+            {:success true
+             :file-path (:file-path write-result)
+             :agent-result agent-result}
+            {:error (:error write-result)
+             :agent-result agent-result}))
+
+        ;; Unknown type
+        {:error "Unknown response type"
+         :agent-result agent-result
+         :parsed parsed})
       ;; Parsing failed
       {:error "Failed to parse agent response. Agent did not return expected format."
        :agent-result agent-result

@@ -30,31 +30,38 @@
 
 
 (deftest parse-agent-response-test
-  (testing "Parses valid response with file path and content"
-    (let [response "FILE_PATH: /path/to/file.md\n---FILE_CONTENT---\nContent here\n---END_CONTENT---"
+  (testing "Parses existing file format - returns all fields with :existing-file type"
+    (let [response "{:domain \"clojure\" :file-path \"/path/to/file.md\" :file-content \"Content here\"}"
           result (ma/parse-agent-response response)]
+      (is (= :existing-file (:type result)))
       (is (= "/path/to/file.md" (:file-path result)))
-      (is (= "Content here\n" (:content result)))))
+      (is (= "Content here" (:file-content result)))
+      (is (= "clojure" (:domain result)))))
 
-  (testing "Parses multiline content correctly"
-    (let [response "FILE_PATH: /path/to/file.md\n---FILE_CONTENT---\nLine 1\nLine 2\nLine 3\n---END_CONTENT---"
+  (testing "Parses new file format - returns all fields with :new-file type"
+    (let [response "{:domain \"git\" :file-path \"/path/to/file.md\" :description \"desc\" :domain-tagline \"tagline\" :applyTo [\"**\"] :heading \"heading\" :content \"content\"}"
           result (ma/parse-agent-response response)]
-      (is (string/includes? (:content result) "Line 1"))
-      (is (string/includes? (:content result) "Line 2"))
-      (is (string/includes? (:content result) "Line 3"))))
+      (is (= :new-file (:type result)))
+      (is (= "/path/to/file.md" (:file-path result)))
+      (is (= "git" (:domain result)))
+      (is (= "desc" (:description result)))
+      (is (= "tagline" (:domain-tagline result)))
+      (is (= ["**"] (:applyTo result)))
+      (is (= "heading" (:heading result)))
+      (is (= "content" (:content result)))))
 
-  (testing "Handles extra whitespace in file path"
-    (let [response "FILE_PATH:   /path/to/file.md  \n---FILE_CONTENT---\nContent\n---END_CONTENT---"
-          result (ma/parse-agent-response response)]
-      (is (= "/path/to/file.md" (:file-path result)))))
-
-  (testing "Returns nil when FILE_PATH is missing"
-    (let [response "---FILE_CONTENT---\nContent\n---END_CONTENT---"
+  (testing "Returns nil when file-path is missing"
+    (let [response "{:domain \"test\" :content \"Content\"}"
           result (ma/parse-agent-response response)]
       (is (nil? result))))
 
-  (testing "Returns nil when content markers are missing"
-    (let [response "FILE_PATH: /path/to/file.md\nSome content"
+  (testing "Returns nil when response is not valid EDN"
+    (let [response "Not valid EDN at all"
+          result (ma/parse-agent-response response)]
+      (is (nil? result))))
+
+  (testing "Returns nil when response is not a map"
+    (let [response "[\"not\" \"a\" \"map\"]"
           result (ma/parse-agent-response response)]
       (is (nil? result)))))
 
@@ -152,3 +159,36 @@
       (is (string/includes? git-result "<DOMAIN>git-workflow</DOMAIN>"))
       (is (string/includes? clj-result "clojure.instructions.md"))
       (is (string/includes? git-result "git-workflow.instructions.md")))))
+
+(deftest build-new-file-content-test
+  (testing "Builds complete file with frontmatter"
+    (let [new-file-data {:description "Git workflow patterns"
+                         :domain-tagline "Git Workflow Memory"
+                         :applyTo ["**"]
+                         :heading "Rebase with Autostash"
+                         :content "Use --autostash flag"}
+          result (ma/build-new-file-content new-file-data)]
+      (is (string/includes? result "---"))
+      (is (string/includes? result "description: 'Git workflow patterns'"))
+      (is (string/includes? result "applyTo: '**'"))
+      (is (string/includes? result "# Git Workflow Memory"))
+      (is (string/includes? result "## Rebase with Autostash"))
+      (is (string/includes? result "Use --autostash flag"))))
+
+  (testing "Handles multiple applyTo patterns"
+    (let [new-file-data {:description "test"
+                         :domain-tagline "Test"
+                         :applyTo ["**/*.clj" "**/*.cljs"]
+                         :heading "Test"
+                         :content "content"}
+          result (ma/build-new-file-content new-file-data)]
+      (is (string/includes? result "applyTo: '**/*.clj, **/*.cljs'"))))
+
+  (testing "Preserves multiline content"
+    (let [new-file-data {:description "test"
+                         :domain-tagline "Test"
+                         :applyTo ["**"]
+                         :heading "Test"
+                         :content "Line 1\nLine 2\nLine 3"}
+          result (ma/build-new-file-content new-file-data)]
+      (is (string/includes? result "Line 1\nLine 2\nLine 3")))))
