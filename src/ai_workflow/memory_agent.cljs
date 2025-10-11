@@ -259,8 +259,8 @@
        :file-path file-path}))
    (fn [result]
      ;; Show message as side effect after returning result
-     (when (:success result)
-       (vscode/window.showInformationMessage (str "✅ Memory recorded: " file-path)))
+     #_(when (:success result)
+         (vscode/window.showInformationMessage (str "✅ Memory recorded: " file-path)))
      result)))
 
 (defn update-frontmatter-applyTo
