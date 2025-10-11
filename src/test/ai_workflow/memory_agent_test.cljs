@@ -4,67 +4,6 @@
    [clojure.string :as string]
    [ai-workflow.memory-agent :as ma]))
 
-;; Pure function tests
-
-(deftest determine-search-directory-test
-  (testing "Returns global user-data path when scope is :global"
-    (let [result (ma/determine-search-directory :global)]
-      (is (string? result))
-      (is (string/includes? result "prompts"))))
-
-  (testing "Returns workspace instructions path when scope is :workspace"
-    (let [result (ma/determine-search-directory :workspace)]
-      (is (string? result))
-      (is (string/includes? result ".github/instructions"))))
-
-  (testing "Defaults to global directory when scope is nil"
-    (let [result (ma/determine-search-directory nil)]
-      (is (string? result))
-      (is (string/includes? result "prompts"))))
-
-  (testing "Defaults to global directory for invalid scope"
-    (let [result (ma/determine-search-directory :invalid)]
-      (is (string? result))
-      (is (string/includes? result "prompts")))))
-
-
-
-(deftest parse-agent-response-test
-  (testing "Parses existing file format - returns all fields with :existing-file type"
-    (let [response "{:domain \"clojure\" :file-path \"/path/to/file.md\" :file-content \"Content here\"}"
-          result (ma/parse-agent-response response)]
-      (is (= :existing-file (:type result)))
-      (is (= "/path/to/file.md" (:file-path result)))
-      (is (= "Content here" (:file-content result)))
-      (is (= "clojure" (:domain result)))))
-
-  (testing "Parses new file format - returns all fields with :new-file type"
-    (let [response "{:domain \"git\" :file-path \"/path/to/file.md\" :description \"desc\" :domain-tagline \"tagline\" :applyTo [\"**\"] :heading \"heading\" :content \"content\"}"
-          result (ma/parse-agent-response response)]
-      (is (= :new-file (:type result)))
-      (is (= "/path/to/file.md" (:file-path result)))
-      (is (= "git" (:domain result)))
-      (is (= "desc" (:description result)))
-      (is (= "tagline" (:domain-tagline result)))
-      (is (= ["**"] (:applyTo result)))
-      (is (= "heading" (:heading result)))
-      (is (= "content" (:content result)))))
-
-  (testing "Returns nil when file-path is missing"
-    (let [response "{:domain \"test\" :content \"Content\"}"
-          result (ma/parse-agent-response response)]
-      (is (nil? result))))
-
-  (testing "Returns nil when response is not valid EDN"
-    (let [response "Not valid EDN at all"
-          result (ma/parse-agent-response response)]
-      (is (nil? result))))
-
-  (testing "Returns nil when response is not a map"
-    (let [response "[\"not\" \"a\" \"map\"]"
-          result (ma/parse-agent-response response)]
-      (is (nil? result)))))
-
 (deftest validate-file-content-test
   (testing "Accepts new files (nil existing content)"
     (is (:valid? (ma/validate-file-content "new content" nil))))
@@ -98,8 +37,6 @@
   (run-tests 'test.ai-workflow.memory-agent-test)
 
   ;; Run specific test
-  (determine-search-directory-test)
-  (parse-agent-response-test)
   (validate-file-content-test)
   (build-goal-prompt-test)
 

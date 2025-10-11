@@ -39,8 +39,7 @@
   (vscode/Uri.file (user-data-instructions-path "**"))
   (user-data-instructions-path)
   (workspace-instructions-path "**")
-  (workspace-instructions-path)
-  )
+  (workspace-instructions-path))
 
 (defn remember-prompt [{:ma/keys [domain]}]
   (str
@@ -112,14 +111,15 @@
    "    ```clojure\n"
    "    {:domain                                          ; string\n"
    "     :file-path path                                  ; string, absolute path to memory file\n"
-   "     :file-content complete-merged-file-content-here  ; string\n"
+   "     :content complete-merged-file-content-here       ; string\n"
    "     }\n"
    "    ```\n"
    "  - Your task is complete!\n"
    "- ELSE IF no existing memory file:\n"
    "  - Your deliverable is an EDN structure:\n\n"
    "    ```clojure\n"
-   "    {:domain                                  ; string\n"
+   "    {:new-file true                           ; boolean, REQUIRED for new files\n"
+   "     :domain                                  ; string\n"
    "     :file-path path                          ; string, absolute path to memory file\n"
    "     :description domain-memory-description   ; string, keep the description general, focusing on the domain responsibility rather than implementation specifics\n"
    "     :domain-tagline memory-domain-tagline    ; string, a version of the domain-memory-description that is crafted for AI agent consumption\n"
@@ -163,33 +163,6 @@
   (p/let [chunks (async-iterator-seq (.-text response))]
     (apply str chunks)))
 
-(def autonomization-instructions
-  "You are transforming a prompt to be fully autonomous. Make these specific changes:
-
-1. Find any text that says 'request human input' - replace it with 'make best judgment based on available information'
-2. Find any text that says 'ask the user' - replace it with 'make best judgment based on available information'
-3. Keep ALL other text exactly as it appears in the original
-4. Return the COMPLETE transformed prompt with all sections intact
-
-Prompt to transform:")
-
-(defn parse-agent-response
-  "Parse agent's EDN response and tag with type.
-
-  Returns one of:
-  - {:type :existing-file ...response-with-file-content...}
-  - {:type :new-file ...response-with-content-and-metadata...}
-  - nil if parsing fails"
-  [response-text]
-  (try
-    (let [parsed (edn/read-string response-text)]
-      (when (and (map? parsed) (:file-path parsed))
-        (if (:file-content parsed)
-          (assoc parsed :type :existing-file)
-          (assoc parsed :type :new-file))))
-    (catch :default _e
-      nil)))
-
 (defn build-new-file-content
   "Build complete file content with frontmatter from new file response"
   [{:keys [description domain-tagline applyTo heading content]}]
@@ -218,8 +191,6 @@ Prompt to transform:")
   (-> (remember-prompt {:ma/domain domain})
       (string/replace "{SEARCH_DIRECTORY}" search-dir)
       (string/replace "{LESSON}" summary)))
-
-
 
 (defn validate-file-content
   "Validates that new content is substantially complete compared to existing.
@@ -255,13 +226,13 @@ Prompt to transform:")
   Returns: Promise of file content string, or nil if file doesn't exist"
   [file-path]
   (p/catch
-    (p/let [uri (vscode/Uri.file file-path)
-            content-bytes (vscode/workspace.fs.readFile uri)
-            decoder (js/TextDecoder.)]
-      (.decode decoder content-bytes))
-    (fn [_error]
-      ;; File doesn't exist
-      nil)))
+   (p/let [uri (vscode/Uri.file file-path)
+           content-bytes (vscode/workspace.fs.readFile uri)
+           decoder (js/TextDecoder.)]
+     (.decode decoder content-bytes))
+   (fn [_error]
+     ;; File doesn't exist
+     nil)))
 
 (defn write-memory-file!+
   "Write memory file using workspace.fs API.
@@ -273,15 +244,15 @@ Prompt to transform:")
   Returns: Promise of {:success true :file-path string} or {:error string}"
   [file-path content]
   (p/catch
-    (p/let [uri (vscode/Uri.file file-path)
-            encoder (js/TextEncoder.)
-            encoded-content (.encode encoder content)]
-      (p/let [_ (vscode/workspace.fs.writeFile uri encoded-content)]
-        (vscode/window.showInformationMessage (str "✅ Memory recorded: " file-path))
-        {:success true :file-path file-path}))
-    (fn [error]
-      {:error (str "Failed to write file: " (.-message error))
-       :file-path file-path})))
+   (p/let [uri (vscode/Uri.file file-path)
+           encoder (js/TextEncoder.)
+           encoded-content (.encode encoder content)]
+     (p/let [_ (vscode/workspace.fs.writeFile uri encoded-content)]
+       (vscode/window.showInformationMessage (str "✅ Memory recorded: " file-path))
+       {:success true :file-path file-path}))
+   (fn [error]
+     {:error (str "Failed to write file: " (.-message error))
+      :file-path file-path})))
 
 (defn record-memory!+
   "Records a memory using autonomous agent workflow with orchestrator pattern.
@@ -340,17 +311,24 @@ Prompt to transform:")
                          "")
 
           ;; Step 7: Parse agent's decision
-          parsed (parse-agent-response final-text)]
+          parsed (edn/read-string final-text)]
 
     (if parsed
       ;; Step 8: Handle existing file vs new file
-      (case (:type parsed)
-        :existing-file
-        ;; Existing file - validate and write merged content
+      (if (:new-file parsed)
+        (p/let [complete-content (build-new-file-content parsed)
+                write-result (write-memory-file!+ (:file-path parsed) complete-content)]
+          (if (:success write-result)
+            {:success true
+             :file-path (:file-path write-result)}
+            {:success false
+             :error (:error write-result)
+             :error-type :write-failed
+             :file-path (:file-path parsed)}))
         (p/let [existing-content (read-existing-file!+ (:file-path parsed))
-                validation (validate-file-content (:file-content parsed) existing-content)]
+                validation (validate-file-content (:content parsed) existing-content)]
           (if (:valid? validation)
-            (p/let [write-result (write-memory-file!+ (:file-path parsed) (:file-content parsed))]
+            (p/let [write-result (write-memory-file!+ (:file-path parsed) (:content parsed))]
               (if (:success write-result)
                 {:success true
                  :file-path (:file-path write-result)}
@@ -361,25 +339,7 @@ Prompt to transform:")
             {:success false
              :error (:reason validation)
              :error-type :validation-failed
-             :file-path (:file-path parsed)}))
-
-        :new-file
-        ;; New file - build complete content with frontmatter
-        (p/let [complete-content (build-new-file-content parsed)
-                write-result (write-memory-file!+ (:file-path parsed) complete-content)]
-          (if (:success write-result)
-            {:success true
-             :file-path (:file-path write-result)}
-            {:success false
-             :error (:error write-result)
-             :error-type :write-failed
-             :file-path (:file-path parsed)}))
-
-        ;; Unknown type
-        {:success false
-         :error "Unknown response type"
-         :error-type :unknown-response-type
-         :file-path (:file-path parsed)})
+             :file-path (:file-path parsed)})))
       ;; Parsing failed
       {:success false
        :error "Failed to parse agent response. Agent did not return expected format."
@@ -416,7 +376,7 @@ Prompt to transform:")
 
   ;; Get result and inspect
   (p/let [result (record-memory!+ {:summary "Some lesson..."
-                                    :domain "testing"})]
+                                   :domain "testing"})]
     (println "Success:" (:success result))
     (println "File path:" (:file-path result)))
 
