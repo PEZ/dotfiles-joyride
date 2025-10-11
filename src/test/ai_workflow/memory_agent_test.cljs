@@ -7,40 +7,27 @@
 ;; Pure function tests
 
 (deftest determine-search-directory-test
-  (testing "Returns global directory when scope is :global"
-    (is (= "/global/path"
-           (ma/determine-search-directory :global "/workspace" "/global/path"))))
+  (testing "Returns global user-data path when scope is :global"
+    (let [result (ma/determine-search-directory :global)]
+      (is (string? result))
+      (is (string/includes? result "prompts"))))
 
-  (testing "Returns workspace directory when scope is :workspace and workspace exists"
-    (is (= "/workspace"
-           (ma/determine-search-directory :workspace "/workspace" "/global/path"))))
-
-  (testing "Falls back to global when scope is :workspace but workspace is nil"
-    (is (= "/global/path"
-           (ma/determine-search-directory :workspace nil "/global/path"))))
+  (testing "Returns workspace instructions path when scope is :workspace"
+    (let [result (ma/determine-search-directory :workspace)]
+      (is (string? result))
+      (is (string/includes? result ".github/instructions"))))
 
   (testing "Defaults to global directory when scope is nil"
-    (is (= "/global/path"
-           (ma/determine-search-directory nil "/workspace" "/global/path"))))
+    (let [result (ma/determine-search-directory nil)]
+      (is (string? result))
+      (is (string/includes? result "prompts"))))
 
   (testing "Defaults to global directory for invalid scope"
-    (is (= "/global/path"
-           (ma/determine-search-directory :invalid "/workspace" "/global/path")))))
+    (let [result (ma/determine-search-directory :invalid)]
+      (is (string? result))
+      (is (string/includes? result "prompts")))))
 
-(deftest prepare-context-test
-  (testing "Prepends domain marker when domain is provided"
-    (is (= ">clojure Use REPL evaluation"
-           (ma/prepare-context "Use REPL evaluation" "clojure"))))
 
-  (testing "Returns summary as-is when domain is nil"
-    (is (= "Use REPL evaluation"
-           (ma/prepare-context "Use REPL evaluation" nil))))
-
-  (testing "Handles empty summary"
-    (is (= ""
-           (ma/prepare-context "" nil)))
-    (is (= ">clojure "
-           (ma/prepare-context "" "clojure")))))
 
 (deftest parse-agent-response-test
   (testing "Parses valid response with file path and content"
@@ -105,23 +92,23 @@
 
   ;; Run specific test
   (determine-search-directory-test)
-  (prepare-context-test)
   (parse-agent-response-test)
   (validate-file-content-test)
+  (build-goal-prompt-test)
 
   :rcf)
 
 (deftest build-goal-prompt-test
-  (testing "With domain - includes domain tag and prefix"
+  (testing "With domain - includes domain tag and lesson in SESSION-LESSON"
     (let [result (ma/build-goal-prompt
                   {:ma/summary "Use REPL for debugging"
                    :ma/domain "clojure"
                    :ma/search-dir "/test/prompts"})]
       (is (string? result))
       (is (string/includes? result "<DOMAIN>clojure</DOMAIN>"))
-      (is (string/includes? result "CONTEXT TO REMEMBER"))
+      (is (string/includes? result "<SESSION-LESSON>"))
       (is (string/includes? result "Use REPL for debugging"))
-      (is (string/includes? result ">clojure Use REPL"))
+      (is (string/includes? result "</SESSION-LESSON>"))
       (is (string/includes? result "/test/prompts"))))
 
   (testing "Without domain - includes determine step, no domain tag"
@@ -132,16 +119,17 @@
       (is (string? result))
       (is (not (string/includes? result "<DOMAIN>")))
       (is (string/includes? result "Determine the memory domain"))
-      (is (string/includes? result "CONTEXT TO REMEMBER"))
-      (is (string/includes? result "Verify API responses"))))
+      (is (string/includes? result "<SESSION-LESSON>"))
+      (is (string/includes? result "Verify API responses"))
+      (is (string/includes? result "</SESSION-LESSON>"))))
 
-  (testing "Without domain - context has no domain prefix"
+  (testing "Lesson appears in SESSION-LESSON section"
     (let [result (ma/build-goal-prompt
                   {:ma/summary "Verify API responses"
                    :ma/domain nil
                    :ma/search-dir "/test/prompts"})
-          context (second (re-find #"CONTEXT TO REMEMBER:\n(.+?)$" result))]
-      (is (= context "Verify API responses"))))
+          lesson (second (re-find #"<SESSION-LESSON>\s*(.+?)\s*</SESSION-LESSON>" result))]
+      (is (= lesson "Verify API responses"))))
 
   (testing "Search directory replacement - no placeholder remains"
     (let [result (ma/build-goal-prompt

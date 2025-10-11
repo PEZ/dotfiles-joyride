@@ -54,7 +54,7 @@
    (when domain
      (str "\n\n<DOMAIN>" domain "</DOMAIN>"))
 
-   "\n\n<SESSION-LESSON>\n\n{LESSON}\n\n</SESSION-LESSON>\n\n"
+   "\n\n## Session Lesson\n\n<SESSION-LESSON>\n{LESSON}\n</SESSION-LESSON>\n\n"
 
    "## Your Mission\n\n"
    "Transform the `SESSION-LESSON` into **domain-targeted, succinct, reusable knowledge**, "
@@ -121,7 +121,7 @@
    "    {:domain                                  ; string\n"
    "     :file-path path                          ; string, absolute path to memory file\n"
    "     :description domain-memory-description   ; string, keep the description general, focusing on the domain responsibility rather than implementation specifics\n"
-   "     :domain-tagline memory-domain-tagline    ; string, a succinct tagline that captures the core patterns and value of that domain's memory file\n"
+   "     :domain-tagline memory-domain-tagline    ; string, a version of the domain-memory-description that is crafted for AI agent consumption\n"
    "     :applyTo [glob-patterns ...]             ; vector of strings\n"
    "     :heading memory-heading                  ; string, E.g. `Clarity over brevity`\n"
    "     :content memory-content-markdown         ; string, the memorization of the `SESSION-LESSON`\n"
@@ -191,37 +191,26 @@ Prompt to transform:")
          :content (second content-match)}))))
 
 (defn determine-search-directory
-  "Pure function to determine search directory from scope.
+  "Determine search directory from scope.
 
   Args:
     scope - :global, :workspace, or nil (defaults to :global)
-    workspace-root - Workspace root path or nil
-    user-prompts-dir - Global user prompts directory path
 
-  Returns: Absolute path to search directory"
-  [scope workspace-root user-prompts-dir]
+  Returns: Absolute path to search directory
+
+  Throws: Error if scope is :workspace but no workspace is available"
+  [scope]
   (case scope
-    :global user-prompts-dir
-    :workspace (or workspace-root user-prompts-dir)
-    user-prompts-dir)) ; fallback for nil or other values
+    :global (user-data-instructions-path)
+    :workspace (workspace-instructions-path)
+    (user-data-instructions-path)))
 
-(defn prepare-context
-  "Pure function to prepare context with optional domain hint.
 
-  Args:
-    summary - The lesson summary
-    domain - Optional domain string
-
-  Returns: Context string with domain prefix if provided"
-  [summary domain]
-  (if domain
-    (str ">" domain " " summary)
-    summary))
 
 (defn build-goal-prompt
   "Build the complete goal prompt for the memory agent.
 
-  Combines the prompt template, search directory, and context into the final goal string.
+  Combines the prompt template, search directory, and lesson summary into the final goal string.
   This function encapsulates steps 1-3 of record-memory!+ for testability.
 
   Args:
@@ -233,11 +222,9 @@ Prompt to transform:")
   Returns:
     Complete goal prompt string ready for the autonomous agent"
   [{:ma/keys [summary domain search-dir]}]
-  (let [context (prepare-context summary domain)
-        prompt (remember-prompt {:ma/domain domain})]
-    (-> prompt
-        (string/replace "{SEARCH_DIRECTORY}" search-dir)
-        (str "\n\n---\n\nCONTEXT TO REMEMBER:\n" context))))
+  (-> (remember-prompt {:ma/domain domain})
+      (string/replace "{SEARCH_DIRECTORY}" search-dir)
+      (string/replace "{LESSON}" summary)))
 
 
 
@@ -325,15 +312,7 @@ Prompt to transform:")
          max-turns 10
          progress-callback #(println "📝" %)}}]
   (p/let [;; Step 1: Determine search directory from scope
-          path (js/require "path")
-          user-prompts-dir (let [global-storage-path (-> (joy/extension-context)
-                                                         .-globalStorageUri .-fsPath)
-                                 user-dir (.join path global-storage-path ".." "..")]
-                             (.join path user-dir "prompts"))
-          workspace-root (when-let [folders vscode/workspace.workspaceFolders]
-                           (when (seq folders)
-                             (-> folders first .-uri .-fsPath)))
-          search-dir (determine-search-directory scope workspace-root user-prompts-dir)
+          search-dir (determine-search-directory scope)
 
           ;; Steps 2-3: Build complete goal prompt
           goal (build-goal-prompt {:ma/summary summary
