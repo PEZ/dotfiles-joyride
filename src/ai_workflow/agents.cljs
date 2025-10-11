@@ -80,8 +80,8 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                                {:role :user
                                 :content (str "TOOL RESULT: " result
                                               "\n\nAnalyze this result and continue toward the goal. "
-                                              "If the goal is achieved, state completion clearly. "
-                                              "If not, adapt your approach based on these results.")})
+                                              "If the goal is achieved, state completion with the marker: ~~~GOAL-ACHIEVED~~~\n\n"
+                                              "If not, say ~~~CONTINUING~~~, and adapt your approach based on the results.")})
                              (:processed-results entry))
                         [])) ; skip other roles
                     history)))))
@@ -90,11 +90,11 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
   "Check if AI agent indicates the task is complete"
   [ai-text]
   (when ai-text
-    (re-find #"(?i)(task.*(?!\bnot\b).*(complete|done|finished)|goal.*(?!\bnot\b).*(achieved|reached|accomplished)|mission.*(?!\bnot\b).*(complete|success)|successfully (completed|finished))" ai-text)))
+    (re-find #"(?i)(~~~GOAL-ACHIEVED~~~|task.*(?!\bnot\b).*(complete|done|finished)|goal.*(?!\bnot\b).*(achieved|reached|accomplished)|mission.*(?!\bnot\b).*(complete|success)|successfully (completed|finished))" ai-text)))
 
 (defn- agent-indicates-continuation? [ai-text]
   (when ai-text
-    (re-find #"(?i)(next.*(step|action)|i'll|i.will|let.me|continu|proceed)" ai-text)))
+    (re-find #"(?i)(~~~CONTINUING~~~|next.*(step|action)|i'll|i.will|let.me|continu|proceed)" ai-text)))
 
 (defn add-assistant-response
   "Add AI assistant response to conversation history.
@@ -127,11 +127,11 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
     (seq tool-calls)
     {:continue? true :reason :tools-executing}
 
-    (and ai-text (agent-indicates-continuation? ai-text))
-    {:continue? true :reason :agent-continuing}
-
     (agent-indicates-completion? ai-text)
     {:continue? false :reason :task-complete}
+
+    (and ai-text (agent-indicates-continuation? ai-text))
+    {:continue? true :reason :agent-continuing}
 
     :else
     {:continue? false :reason :agent-finished}))
