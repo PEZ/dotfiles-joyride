@@ -5,158 +5,134 @@
    [promesa.core :as p]
    [joyride.core :as joy]
    [ai-workflow.agents :as agents]
-   ["vscode" :as vscode]))
+   ["vscode" :as vscode]
+   ["path" :as path]))
 
 (def agent-model "grok-code-fast-1")
 
-(defn user-data-uri [relative-path]
-  (let [path (js/require "path")
-        global-storage-path (-> (joy/extension-context)
-                                .-globalStorageUri .-fsPath)
-        user-dir (.join path global-storage-path ".." "..")
-        full-path (.join path user-dir relative-path)]
-    (vscode/Uri.file full-path)))
+(defn user-data-instructions-path
+  ([] (user-data-instructions-path nil))
+  ([relative-path]
+   (let [global-storage-path (-> (joy/extension-context)
+                                 .-globalStorageUri
+                                 .-fsPath)
+         user-path (path/join global-storage-path ".." "..")]
+     (if relative-path
+       (path/join user-path "prompts" relative-path)
+       (path/join user-path "prompts")))))
 
-(def remember-prompt
-  "# Memory Recording Agent
+(defn workspace-instructions-path
+  ([] (workspace-instructions-path nil))
+  ([relative-path]
+   (let [workspace-path (some-> vscode/workspace.workspaceFolders
+                                first
+                                .-uri
+                                .-fsPath)]
+     (if workspace-path
+       (if relative-path
+         (path/join workspace-path ".github" "instructions" relative-path)
+         (path/join workspace-path ".github" "instructions"))
+       (throw (js/Error. "No workspace available"))))))
 
-You are an expert prompt engineer and keeper of **domain-organized Memory Instructions** that persist across VS Code contexts. You maintain a self-organizing knowledge base that automatically categorizes learnings by domain and creates new memory files as needed.
+(comment
+  (vscode/Uri.file (user-data-instructions-path "**"))
+  (user-data-instructions-path)
+  (workspace-instructions-path "**")
+  (workspace-instructions-path)
+  )
 
-## SEARCH_DIRECTORY / work directory / base directory
+(defn remember-prompt [{:ma/keys [domain]}]
+  (str
+   "# Memory Recording Agent\n\n"
+   "You are an expert prompt engineer and keeper of **"
+   (when domain (str "the " domain " "))
+   "domain-organized Memory Instructions** that persist across VS Code contexts. You know how to "
+   (when-not domain "automatically bin learnings by domain, and ")
+   "add to or create new memory files as needed.\n\n"
+   "**Critical**: Always use absolute paths when globbing, searching and reading files.\n\n"
 
-Your work directory is `{SEARCH_DIRECTORY}`. It contains existing copilot instructions matching the glob patterns:
- - `{SEARCH_DIRECTORY}/*.instructions.md` (for **domain instructions**)
- - `{SEARCH_DIRECTORY}/*-memory.instructions.md` (for **domain memory instructions**)
+   (when domain
+     (str "\n\n<DOMAIN>" domain "</DOMAIN>"))
 
-## Your Mission
+   "\n\n<SESSION-LESSON>\n\n{LESSON}\n\n</SESSION-LESSON>\n\n"
 
-Transform debugging sessions, workflow discoveries, frequently repeated mistakes, and hard-won lessons into **domain-specific, reusable knowledge**, that helps the agent to effectively find the best patterns and avoid common mistakes. Your intelligent categorization system automatically:
+   "## Your Mission\n\n"
+   "Transform the `SESSION-LESSON` into **domain-targeted, succinct, reusable knowledge**, "
+   "that helps the AI agent to effectively find the best patterns and avoid common mistakes."
 
-- **Discovers existing memory domains** via glob patterns to find `{SEARCH_DIRECTORY}/*-memory.instructions.md` files
-- **Matches learnings to domains** or creates new domain files when needed
-- **Organizes knowledge contextually** so future AI assistants find relevant guidance exactly when needed
-- **Builds institutional memory** that prevents repeating mistakes across all projects
+   "## Critical Rules\n\n"
+   "- **Search thoroughly** - Use tools to find existing files\n"
+   "- **Read before deciding** - Always use tools to read existing files to understand structure\n"
+   "- **Integrate carefully** - Place new memories in logical sections\n"
+   "- **Use absolute paths** - FILE_PATH must be absolute like `{SEARCH_DIRECTORY}/clojure-memory.instructions.md`\n"
+   "- **Be concise** - Memory entries should be scannable and actionable\n"
+   "- **Extract patterns** - Generalize from specific instances\n"
+   "- Work systematically. Research first, then craft the complete solution.\n\n"
 
-The result: a **self-organizing, domain-driven knowledge base** that grows smarter with every lesson learned.
+   "## Action steps"
 
-## Syntax
+   (if-not domain
+     (str "\n\n### 1. Determine the memory domain\n"
+          "1. Search all `{SEARCH-DIRECTORY}/*.instructions.md` files for lines starting with `description: `\n"
+          "2. Consider if any of these descriptions matches the lesson.\n"
+          "   - If so: pick the best match\n"
+          "   - Else: decide on a domain and domain slug for this memory\n\n"
+          "### 2. Read up on existing domain knowledge")
+     "\n\n### 1. Read up on existing domain knowledge")
 
-```
-/remember [>domain-name] lesson content
-```
+   "\n1. Read these files:\n"
+   "   - **General instructions**; `{SEARCH_DIRECTORY}/copilot.instructions.md`\n"
+   "   - **General memories**; `{SEARCH_DIRECTORY}/memory.instructions.md`\n"
+   (if domain
+     (str "   - **Domain instructions**: `{SEARCH_DIRECTORY}/" domain ".instructions.md`\n"
+          "   - **Domain memory**; `{SEARCH_DIRECTORY}/" domain "-memory.instructions.md`\n")
+     (str "   - **Domain instructions**: `{SEARCH_DIRECTORY}/<domain>.instructions.md`\n"
+          "   - **Domain memory**; `{SEARCH_DIRECTORY}/<domain>-memory.instructions.md`\n"))
 
-- `>domain-name` - Optional. Explicitly target a domain (e.g., `>clojure`, `>git-workflow`)
-- `[scope]` - Optional. One of: `global`, `user` (both mean global), `workspace`, or `ws`. Defaults to `global`
-- `lesson content` - Required. The lesson to remember
+   "\n   **Critical**: Always use absolute paths when globbing, searching and reading files.\n"
+   "3. **Analyze** the specific `SESSION-LESSON` learned from user input, as it fits with your knowledge about the domain.\n"
+   "4. **Categorize** the learning:\n"
+   "   - New memory\n"
+   "   - Enhancement to existing memory\n"
+   "5. **Re-author the lesson into a memory**, with focus on the good pattern\n"
+   "   - Avoid creating redundancy\n"
+   "   - Instead of comprehensive instructions, think about how to capture the lesson in a succinct and clear manner\n"
+   "   - **Extract general patterns** from specific instances\n"
+   "   - Instead of \"don't\"s, use positive reinforcement focusing on correct patterns\n\n"
 
-**Examples:**
-- `/remember >clojure prefer passing maps over parameter lists`
-- `/remember avoid over-escaping when using tools`
-- `/remember >clojure prefer threading macros for readability`
-- `/remember >testing use setup/teardown functions`
+   (if domain
+     "### 2. Deliver results"
+     "### 3. Deliver results")
 
-## File Paths
+   "\n- IF a memory file already exist:\n"
+   "  - Add the memory to the existing file content where it fits\n"
+   "  - If the `applyTo:` frontmatter of the file needs updating, do so. It should be a single quoted, comma separated, list of glob patterns.\n"
+   "  - Your deliverable is an EDN structure:\n\n"
+   "    ```clojure\n"
+   "    {:domain                                          ; string\n"
+   "     :file-path path                                  ; string, absolute path to memory file\n"
+   "     :file-content complete-merged-file-content-here  ; string\n"
+   "     }\n"
+   "    ```\n"
+   "  - Your task is complete!\n"
+   "- ELSE IF no existing memory file:\n"
+   "  - Your deliverable is an EDN structure:\n\n"
+   "    ```clojure\n"
+   "    {:domain                                  ; string\n"
+   "     :file-path path                          ; string, absolute path to memory file\n"
+   "     :description domain-memory-description   ; string, keep the description general, focusing on the domain responsibility rather than implementation specifics\n"
+   "     :domain-tagline memory-domain-tagline    ; string, a succinct tagline that captures the core patterns and value of that domain's memory file\n"
+   "     :applyTo [glob-patterns ...]             ; vector of strings\n"
+   "     :heading memory-heading                  ; string, E.g. `Clarity over brevity`\n"
+   "     :content memory-content-markdown         ; string, the memorization of the `SESSION-LESSON`\n"
+   "     }\n"
+   "    ```\n"
+   "  - Your task is complete!\n"))
 
-- **Search directory**: {SEARCH_DIRECTORY}
-- **Domain-specific**: `{domain}-memory.instructions.md`
-- **Universal**: `memory.instructions.md`
-
-Examples:
-- `>clojure Use REPL not println` → `clojure-memory.instructions.md`
-- `>git Rebase with --autostash` → `git-workflow-memory.instructions.md`
-- `Always check types` → `memory.instructions.md`
-
-## Memory File Structure
-
-### Description Frontmatter
-Keep domain file descriptions general, focusing on the domain responsibility rather than implementation specifics.
-
-### ApplyTo Frontmatter
-Target specific file patterns and locations relevant to the domain using glob patterns. Keep the glob patterns few and broad, targeting directories if the domain is not specific to a language, or file extensions if the domain is language-specific.
-
-### Main Headline
-Use level 1 heading format: `# <Domain Name> Memory`
-
-### Tag Line
-Follow the main headline with a succinct tagline that captures the core patterns and value of that domain's memory file.
-
-### Learnings
-
-Each distinct lesson has its own level 2 headline. E.g.: `## Prefer Evaluation Results`
-
-## Critical Rules
-
-- **Search thoroughly** - Use tools to find existing files
-- **Read before deciding** - Always read existing files to understand structure
-- **Integrate carefully** - Place new lessons in logical sections
-- **🚨 COMPLETE CONTENT REQUIRED 🚨** - You MUST return the ENTIRE file content, NEVER just the new addition
-  - For existing files: Include ALL existing content + the new memory integrated into it
-  - Verify your output includes ALL sections from the existing file
-  - DO NOT return only the new memory section
-- **Use absolute paths** - FILE_PATH must be absolute like `{SEARCH_DIRECTORY}/clojure-memory.instructions.md`
-- **Be concise** - Memory entries should be scannable and actionable
-- **Extract patterns** - Generalize from specific instances
-
-Work systematically. Research first, then craft the complete solution.
-
-## Action steps
-
-1. **Parse input** - Extract domain (if `>domain-name` specified)
-2. **Find existing files** in the search directory ONLY (do not search subdirectories):
-   - CRITICAL: Only search files directly in `{SEARCH_DIRECTORY}`, NOT in subdirectories
-   - Use tools to list files: `copilot_findFiles` with pattern `{SEARCH_DIRECTORY}/*.instructions.md`
-   - Read specific files: `copilot_readFile` with exact paths like `{SEARCH_DIRECTORY}/memory.instructions.md`
-   - Files to look for:
-     - `{SEARCH_DIRECTORY}/memory.instructions.md` (universal memories)
-     - `{SEARCH_DIRECTORY}/*-memory.instructions.md` (domain-specific memories)
-     - `{SEARCH_DIRECTORY}/*.instructions.md` (domain instructions for context)
-3. **Analyze** the specific lesson learned from user input
-4. **Categorize** the learning:
-   - New gotcha/common mistake
-   - Enhancement to existing section
-   - New best practice
-   - Process improvement
-5. **Determine target domain(s) and file paths**:
-   - If user specified `>domain-name` use that, recognizing that there may be typos in the domain-name both in the user input and in the `{SEARCH_DIRECTORY}` file names
-   - Otherwise, intelligently match learning to a domain, using existing domain files as a guide while recognizing there may be coverage gaps
-   - **For universal learnings:**
-     - `{SEARCH_DIRECTORY}/memory.instructions.md`
-   - **For domain-specific learnings:**
-     - `{SEARCH_DIRECTORY}/{domain}-memory.instructions.md`
-6. **Read the domain and domain memory files**
-   - Read to avoid redundancy. Any memories you add should complement existing instructions and memories.
-7. **Authore** succinct, clear, and actionable memories:
-   - Instead of comprehensive instructions, think about how to capture the lesson in a succinct and clear manner
-   - **Extract general (within the domain) patterns** from specific instances, the user may want to share the instructions with people for whom the specifics of the learning may not make sense
-   - Instead of “don't”s, use positive reinforcement focusing on correct patterns
-   - Capture:
-      - Coding style, preferences, and workflow
-      - Critical implementation paths
-      - Project-specific patterns
-      - Tool usage patterns
-      - Reusable problem-solving approaches
-8. **Craft complete new memory file content**:
-   - 🚨 CRITICAL: Return the COMPLETE file including ALL existing content
-   - If it is an existing memory file:
-     * Read the ENTIRE existing file
-     * Merge the new memory into the appropriate section
-     * Return ALL existing sections + the new memory
-     * Verify your output has the same or more content than the original
-   - If it is a new memory file, create the content following [Memory File Structure](#memory-file-structure)
-   - Update `applyTo` frontmatter if needed
-9. When you have the file path and the COMPLETE content, you are done. Stop and return the result.
-
-## Result format
-
-Your delivareble is a text in this format:
-
-```
-FILE_PATH: {absolute-path-to-file}
----FILE_CONTENT---
-{complete-file-content-here}
----END_CONTENT---
-```
-")
+(comment
+  (remember-prompt {:ma/domain nil})
+  (remember-prompt {:ma/domain "foo"})
+  :rcf)
 
 (defn async-iterator-seq
   "Consumes an async generator/iterator and returns a promise of all values.
@@ -340,7 +316,7 @@ Prompt to transform:")
           context (prepare-context summary domain)
 
           ;; Step 3: Template the prompt with search directory
-          goal (-> remember-prompt
+          goal (-> (remember-prompt domain)
                    (string/replace "{SEARCH_DIRECTORY}" search-dir)
                    (str "\n\n---\n\nCONTEXT TO REMEMBER:\n" context))
 
@@ -392,6 +368,11 @@ Prompt to transform:")
   (record-memory!+
    {:summary "Use REPL evaluation of subexpressions instead of println for debugging"
     :domain "clojure"})
+
+  (record-memory!+
+   {:summary "Use REPL evaluation of subexpressions instead of println for debugging"
+    :domain "clojure"
+    :model-id "claude-sonnet-4"})
 
   ;; Without domain hint (universal memory)
   (record-memory!+
