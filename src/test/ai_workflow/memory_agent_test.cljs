@@ -34,6 +34,58 @@
       (is (string/includes? result "applyTo: '**/*.clj'"))
       (is (not (string/includes? result "**/*.cljs"))))))
 
+(deftest trim-heading-from-content-test
+  (testing "Removes H2 heading when content starts with same heading"
+    (let [result (ma/trim-heading-from-content
+                  "Avoid Shadowing Built-ins"
+                  "## Avoid Shadowing Built-ins\n\nContent here")]
+      (is (= "Content here" result))
+      (is (not (string/includes? result "##")))))
+
+  (testing "Handles extra whitespace after heading"
+    (let [result (ma/trim-heading-from-content
+                  "My Heading"
+                  "## My Heading\n\n\nContent with blank lines")]
+      (is (= "Content with blank lines" result))))
+
+  (testing "Leaves content unchanged when heading doesn't match"
+    (let [result (ma/trim-heading-from-content
+                  "Expected Heading"
+                  "## Different Heading\n\nContent")]
+      (is (= "## Different Heading\n\nContent" result))))
+
+  (testing "Leaves content unchanged when no heading present"
+    (let [result (ma/trim-heading-from-content
+                  "Some Heading"
+                  "Just plain content without heading")]
+      (is (= "Just plain content without heading" result))))
+
+  (testing "Handles H3 and higher headings - leaves them alone"
+    (let [result (ma/trim-heading-from-content
+                  "Main Heading"
+                  "### Subsection\n\nContent")]
+      (is (= "### Subsection\n\nContent" result)))))
+
+(deftest append-memory-section-prevents-duplicate-heading-test
+  (testing "Prevents duplicate headings when agent includes heading in content"
+    (let [existing "---\ndescription: 'Test'\n---\n\n# Test\n\n## First"
+          result (ma/append-memory-section
+                  {:existing-content existing
+                   :heading "New Section"
+                   :content "## New Section\n\nActual content"})]
+      ;; Should only have ONE instance of "## New Section"
+      (is (= 1 (count (re-seq #"## New Section" result))))
+      (is (string/includes? result "Actual content"))))
+
+  (testing "Works normally when content doesn't start with heading"
+    (let [existing "---\ndescription: 'Test'\n---\n\n# Test"
+          result (ma/append-memory-section
+                  {:existing-content existing
+                   :heading "New Section"
+                   :content "Just content without heading"})]
+      (is (= 1 (count (re-seq #"## New Section" result))))
+      (is (string/includes? result "Just content without heading")))))
+
 (comment
   ;; Run all tests
   (run-tests 'test.ai-workflow.memory-agent-test)

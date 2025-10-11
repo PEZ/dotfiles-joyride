@@ -247,17 +247,21 @@
 
   Returns: Promise of {:success true :file-path string} or {:error string}"
   [file-path content]
-  (p/catch
-   (p/let [uri (vscode/Uri.file file-path)
-           encoder (js/TextEncoder.)
-           encoded-content (.encode encoder content)
-           _ (vscode/workspace.fs.writeFile uri encoded-content)]
-     ;; Show message without blocking return
-     (vscode/window.showInformationMessage (str "✅ Memory recorded: " file-path))
-     {:success true :file-path file-path})
-   (fn [error]
-     {:error (str "Failed to write file: " (.-message error))
-      :file-path file-path})))
+  (p/then
+   (p/catch
+    (p/let [uri (vscode/Uri.file file-path)
+            encoder (js/TextEncoder.)
+            encoded-content (.encode encoder content)
+            _ (vscode/workspace.fs.writeFile uri encoded-content)]
+      {:success true :file-path file-path})
+    (fn [error]
+      {:error (str "Failed to write file: " (.-message error))
+       :file-path file-path}))
+   (fn [result]
+     ;; Show message as side effect after returning result
+     (when (:success result)
+       (vscode/window.showInformationMessage (str "✅ Memory recorded: " file-path)))
+     result)))
 
 (defn update-frontmatter-applyTo
   "Update applyTo field in frontmatter if present.
@@ -272,23 +276,42 @@
     (str before "'" (string/join ", " new-applyTo) "'" after)
     content))
 
+(defn trim-heading-from-content
+  "Remove H2 heading from start of content if it matches the provided heading.
+
+  Prevents duplicate headings when agent includes the heading in content.
+
+  Args:
+    heading - The expected H2 heading text (without ##)
+    content - Memory content that may start with ## heading
+
+  Returns: Content with heading trimmed if it matched, otherwise unchanged"
+  [heading content]
+  (let [;; Escape special regex chars in heading
+        escaped-heading (-> heading
+                            (string/replace #"[.*+?^${}()|[\]\\]" "\\$&"))
+        pattern (js/RegExp. (str "^##\\s+" escaped-heading "\\s*\\n+") "i")
+        trimmed (string/replace content pattern "")]
+    (string/trim trimmed)))
+
 (defn append-memory-section
   "Append new memory section to existing file content.
 
   Args:
     existing-content - Current file content
     heading - H2 heading for new section
-    content - Memory content markdown
+    content - Memory content markdown (may start with ## heading which will be trimmed)
     applyTo - Optional vector of glob patterns to update frontmatter
 
   Returns: Complete updated file content"
   [{:keys [existing-content heading content applyTo]}]
   (let [with-frontmatter (if applyTo
                            (update-frontmatter-applyTo existing-content applyTo)
-                           existing-content)]
+                           existing-content)
+        trimmed-content (trim-heading-from-content heading content)]
     (str with-frontmatter
          "\n\n## " heading
-         "\n\n" content)))
+         "\n\n" trimmed-content)))
 
 (defn extract-edn-from-response
   "Extracts EDN structure from agent response, handling wrapped format or direct EDN.
