@@ -35,34 +35,30 @@
       (is (not (string/includes? result "**/*.cljs"))))))
 
 (deftest trim-heading-from-content-test
-  (testing "Removes H2 heading when content starts with same heading"
+  (testing "Removes any H2 heading from start of content"
     (let [result (ma/trim-heading-from-content
-                  "Avoid Shadowing Built-ins"
                   "## Avoid Shadowing Built-ins\n\nContent here")]
       (is (= "Content here" result))
       (is (not (string/includes? result "##")))))
 
   (testing "Handles extra whitespace after heading"
     (let [result (ma/trim-heading-from-content
-                  "My Heading"
                   "## My Heading\n\n\nContent with blank lines")]
       (is (= "Content with blank lines" result))))
 
-  (testing "Leaves content unchanged when heading doesn't match"
+  (testing "Removes non-matching H2 heading (different from original behavior)"
     (let [result (ma/trim-heading-from-content
-                  "Expected Heading"
                   "## Different Heading\n\nContent")]
-      (is (= "## Different Heading\n\nContent" result))))
+      (is (= "Content" result))
+      (is (not (string/includes? result "##")))))
 
   (testing "Leaves content unchanged when no heading present"
     (let [result (ma/trim-heading-from-content
-                  "Some Heading"
                   "Just plain content without heading")]
       (is (= "Just plain content without heading" result))))
 
   (testing "Handles H3 and higher headings - leaves them alone"
     (let [result (ma/trim-heading-from-content
-                  "Main Heading"
                   "### Subsection\n\nContent")]
       (is (= "### Subsection\n\nContent" result)))))
 

@@ -41,7 +41,10 @@
   (workspace-instructions-path "**")
   (workspace-instructions-path))
 
-(defn remember-prompt [{:ma/keys [domain]}]
+(defn remember-prompt
+  "Creates the agent instructions, utilizing that if we know the domain, the prompt
+   does not need have a path for figuring out the domain."
+  [{:ma/keys [domain]}]
   (str
    "# Memory Recording Agent\n\n"
    "You are an expert prompt engineer and keeper of **"
@@ -98,7 +101,9 @@
    "   - Avoid creating redundancy\n"
    "   - Instead of comprehensive instructions, think about how to capture the lesson in a succinct and clear manner\n"
    "   - **Extract general patterns** from specific instances\n"
-   "   - Instead of \"don't\"s, use positive reinforcement focusing on correct patterns\n\n"
+   "   - When including a code example, consider using code comments as part of your instruction's commentary. The memory heading, the prose and the code should cooperate in getting the message across succinctly and effectively.\n"
+   "   - Instead of \"don't\"s, use positive reinforcement focusing on correct patterns\n"
+   "   - If the negative pattern `Y` seems important, weave it in using language such as 'Because X, instead of Y, do X.\n\n"
 
    (if domain
      "### 2. Deliver results"
@@ -225,9 +230,7 @@
         {:valid? true}))))
 
 (defn read-existing-file!+
-  "Read existing file content if it exists.
-
-  Returns: Promise of file content string, or nil if file doesn't exist"
+  "Returns a promise of file content string, or nil if file doesn't exist"
   [file-path]
   (p/catch
    (p/let [uri (vscode/Uri.file file-path)
@@ -291,25 +294,22 @@
       string/trim))
 
 (defn trim-heading-from-content
-  "Remove H2 heading from start of content if it matches the provided heading.
+  "Remove H2 heading from start of content if present.
 
-  Prevents duplicate headings when agent includes the heading in content.
+  Prevents duplicate headings when agent includes a heading in content.
 
   Args:
-    heading - The expected H2 heading text (without ##)
     content - Memory content that may start with ## heading
 
-  Returns: Content with heading trimmed if it matched, otherwise unchanged"
-  [heading content]
-  (let [;; Escape special regex chars in heading
-        escaped-heading (-> heading
-                            (string/replace #"[.*+?^${}()|[\]\\]" "\\$&"))
-        pattern (js/RegExp. (str "^##\\s+" escaped-heading "\\s*\\n+") "i")
+  Returns: Content with any leading H2 heading trimmed"
+  [content]
+  (let [;; Match any H2 heading at start: ## followed by text and newlines
+        pattern (js/RegExp. "^##\\s+[^\\n]+\\s*\\n+" "")
         trimmed (string/replace content pattern "")]
     (string/trim trimmed)))
 
 (defn append-memory-section
-  "Append new memory section to existing file content.
+  "Append new memory section to existing file content with consistent spacing
 
   Args:
     existing-content - Current file content
@@ -322,9 +322,10 @@
   (let [with-frontmatter (if applyTo
                            (update-frontmatter-applyTo existing-content applyTo)
                            existing-content)
+        trimmed-existing (string/trimr with-frontmatter)
         cleaned-heading (clean-heading heading)
-        trimmed-content (trim-heading-from-content cleaned-heading content)]
-    (str with-frontmatter
+        trimmed-content (trim-heading-from-content content)]
+    (str trimmed-existing
          "\n\n## " cleaned-heading
          "\n\n" trimmed-content)))
 
