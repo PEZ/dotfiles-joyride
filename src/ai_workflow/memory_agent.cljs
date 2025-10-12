@@ -276,6 +276,20 @@
     (str before "'" (string/join ", " new-applyTo) "'" after)
     content))
 
+(defn clean-heading
+  "Remove ## prefix from heading if present.
+
+  Prevents duplicate ## when agent includes ## in heading field.
+
+  Args:
+    heading - H2 heading text that may start with ##
+
+  Returns: Heading text without ## prefix"
+  [heading]
+  (-> heading
+      (string/replace #"^##\s+" "")
+      string/trim))
+
 (defn trim-heading-from-content
   "Remove H2 heading from start of content if it matches the provided heading.
 
@@ -299,7 +313,7 @@
 
   Args:
     existing-content - Current file content
-    heading - H2 heading for new section
+    heading - H2 heading for new section (may include ## prefix which will be removed)
     content - Memory content markdown (may start with ## heading which will be trimmed)
     applyTo - Optional vector of glob patterns to update frontmatter
 
@@ -308,9 +322,10 @@
   (let [with-frontmatter (if applyTo
                            (update-frontmatter-applyTo existing-content applyTo)
                            existing-content)
-        trimmed-content (trim-heading-from-content heading content)]
+        cleaned-heading (clean-heading heading)
+        trimmed-content (trim-heading-from-content cleaned-heading content)]
     (str with-frontmatter
-         "\n\n## " heading
+         "\n\n## " cleaned-heading
          "\n\n" trimmed-content)))
 
 (defn extract-edn-from-response
