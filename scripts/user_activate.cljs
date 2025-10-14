@@ -91,14 +91,17 @@
                    (vscode/window.showErrorMessage (str "Requiring Calva failed: " error))))))
 
 (when (= (joyride/invoked-script) joyride/*file*)
-  #_(my-main))
+  (println "Hello World, from my-main in user_activate.cljs script")
+  (my-main))
+
+(comment
+  (js-keys (second (:disposables @!db)))
+  :rcf)
 
 "🎉"
 
 ;; For more examples see:
 ;;   https://github.com/BetterThanTomorrow/joyride/tree/master/examples
 
-(comment
-  (js-keys (second (:disposables @!db)))
-  :rcf)
+
 

@@ -311,3 +311,25 @@
             combined (str msg1 "\n\n" msg2 "\n\n" msg3)
             result (ma/extract-edn-from-response combined)]
         (is (nil? result))))))
+
+(deftest build-new-file-prevents-duplicate-heading-test
+  (testing "Prevents duplicate headings when agent includes heading in new file content"
+    (let [new-file-data {:description "Test"
+                         :domain-tagline "Test Domain"
+                         :applyTo ["**"]
+                         :heading "New Section"
+                         :content "## New Section\n\nActual content"}
+          result (ma/build-new-file-content new-file-data)]
+      ;; Should only have ONE instance of "## New Section"
+      (is (= 1 (count (re-seq #"## New Section" result))))
+      (is (string/includes? result "Actual content"))))
+
+  (testing "Works normally when content doesn't start with heading"
+    (let [new-file-data {:description "Test"
+                         :domain-tagline "Test Domain"
+                         :applyTo ["**"]
+                         :heading "New Section"
+                         :content "Just content without heading"}
+          result (ma/build-new-file-content new-file-data)]
+      (is (= 1 (count (re-seq #"## New Section" result))))
+      (is (string/includes? result "Just content without heading")))))

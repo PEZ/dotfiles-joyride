@@ -383,7 +383,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
       clojure.edn/read-string)
 
   (autonomous-conversation!+ "print a greeting using the joyride repl. For tool calls use this syntax: \n\nBEGIN-TOOL-CALL\n{:name \"tool_name\", :input {:someParam \"value\", :someOtherParam [\"value\" 42]}}\nEND-TOOL-CALL\n\nThe results from the tool call will be provided to you as part of the next step."
-                             {:model-id "claude-opus-4"
+                             {:model-id "claude-sonnet-4.5"
                               :max-turns 2
                               :progress-callback (fn [step]
                                                    (println "🔄" step)

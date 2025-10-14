@@ -172,16 +172,32 @@
   (p/let [chunks (async-iterator-seq (.-text response))]
     (apply str chunks)))
 
+(defn trim-heading-from-content
+  "Remove H2 heading from start of content if present.
+
+  Prevents duplicate headings when agent includes a heading in content.
+
+  Args:
+    content - Memory content that may start with ## heading
+
+  Returns: Content with any leading H2 heading trimmed"
+  [content]
+  (let [;; Match any H2 heading at start: ## followed by text and newlines
+        pattern (js/RegExp. "^##\\s+[^\\n]+\\s*\\n+" "")
+        trimmed (string/replace content pattern "")]
+    (string/trim trimmed)))
+
 (defn build-new-file-content
   "Build complete file content with frontmatter from new file response"
   [{:keys [description domain-tagline applyTo heading content]}]
-  (str "---\n"
-       "description: '" description "'\n"
-       "applyTo: '" (string/join ", " applyTo) "'\n"
-       "---\n\n"
-       "# " domain-tagline "\n\n"
-       "## " heading "\n\n"
-       content))
+  (let [trimmed-content (trim-heading-from-content content)]
+    (str "---\n"
+         "description: '" description "'\n"
+         "applyTo: '" (string/join ", " applyTo) "'\n"
+         "---\n\n"
+         "# " domain-tagline "\n\n"
+         "## " heading "\n\n"
+         trimmed-content)))
 
 (defn build-goal-prompt
   "Build the complete goal prompt for the memory agent.
@@ -293,20 +309,7 @@
       (string/replace #"^##\s+" "")
       string/trim))
 
-(defn trim-heading-from-content
-  "Remove H2 heading from start of content if present.
 
-  Prevents duplicate headings when agent includes a heading in content.
-
-  Args:
-    content - Memory content that may start with ## heading
-
-  Returns: Content with any leading H2 heading trimmed"
-  [content]
-  (let [;; Match any H2 heading at start: ## followed by text and newlines
-        pattern (js/RegExp. "^##\\s+[^\\n]+\\s*\\n+" "")
-        trimmed (string/replace content pattern "")]
-    (string/trim trimmed)))
 
 (defn append-memory-section
   "Append new memory section to existing file content with consistent spacing
