@@ -166,7 +166,8 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
   (if (seq tool-calls)
     (do
       (monitor/log-to-agent-channel! conv-id (str "🔧 AI Agent executing " (count tool-calls) " tool(s)"))
-      (p/let [tool-results (util/execute-tool-calls!+ tool-calls)]
+      (p/let [logger (partial monitor/log-and-update!+ conv-id nil)
+              tool-results (util/execute-tool-calls!+ tool-calls logger)]
         (monitor/log-to-agent-channel! conv-id (str "✅ Tools executed, processed results: " tool-results))
         (add-tool-results history tool-results turn-count)))
     history))

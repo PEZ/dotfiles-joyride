@@ -107,45 +107,47 @@
                         timeout-ms)))]))
 
 (defn execute-tool-calls!+
-  "Execute tool calls using the official VS Code Language Model API with 30s timeout per tool"
-  [tool-calls]
-  (def tool-calls tool-calls)
-  (if (seq tool-calls)
-    (do
-      (println "🔧 Executing" (count tool-calls) "tool call(s)...")
-      (p/all
-       (to-array
-        (map (fn [tool-call]
-               (let [tool-name (.-name tool-call)
-                     call-id (.-callId tool-call)
-                     input (.-input tool-call)
-                     timeout-ms 30000] ; 30 second timeout
-                 (println "🎯 Invoking tool:" tool-name)
-                 (println "📝 Input:" (pr-str input))
-                 (-> (promise-with-timeout
-                      (vscode/lm.invokeTool tool-name #js {:input input})
-                      timeout-ms
-                      {:timeout true :tool-name tool-name})
-                     (.then (fn [raw-result]
-                              (if (:timeout raw-result)
-                                (do
-                                  (println "⏱️  Tool" tool-name "timed out after" (/ timeout-ms 1000) "seconds")
+  "Execute tool calls using the official VS Code Language Model API with 30s timeout per tool.
+   Accepts optional logger function (variadic) for custom logging."
+  ([tool-calls]
+   (execute-tool-calls!+ tool-calls println))
+  ([tool-calls logger]
+   (if (seq tool-calls)
+     (do
+       (logger "🔧 Executing" (count tool-calls) "tool call(s)...")
+         (p/all
+          (to-array
+           (map (fn [tool-call]
+                  (let [tool-name (.-name tool-call)
+                        call-id (.-callId tool-call)
+                        input (.-input tool-call)
+                        timeout-ms 30000]
+                    (logger "🎯 Invoking tool:" tool-name)
+                    (logger "📝 Input:" (pr-str input))
+                    (-> (promise-with-timeout
+                         (vscode/lm.invokeTool tool-name #js {:input input})
+                         timeout-ms
+                         {:timeout true :tool-name tool-name})
+                        (.then (fn [raw-result]
+                                 (if (:timeout raw-result)
+                                   (do
+                                     (logger "⏱️  Tool" tool-name "timed out after" (/ timeout-ms 1000) "seconds")
+                                     {:call-id call-id
+                                      :tool-name tool-name
+                                      :result (str "Tool execution timed out after " (/ timeout-ms 1000) " seconds. Try a simpler approach.")})
+                                   (let [result (extract-tool-result-content raw-result)]
+                                     (logger "✅ Tool execution result for" tool-name ":")
+                                     (logger result)
+                                     {:call-id call-id
+                                      :tool-name tool-name
+                                      :result result}))))
+                        (.catch (fn [error]
+                                  (logger "❌ Tool execution error for" tool-name ":" error)
                                   {:call-id call-id
                                    :tool-name tool-name
-                                   :result (str "Tool execution timed out after " (/ timeout-ms 1000) " seconds. Try a simpler approach.")})
-                                (let [result (extract-tool-result-content raw-result)]
-                                  (println "✅ Tool execution result for" tool-name ":")
-                                  (println result)
-                                  {:call-id call-id
-                                   :tool-name tool-name
-                                   :result result}))))
-                     (.catch (fn [error]
-                               (println "❌ Tool execution error for" tool-name ":" error)
-                               {:call-id call-id
-                                :tool-name tool-name
-                                :error (str error)})))))
-             tool-calls))))
-    (js/Promise.resolve [])))
+                                   :error (str error)})))))
+                tool-calls))))
+       (js/Promise.resolve []))))
 
 (comment
   (js/JSON.stringify (first tool-calls))

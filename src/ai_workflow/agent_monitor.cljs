@@ -140,7 +140,7 @@
                     :align-items :center
                     :margin-bottom "10px"}}
       [:h2 {:style {:margin "0"}} "🤖 Sub Agents Monitor"]
-      [:button {:onclick "showAgentLogs()"
+      [:button {:onclick "vscode.postMessage({command: 'showLogs'})"
                 :style {:padding "4px 8px"
                         :background "var(--vscode-button-background)"
                         :color "var(--vscode-button-foreground)"
@@ -183,14 +183,14 @@
       conv-id)))
 
 (defn log-and-update!+
-  "Log a message and optionally update conversation status"
-  ([conv-id message]
-   (log-and-update!+ conv-id message nil))
-  ([conv-id message status-updates]
-   (log-to-agent-channel! conv-id message)
-   (when status-updates
-     (update-conversation! conv-id status-updates))
-   (update-agent-monitor-flare!+)))
+  "Log messages and optionally update conversation status.
+   Accepts variadic messages for compatibility with partial application."
+  [conv-id status-updates & messages]
+  (doseq [msg messages]
+    (log-to-agent-channel! conv-id msg))
+  (when status-updates
+    (update-conversation! conv-id status-updates))
+  (update-agent-monitor-flare!+))
 
 (comment
   ;; Test the monitor
