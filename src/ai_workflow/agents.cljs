@@ -2,6 +2,7 @@
   "Autonomous AI conversation system with improved error handling and adaptability"
   (:require
    ["vscode" :as vscode]
+   [ai-workflow.agent-monitor :as monitor]
    [ai-workflow.chat-util :as util]
    [clojure.edn :as edn]
    [promesa.core :as p]))
@@ -161,12 +162,12 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
 
 (defn execute-tools-if-present!+
   "Execute tool calls if present, return updated history"
-  [history tool-calls turn-count]
+  [history tool-calls turn-count conv-id]
   (if (seq tool-calls)
     (do
-      (println "\n🔧 AI Agent executing" (count tool-calls) "tool(s)")
+      (monitor/log-to-agent-channel! conv-id (str "🔧 AI Agent executing " (count tool-calls) " tool(s)"))
       (p/let [tool-results (util/execute-tool-calls!+ tool-calls)]
-        (println "✅ Tools executed, processed results:" tool-results)
+        (monitor/log-to-agent-channel! conv-id (str "✅ Tools executed, processed results: " tool-results))
         (add-tool-results history tool-results turn-count)))
     history))
 
@@ -200,60 +201,64 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
   The goal parameter is passed separately through all turns and combined with history
   by build-agentic-messages. This keeps the immutable goal separate from the growing
   conversation history."
-  [{:keys [model-id goal max-turns progress-callback tools-args]} history turn-count last-response]
+  [{:keys [model-id goal max-turns progress-callback tools-args conv-id]} history turn-count last-response]
   (progress-callback (str "Turn " turn-count "/" max-turns))
+  (monitor/log-to-agent-channel! conv-id (str "Turn " turn-count "/" max-turns))
+  (monitor/update-conversation! conv-id {:agent.conversation/current-turn turn-count
+                                         :agent.conversation/status :working})
+  (p/let [_ (monitor/update-agent-monitor-flare!+)]
+    (if (> turn-count max-turns)
+      (format-completion-result history :max-turns-reached last-response)
 
-  (if (> turn-count max-turns)
-    (format-completion-result history :max-turns-reached last-response)
+      (p/let [;; Execute the conversation turn
+              turn-result (execute-conversation-turn
+                           {:model-id model-id
+                            :goal goal
+                            :history history
+                            :turn-count turn-count
+                            :tools-args tools-args})
 
-    (p/let [;; Execute the conversation turn
-            turn-result (execute-conversation-turn
-                         {:model-id model-id
-                          :goal goal
-                          :history history
-                          :turn-count turn-count
-                          :tools-args tools-args})
+              ;; Check for errors first
+              _ (when (:error turn-result)
+                  (throw (js/Error. (:message turn-result))))
 
-            ;; Check for errors first
-            _ (when (:error turn-result)
-                (throw (js/Error. (:message turn-result))))
+              ai-text (:text turn-result)
+              tool-calls (or (seq (:tool-calls turn-result))
+                             (parse-tool-calls ai-text (generate-call-id)))
 
-            ai-text (:text turn-result)
-            tool-calls (or (seq (:tool-calls turn-result))
-                           (parse-tool-calls ai-text (generate-call-id)))
+              ;; Log AI's response
+              _ (when ai-text
+                  (monitor/log-to-agent-channel! conv-id "🤖 AI Agent says:")
+                  (monitor/log-to-agent-channel! conv-id ai-text))
 
-            ;; Log AI's response
-            _ (when ai-text
-                (println "\n🤖 AI Agent says:")
-                (println ai-text))
+              ;; Add AI response to history
+              history-with-assistant (add-assistant-response history ai-text tool-calls turn-count)
 
-            ;; Add AI response to history
-            history-with-assistant (add-assistant-response history ai-text tool-calls turn-count)
+              ;; Execute tools and update history
+              final-history (execute-tools-if-present!+ history-with-assistant tool-calls turn-count conv-id)
 
-            ;; Execute tools and update history
-            final-history (execute-tools-if-present!+ history-with-assistant tool-calls turn-count)
+              ;; Determine what to do next
+              outcome (determine-conversation-outcome ai-text tool-calls turn-count max-turns)]
 
-            ;; Determine what to do next
-            outcome (determine-conversation-outcome ai-text tool-calls turn-count max-turns)]
-
-      (if (:continue? outcome)
-        (do
-          (println "\n↻ AI Agent continuing to next step...")
-          (continue-conversation-loop
-           {:model-id model-id :goal goal :max-turns max-turns
-            :progress-callback progress-callback :tools-args tools-args}
-           final-history
-           (inc turn-count)
-           turn-result))
-        (do
-          (println "\n🎯 Agentic conversation ended:" (name (:reason outcome)))
-          (format-completion-result final-history (:reason outcome) turn-result))))))
+        (if (:continue? outcome)
+          (do
+            (monitor/log-to-agent-channel! conv-id "↻ AI Agent continuing to next step...")
+            (continue-conversation-loop
+             {:model-id model-id :goal goal :max-turns max-turns
+              :progress-callback progress-callback :tools-args tools-args :conv-id conv-id}
+             final-history
+             (inc turn-count)
+             turn-result))
+          (do
+            (monitor/log-to-agent-channel! conv-id (str "🎯 Agentic conversation ended: " (name (:reason outcome))))
+            (format-completion-result final-history (:reason outcome) turn-result)))))))
 
 (defn agentic-conversation!+
   "Create an autonomous AI conversation that drives itself toward a goal"
-  [{:keys [model-id goal tool-ids max-turns progress-callback allow-unsafe-tools?]
+  [{:keys [model-id goal tool-ids max-turns progress-callback allow-unsafe-tools? caller]
     :or {max-turns 10
          allow-unsafe-tools? false
+         caller "autonomous-agent"
          progress-callback (fn [step]
                              (println "Progress:" step))}}]
   (p/let [tools-args (util/enable-specific-tools tool-ids allow-unsafe-tools?)
@@ -264,17 +269,31 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
        :reason :model-not-found-error
        :error-message (str "Model not found: " model-id)
        :final-response nil}
-      (do
-        (println "🚀 Starting agentic conversation with goal:" goal)
-        (continue-conversation-loop
-         {:model-id model-id
-          :goal goal
-          :max-turns max-turns
-          :progress-callback progress-callback
-          :tools-args tools-args}
-         [] ; empty initial history
-         1  ; start at turn 1
-         nil)))))
+      (p/let [conv-id (monitor/start-monitoring-conversation!+
+                       {:agent.conversation/goal goal
+                        :agent.conversation/model-id model-id
+                        :agent.conversation/max-turns max-turns
+                        :agent.conversation/caller caller})
+              result (continue-conversation-loop
+                      {:model-id model-id
+                       :goal goal
+                       :max-turns max-turns
+                       :progress-callback progress-callback
+                       :tools-args tools-args
+                       :conv-id conv-id}
+                      [] ; empty initial history
+                      1  ; start at turn 1
+                      nil)]
+        ;; Update final status
+        (monitor/update-conversation! conv-id
+                                      {:agent.conversation/status (case (:reason result)
+                                                                     :task-complete :done
+                                                                     :error :error
+                                                                     :done)
+                                       :agent.conversation/error-message (when (= (:reason result) :error)
+                                                                           (:error-message result))})
+        (monitor/update-agent-monitor-flare!+)
+        result))))
 
 (defn autonomous-conversation!+
   "Start an autonomous AI conversation toward a goal with flexible configuration"
@@ -282,11 +301,12 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
    (autonomous-conversation!+ goal
                               {}))
 
-  ([goal {:keys [model-id max-turns tool-ids progress-callback allow-unsafe-tools?]
+  ([goal {:keys [model-id max-turns tool-ids progress-callback allow-unsafe-tools? caller]
           :or {model-id "gpt-4o-mini"
                tool-ids []
                max-turns 6
                allow-unsafe-tools? false
+               caller "autonomous-agent"
                progress-callback #(println % "\n")}}]
 
    (p/let [result (agentic-conversation!+
@@ -295,6 +315,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                     :max-turns max-turns
                     :tool-ids tool-ids
                     :allow-unsafe-tools? allow-unsafe-tools?
+                    :caller caller
                     :progress-callback progress-callback})]
      ;; Check for model error first
      (if (:error? result)
@@ -331,10 +352,12 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
     (println (pr-str use-tool-ids) "\n"))
 
   (autonomous-conversation!+ "Count all .cljs files and show the result"
-                             {:tool-ids use-tool-ids})
+                             {:tool-ids use-tool-ids
+                              :caller "repl-file-counter"})
   (autonomous-conversation!+ "Show an information message that says 'Hello from the adaptive AI agent!' using VS Code APIs"
                              {:tool-ids ["joyride_evaluate_code"
                                          "copilot_getVSCodeAPI"]
+                              :caller "repl-greeting-test"
                               :max-turns 4})
 
   (autonomous-conversation!+ (str "Analyze this project structure and create documentation. For tool calls use this syntax: \n\nBEGIN-TOOL-CALL\n{:name \"tool_name\", :input {:someParam \"value\", :someOtherParam [\"value\" 42]}}\nEND-TOOL-CALL\n\nThe result of the tool calls will be provided to you as part of the next step. Keep each step laser focused."
@@ -348,7 +371,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
 
   (autonomous-conversation!+ (str "Analyze this project structure and create documentation. Keep each step laser focused."
                                   #_#_"\nAvailable tools: "
-                                  (pr-str use-tool-ids))
+                                    (pr-str use-tool-ids))
                              {:model-id "claude-sonnet-4"
                               :max-turns 12
                               :progress-callback vscode/window.showInformationMessage
@@ -362,13 +385,11 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                                                    (vscode/window.showInformationMessage step))
                               :tool-ids use-tool-ids})
 
-  (autonomous-conversation!+ "Generate the four first numbers in the fibonacci sequence without writing a function, but instead by starting with evaluating `[0 1]` and then each step read the result and evaluate `[second-number sum-of-first-and-second-number]`. In the last step evaluate just `second-number`."
-                             {:model-id "claude-sonnet-4"
-                              :max-turns 12
-                              :progress-callback (fn [step]
-                                                   (println "🔄" step)
-                                                   (vscode/window.showInformationMessage step))
-                              :tool-ids ["joyride_evaluate_code"]})
+  (p/let [fib-res (autonomous-conversation!+ "Generate the six first numbers in the fibonacci sequence without writing a function, but instead by starting with evaluating `[0 1]` and then each step read the result and evaluate `[second-number sum-of-first-and-second-number]`. In the last step evaluate just `second-number`."
+                                             {:model-id "grok-code-fast-1"
+                                              :max-turns 12
+                                              :tool-ids ["joyride_evaluate_code"]})]
+    (def fib-res fib-res))
 
   (def example-joyride-tool-call {:callId "foo"
                                   :name "joyride_evaluate_code"
