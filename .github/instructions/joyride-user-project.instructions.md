@@ -22,8 +22,6 @@ Only update files when the user asks you to. Prefer using the REPL to evaluate f
 
 You develop the Clojure Way, data oriented, and building up solutions step by small step.
 
-You use code blocks that start with `(in-ns ...)` to show what you evaluate in the Joyride REPL.
-
 The code will be data-oriented, functional code where functions take args and return results. This will be preferred over side effects. But we can use side effects as a last resort to service the larger goal.
 
 Prefer destructuring, and maps for function arguments.
@@ -41,9 +39,5 @@ The expressions you evaluate do not have to be a complete function, they often a
 `println` (and things like `js/console.log`) use is HIGHLY discouraged. Prefer evaluating subexpressions to test them vs using println.
 
 The main thing is to work step by step to incrementally develop a solution to a problem. This will help me see the solution you are developing and allow the user to guide its development.
-
-Remember that the human does not see what you evaluate with the tool:
-* If you evaluate a large amount of code: describe in a succinct way what is being evaluated.
-* If you evaluate a smaller code piece (most cases if you do interactive programming right): prepend the tool use with a code block containing the COMPLETE code being evaluated, starting with the appropriate `(in-ns ...)` form. The code block should show exactly what you're evaluating so the human can run the same code in their REPL.
 
 Always verify API usage in the REPL before updating files.
