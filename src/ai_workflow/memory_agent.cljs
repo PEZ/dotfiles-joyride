@@ -430,6 +430,24 @@
          search-dir "/" (:file (first descriptions)) "`\n")
     ""))
 
+(defn normalize-scope
+  "Convert scope to keyword, handling both string and keyword input.
+
+  Accepts:
+  - Keywords: :workspace, :global
+  - Strings: \"workspace\", \"ws\", \"global\", \"user\"
+  - nil or anything else defaults to :global
+
+  Returns: :workspace or :global keyword"
+  [scope]
+  (cond
+    (keyword? scope) scope
+    (= scope "workspace") :workspace
+    (= scope "ws") :workspace
+    (= scope "global") :global
+    (= scope "user") :global
+    :else :global))
+
 (defn record-memory!+
   "Records a memory using autonomous agent workflow with orchestrator pattern.
 
@@ -439,7 +457,7 @@
     memory-data - Map with keys:
       :summary - String describing the lesson learned (required)
       :domain - Optional string for domain hint (e.g., 'clojure', 'git-workflow')
-      :scope - Keyword :global or :workspace (default: :global)
+      :scope - Keyword or string: :global/:workspace or \"global\"/\"workspace\"/\"ws\" (default: :global)
       :model-id - Optional model override (default: 'grok-code-fast-1')
       :max-turns - Optional turn limit override (default: 10)
       :progress-callback - Optional progress function
@@ -457,8 +475,10 @@
          model-id agent-model
          max-turns 10
          progress-callback #(println "📝" %)}}]
-  (p/let [;; Step 1: Determine search directory from scope
-          search-dir (case scope
+  (p/let [;; Step 1: Normalize scope to handle both strings and keywords
+          normalized-scope (normalize-scope scope)
+          ;; Step 2: Determine search directory from normalized scope
+          search-dir (case normalized-scope
                        :global (user-data-instructions-path)
                        :workspace (workspace-instructions-path)
                        (user-data-instructions-path))
@@ -494,7 +514,7 @@
 
           ;; Step 7: Parse agent's decision (handles wrapped or direct EDN)
           {:keys [file-path] :as parsed} (when message-with-edn
-                                            (extract-edn-from-response message-with-edn))]
+                                           (extract-edn-from-response message-with-edn))]
 
     (if parsed
       ;; Step 8: Check if file exists first (handles agent misidentifying new vs existing)

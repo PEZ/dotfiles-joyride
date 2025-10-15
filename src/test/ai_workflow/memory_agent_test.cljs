@@ -333,3 +333,19 @@
           result (ma/build-new-file-content new-file-data)]
       (is (= 1 (count (re-seq #"## New Section" result))))
       (is (string/includes? result "Just content without heading")))))
+
+(deftest normalize-scope-test
+  (testing "Normalizes keyword scope values"
+    (is (= :global (ma/normalize-scope :global)))
+    (is (= :workspace (ma/normalize-scope :workspace))))
+
+  (testing "Normalizes string scope values"
+    (is (= :global (ma/normalize-scope "global")))
+    (is (= :global (ma/normalize-scope "user")))
+    (is (= :workspace (ma/normalize-scope "workspace")))
+    (is (= :workspace (ma/normalize-scope "ws"))))
+
+  (testing "Defaults to global for invalid or nil values"
+    (is (= :global (ma/normalize-scope nil)))
+    (is (= :global (ma/normalize-scope "invalid")))
+    (is (= :global (ma/normalize-scope 123)))))
