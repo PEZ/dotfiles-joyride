@@ -61,7 +61,7 @@
       (.push disposable)))
 
 (defn- my-main []
-  (println "Hello World, from my-main in user_activate.cljs script")
+  (println "Hello World 2, from my-main in user_activate.cljs script")
   (clear-disposables!) ;; Any disposables add with `push-disposable!`
                        ;; will be cleared now. You can push them anew.
 
@@ -77,7 +77,7 @@
   ;; Then un-ignore the below form and run
   ;;   *Joyride; Run User Script* -> user_activate.cljs
   ;; (Or reload the VS Code window.)
-  #_(-> (vscode/extensions.getExtension "betterthantomorrow.calva")
+  (-> (vscode/extensions.getExtension "betterthantomorrow.calva")
         ;; Force the Calva extension to activate
         (.activate)
         ;; The promise will resolve with the extension's API as the result
@@ -91,7 +91,7 @@
                    (vscode/window.showErrorMessage (str "Requiring Calva failed: " error))))))
 
 (when (= (joyride/invoked-script) joyride/*file*)
-  (println "Hello World, from my-main in user_activate.cljs script")
+  (println "Hello World 1, from my-main in user_activate.cljs script")
   (my-main))
 
 (comment
