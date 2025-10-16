@@ -130,11 +130,11 @@
        time-str]]
      [:div {:style {:font-size "0.9em" :margin-bottom "4px"}}
       [:strong "Caller: "] caller " | "
-      [:strong "Model: "] model-id " | "
-      [:strong "Turn: "] current-turn "/" max-turns]
-     [:div {:style {:max-height "max(100%, 120px)"
+      [:strong "Model: "] model-id]
+     [:div {:style {:max-height "120px"
                     :overflow-y :auto
                     :font-size "0.9em"
+                    :font-family "var(--vscode-editor-font-family)"
                     :white-space :pre-wrap
                     :padding "4px"
                     :background "var(--vscode-editor-background)"
