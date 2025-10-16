@@ -256,7 +256,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
 
 (defn agentic-conversation!+
   "Create an autonomous AI conversation that drives itself toward a goal"
-  [{:keys [model-id goal tool-ids max-turns progress-callback allow-unsafe-tools? caller]
+  [{:keys [model-id goal tool-ids max-turns progress-callback allow-unsafe-tools? caller conv-id]
     :or {max-turns 10
          allow-unsafe-tools? false
          caller "autonomous-agent"
@@ -270,12 +270,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
        :reason :model-not-found-error
        :error-message (str "Model not found: " model-id)
        :final-response nil}
-      (p/let [conv-id (monitor/start-monitoring-conversation!+
-                       {:agent.conversation/goal goal
-                        :agent.conversation/model-id model-id
-                        :agent.conversation/max-turns max-turns
-                        :agent.conversation/caller caller})
-              result (continue-conversation-loop
+      (p/let [result (continue-conversation-loop
                       {:model-id model-id
                        :goal goal
                        :max-turns max-turns
@@ -288,9 +283,9 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
         ;; Update final status
         (monitor/update-conversation! conv-id
                                       {:agent.conversation/status (case (:reason result)
-                                                                     :task-complete :done
-                                                                     :error :error
-                                                                     :done)
+                                                                    :task-complete :done
+                                                                    :error :error
+                                                                    :done)
                                        :agent.conversation/error-message (when (= (:reason result) :error)
                                                                            (:error-message result))})
         (monitor/update-agent-monitor-flare!+)
@@ -307,21 +302,28 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                tool-ids []
                max-turns 6
                allow-unsafe-tools? false
-               caller "autonomous-agent"
-               progress-callback #(println % "\n")}}]
+               caller "Unknown"}}]
 
-   (p/let [result (agentic-conversation!+
+   (p/let [conv-id (monitor/start-monitoring-conversation!+
+                    {:agent.conversation/goal goal
+                     :agent.conversation/model-id model-id
+                     :agent.conversation/max-turns max-turns
+                     :agent.conversation/caller caller})
+           progress-callback (or progress-callback
+                                 (partial monitor/log-and-update!+ conv-id nil))
+           result (agentic-conversation!+
                    {:model-id model-id
                     :goal goal
                     :max-turns max-turns
                     :tool-ids tool-ids
                     :allow-unsafe-tools? allow-unsafe-tools?
                     :caller caller
+                    :conv-id conv-id
                     :progress-callback progress-callback})]
      ;; Check for model error first
      (if (:error? result)
        (do
-         (progress-callback (str "❌ Model error: " (:error-message result)))
+         (progress-callback "❌ Model error: " (:error-message result))
          result)
        ;; Show final summary with proper turn counting
        (let [actual-turns (count (filter #(= (:role %) :assistant) (:history result)))
@@ -352,14 +354,21 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
     (def use-tool-ids (set use-tool-ids))
     (println (pr-str use-tool-ids) "\n"))
 
+  (p/let [fib-res (autonomous-conversation!+ "Generate the three first numbers in the fibonacci sequence without writing a function, but instead by starting with evaluating `[0 1]` and then each step read the result and evaluate `[second-number sum-of-first-and-second-number]`. In the last step evaluate just `second-number`."
+                                             {:model-id "grok-code-fast-1"
+                                              :max-turns 12
+                                              :tool-ids ["joyride_evaluate_code"]})]
+    (def fib-res fib-res))
   (autonomous-conversation!+ "Count all .cljs files and show the result"
                              {:tool-ids use-tool-ids
                               :caller "repl-file-counter"})
+
   (autonomous-conversation!+ "Show an information message that says 'Hello from the adaptive AI agent!' using VS Code APIs"
                              {:tool-ids ["joyride_evaluate_code"
                                          "copilot_getVSCodeAPI"]
                               :caller "repl-greeting-test"
                               :max-turns 4})
+
 
   (autonomous-conversation!+ (str "Analyze this project structure and create documentation. For tool calls use this syntax: \n\nBEGIN-TOOL-CALL\n{:name \"tool_name\", :input {:someParam \"value\", :someOtherParam [\"value\" 42]}}\nEND-TOOL-CALL\n\nThe result of the tool calls will be provided to you as part of the next step. Keep each step laser focused."
                                   "\nAvailable tools: "
@@ -368,7 +377,6 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                               :max-turns 12
                               :progress-callback vscode/window.showInformationMessage
                               :tool-ids use-tool-ids})
-
 
   (autonomous-conversation!+ (str "Analyze this project structure and create documentation. Keep each step laser focused."
                                   #_#_"\nAvailable tools: "
@@ -385,12 +393,6 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                                                    (println "🔄" step)
                                                    (vscode/window.showInformationMessage step))
                               :tool-ids use-tool-ids})
-
-  (p/let [fib-res (autonomous-conversation!+ "Generate the six first numbers in the fibonacci sequence without writing a function, but instead by starting with evaluating `[0 1]` and then each step read the result and evaluate `[second-number sum-of-first-and-second-number]`. In the last step evaluate just `second-number`."
-                                             {:model-id "grok-code-fast-1"
-                                              :max-turns 12
-                                              :tool-ids ["joyride_evaluate_code"]})]
-    (def fib-res fib-res))
 
   (def example-joyride-tool-call {:callId "foo"
                                   :name "joyride_evaluate_code"

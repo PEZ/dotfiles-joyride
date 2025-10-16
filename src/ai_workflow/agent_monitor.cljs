@@ -2,6 +2,7 @@
   "Agent conversation monitoring with flare UI and output channel logging"
   (:require
    ["vscode" :as vscode]
+   [clojure.string :as string]
    [joyride.flare :as flare]
    [promesa.core :as p]))
 
@@ -23,11 +24,13 @@
         channel)))
 
 (defn log-to-agent-channel!
-  "Log a message to the agent output channel with conversation ID prefix"
+  "Log a message to the agent output channel with conversation ID prefix on all lines"
   [conv-id message]
   (let [channel (get-output-channel!)
-        prefixed-msg (str "[" conv-id "] " message)]
-    (.appendLine channel prefixed-msg)))
+        lines (string/split (str message) #"\r?\n")
+        prefix (str "[" conv-id "] ")]
+    (doseq [line lines]
+      (.appendLine channel (str prefix line)))))
 
 ;; Conversation Management
 
@@ -87,10 +90,12 @@
 (defn format-time
   "Format JS Date to HH:MM"
   [js-date]
-  (let [hours (.getHours js-date)
-        minutes (.getMinutes js-date)
-        pad (fn [n] (if (< n 10) (str "0" n) (str n)))]
-    (str (pad hours) ":" (pad minutes))))
+  (if js-date
+    (let [hours (.getHours js-date)
+          minutes (.getMinutes js-date)
+          pad (fn [n] (if (< n 10) (str "0" n) (str n)))]
+      (str (pad hours) ":" (pad minutes)))
+    "--:--"))
 
 (defn conversation-html
   "Generate HTML for a single conversation entry"
@@ -140,7 +145,7 @@
                     :align-items :center
                     :margin-bottom "10px"}}
       [:h2 {:style {:margin "0"}} "🤖 Sub Agents Monitor"]
-      [:button {:onclick "vscode.postMessage({command: 'showLogs'})"
+      [:button {:on-click "vscode.postMessage({command: 'showLogs'})"
                 :style {:padding "4px 8px"
                         :background "var(--vscode-button-background)"
                         :color "var(--vscode-button-foreground)"
@@ -186,8 +191,7 @@
   "Log messages and optionally update conversation status.
    Accepts variadic messages for compatibility with partial application."
   [conv-id status-updates & messages]
-  (doseq [msg messages]
-    (log-to-agent-channel! conv-id msg))
+  (log-to-agent-channel! conv-id (string/join " " messages))
   (when status-updates
     (update-conversation! conv-id status-updates))
   (update-agent-monitor-flare!+))
