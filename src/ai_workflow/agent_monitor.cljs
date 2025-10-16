@@ -13,7 +13,11 @@
          :agent/next-id 1
          :agent/output-channel nil
          :agent/sidebar-slot nil}))
-(swap! !agent-state update :agent/conversations dissoc 4 5 6 7 8 9)
+
+(comment
+  (swap! !agent-state update :agent/conversations dissoc 2 3 10)
+  (swap! !agent-state assoc :agent/next-id 2)
+  :rcf)
 
 ;; Output Channel Management
 
@@ -278,5 +282,8 @@
 
   ;; Manually update flare
   (update-agent-monitor-flare!+)
+
+  (flare/flare!+ {:html [:div [:h2 "Sidebar"] [:p "Content"]]
+                  :key :sidebar-2})
 
   :rcf)
