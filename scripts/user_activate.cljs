@@ -77,7 +77,7 @@
   ;; Then un-ignore the below form and run
   ;;   *Joyride; Run User Script* -> user_activate.cljs
   ;; (Or reload the VS Code window.)
-  (-> (vscode/extensions.getExtension "betterthantomorrow.calva")
+  #_(-> (vscode/extensions.getExtension "betterthantomorrow.calva")
         ;; Force the Calva extension to activate
         (.activate)
         ;; The promise will resolve with the extension's API as the result
