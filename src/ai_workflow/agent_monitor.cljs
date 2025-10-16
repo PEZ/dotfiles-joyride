@@ -102,9 +102,14 @@
   "Generate HTML for a single conversation entry"
   [conv]
   (let [{:agent.conversation/keys [id goal status model-id caller
-                                    current-turn max-turns
-                                    started-at error-message]} conv
+                                   current-turn max-turns
+                                   started-at error-message]} conv
         icon-class (status-icon status)
+        icon-color (case status
+                     :done "var(--vscode-charts-green)"
+                     :error "var(--vscode-charts-red)"
+                     :working "var(--vscode-charts-blue)"
+                     nil)
         time-str (format-time started-at)]
     [:div {:style {:border "1px solid var(--vscode-panel-border)"
                    :padding "8px"
@@ -114,10 +119,15 @@
                     :justify-content :space-between
                     :align-items :center
                     :margin-bottom "4px"}}
-      [:span {:style {:font-weight :bold}}
+      [:span {:style {:font-weight :bold
+                      :display :flex
+                      :align-items :center
+                      :gap "4px"}}
        [:i {:class (str "codicon " icon-class)
-            :style {:margin-right "4px"}}]
-       (str "[" id "] " (name status))]
+            :style (merge {:padding-top "2px"}
+                          (when icon-color
+                            {:color icon-color}))}]
+       (str "[" id "] ") [:strong "Turn: "] current-turn "/" max-turns]
       [:span {:style {:font-size "0.9em" :opacity "0.7"}}
        time-str]]
      [:div {:style {:font-size "0.9em" :margin-bottom "4px"}}
@@ -145,7 +155,7 @@
         sorted-convs (reverse (sort-by :agent.conversation/id conversations))]
     [:div {:style {:padding 0}}
      [:link {:rel "stylesheet"
-             :href "https://code.visualstudio.com/assets/css/codicons.css"}]
+             :href "https://unpkg.com/@vscode/codicons@latest/dist/codicon.css"}]
      [:script {:type "text/javascript"}
       "const vscode = acquireVsCodeApi();"]
      [:div {:style {:display :flex
