@@ -399,6 +399,7 @@
       :scope - Keyword or string: :global/:workspace or \"global\"/\"workspace\"/\"ws\" (default: :global)
       :model-id - Optional model override (default: 'grok-code-fast-1')
       :max-turns - Optional turn limit override (default: 10)
+      :caller - Optional, but encouraged, who's recording the memory
       :progress-callback - Optional progress function
 
   Returns:
@@ -409,7 +410,7 @@
       - :write-failed - File write operation failed
       - :file-not-found - Tried to append to non-existent file
       - :parse-failed - Could not parse agent response"
-  [{:keys [summary domain scope model-id max-turns progress-callback]
+  [{:keys [summary domain caller scope model-id max-turns progress-callback]
     :or {scope :global
          model-id agent-model
          max-turns default-max-turns
@@ -443,6 +444,7 @@
                         {:model-id model-id
                          :max-turns max-turns
                          :tool-ids tool-ids
+                         :caller caller
                          :progress-callback progress-callback})
 
           ;; Step 6: Search agent messages backwards for EDN structure

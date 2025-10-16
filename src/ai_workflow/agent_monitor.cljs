@@ -13,6 +13,7 @@
          :agent/next-id 1
          :agent/output-channel nil
          :agent/sidebar-slot nil}))
+(swap! !agent-state update :agent/conversations dissoc 4 5 6 7 8 9)
 
 ;; Output Channel Management
 
@@ -37,11 +38,10 @@
 
 (defn register-conversation!
   "Register a new conversation and return its ID"
-  [{:agent.conversation/keys [caller] :as conversation-data}]
+  [conversation-data]
   (let [id (:agent/next-id @!agent-state)
         conversation (merge conversation-data
                            {:agent.conversation/id id
-                            :agent.conversation/caller (or caller "Unknown")
                             :agent.conversation/status :started
                             :agent.conversation/started-at (js/Date.)
                             :agent.conversation/updated-at (js/Date.)
@@ -152,6 +152,7 @@
   (let [conversations (get-all-conversations)
         sorted-convs (reverse (sort-by :agent.conversation/id conversations))]
     [:div {:style {:padding 0}}
+     [:style "body { margin: 0; padding: 0;}"]
      [:link {:rel "stylesheet"
              :href "https://unpkg.com/@vscode/codicons@latest/dist/codicon.css"}]
      [:script {:type "text/javascript"}
@@ -159,7 +160,8 @@
      [:div {:style {:display :flex
                     :justify-content :space-between
                     :align-items :center
-                    :margin-bottom "10px"}}
+                    :margin-bottom "10px"
+                    :padding "0 8px"}}
       [:h2 {:style {:margin "0"}} "Sub Agents Monitor"]
       [:button {:onclick "vscode.postMessage({command: 'showLogs'})"
                 :style {:padding "4px 8px"
@@ -169,7 +171,8 @@
                         :border-radius "2px"
                         :cursor :pointer}}
        "Show Logs"]]
-     [:div {:style {:margin-top "10px"}}
+     [:div {:style {:margin-top "10px"
+                    :padding "0 8px"}}
       (if (empty? sorted-convs)
         [:p {:style {:font-style :italic :opacity "0.7"}}
          "No active conversations"]
@@ -205,15 +208,18 @@
 
 (defn start-monitoring-conversation!+
   "Start monitoring a conversation - registers it and updates flare"
-  [{:agent.conversation/keys [goal] :as conversation-data}]
-  (let [conv-id (register-conversation! conversation-data)]
+  [{:agent.conversation/keys [goal caller] :as conversation-data}]
+  (let [conversation-data (assoc conversation-data
+                                 :agent.conversation/caller
+                                 (or caller "Unknown"))
+        conv-id (register-conversation! conversation-data)]
     (log-to-agent-channel! conv-id (str "🚀 Starting conversation: " goal))
     (p/let [_ (update-agent-monitor-flare!+)]
       conv-id)))
 
 (defn log-and-update!+
   "Log messages and optionally update conversation status.
-   Accepts variadic messages for compatibility with partial application."
+   Accepts variadic messages for compatibility with `println`."
   [conv-id status-updates & messages]
   (log-to-agent-channel! conv-id (string/join " " messages))
   (when status-updates
