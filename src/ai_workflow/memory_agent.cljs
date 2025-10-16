@@ -10,6 +10,7 @@
    ["path" :as path]))
 
 (def agent-model "grok-code-fast-1")
+(def default-max-turns 15)
 
 (defn user-data-instructions-path
   ([] (user-data-instructions-path nil))
@@ -69,7 +70,6 @@
    "- **Integrate carefully** - Place new memories in logical sections\n"
    "- **Use absolute paths** - FILE_PATH must be absolute like `{SEARCH-DIRECTORY}/clojure-memory.instructions.md`\n"
    "- **Be concise** - Memory entries should be scannable and actionable\n"
-   "- **Extract patterns** - Generalize from specific instances\n"
    "- Work systematically. Research first, then craft the complete solution.\n\n"
 
    "## Action steps"
@@ -100,7 +100,6 @@
    "5. **Re-author the lesson into a memory**, with focus on the good pattern\n"
    "   - Avoid creating redundancy\n"
    "   - Instead of comprehensive instructions, think about how to capture the lesson in a succinct and clear manner\n"
-   "   - **Extract general patterns** from specific instances\n"
    "   - When including a code example, consider using code comments as part of your instruction's commentary. The memory heading, the prose and the code should cooperate in getting the message across succinctly and effectively.\n"
    "   - Instead of \"don't\"s, use positive reinforcement focusing on correct patterns\n"
    "   - If the negative pattern `Y` seems important, weave it in using language such as 'Because X, instead of Y, do X.\n\n"
@@ -143,34 +142,6 @@
   (remember-prompt {:ma/domain nil})
   (remember-prompt {:ma/domain "foo"})
   :rcf)
-
-(defn async-iterator-seq
-  "Consumes an async generator/iterator and returns a promise of all values.
-  Works with any JavaScript object that implements Symbol.asyncIterator.
-
-  Example:
-    (p/let [values (async-iterator-seq some-async-generator)]
-      (prn values)) ; => [val1 val2 val3 ...]"
-  [generator]
-  (let [iter (.call (aget generator js/Symbol.asyncIterator) generator)
-        results (atom [])]
-    (p/loop []
-      (p/let [v (.next iter)]
-        (if (.-done v)
-          @results
-          (do (swap! results conj (.-value v))
-              (p/recur)))))))
-
-(defn consume-lm-response
-  "Consumes a Language Model response stream and returns the complete text.
-
-  Example:
-    (p/let [response (make-lm-request model messages)
-            text (consume-lm-response response)]
-      (prn text))"
-  [response]
-  (p/let [chunks (async-iterator-seq (.-text response))]
-    (apply str chunks)))
 
 (defn trim-heading-from-content
   "Remove H2 heading from start of content if present.
@@ -217,34 +188,6 @@
       (string/replace "{SEARCH-DIRECTORY}" search-dir)
       (string/replace "{LESSON}" summary)))
 
-(defn validate-file-content
-  "Validates that new content is substantially complete compared to existing.
-
-  Args:
-    new-content - New content from agent
-    existing-content - Existing file content (or nil for new files)
-
-  Returns: {:valid? true} or {:valid? false :reason string}"
-  [new-content existing-content]
-  (if (or (nil? existing-content) (string/blank? existing-content))
-    ;; New file - always valid
-    {:valid? true}
-    ;; Existing file - validate completeness
-    (let [new-lines (count (string/split-lines new-content))
-          existing-lines (count (string/split-lines existing-content))
-          ratio (if (pos? existing-lines) (/ new-lines existing-lines) 1.0)]
-      (cond
-        ;; New content is significantly shorter - likely incomplete
-        (< ratio 0.75)
-        {:valid? false
-         :reason (str "⚠️  VALIDATION FAILED: New content (" new-lines " lines) is "
-                      "significantly shorter than existing (" existing-lines " lines). "
-                      "Agent likely returned incomplete content instead of merging.")}
-
-        ;; Content looks valid
-        :else
-        {:valid? true}))))
-
 (defn read-existing-file!+
   "Returns a promise of file content string, or nil if file doesn't exist"
   [file-path]
@@ -276,11 +219,7 @@
     (fn [error]
       {:error (str "Failed to write file: " (.-message error))
        :file-path file-path}))
-   (fn [result]
-     ;; Show message as side effect after returning result
-     #_(when (:success result)
-         (vscode/window.showInformationMessage (str "✅ Memory recorded: " file-path)))
-     result)))
+   identity))
 
 (defn update-frontmatter-applyTo
   "Update applyTo field in frontmatter if present.
@@ -473,7 +412,7 @@
   [{:keys [summary domain scope model-id max-turns progress-callback]
     :or {scope :global
          model-id agent-model
-         max-turns 10
+         max-turns default-max-turns
          progress-callback #(println "📝" %)}}]
   (p/let [;; Step 1: Normalize scope to handle both strings and keywords
           normalized-scope (normalize-scope scope)
@@ -514,7 +453,8 @@
 
           ;; Step 7: Parse agent's decision (handles wrapped or direct EDN)
           {:keys [file-path] :as parsed} (when message-with-edn
-                                           (extract-edn-from-response message-with-edn))]
+                                           (extract-edn-from-response message-with-edn))
+          file-uri-string (.toString (vscode/Uri.file file-path))]
 
     (if parsed
       ;; Step 8: Check if file exists first (handles agent misidentifying new vs existing)
@@ -530,26 +470,26 @@
                   write-result (write-memory-file!+ file-path updated-content)]
             (if (:success write-result)
               {:success true
-               :file-path file-path}
+               :file-uri file-uri-string}
               {:success false
                :error (:error write-result)
                :error-type :write-failed
-               :file-path file-path}))
+               :file-uri file-uri-string}))
           ;; File doesn't exist - create new file
           (if (:new-file parsed)
             (p/let [complete-content (build-new-file-content parsed)
                     write-result (write-memory-file!+ file-path complete-content)]
               (if (:success write-result)
                 {:success true
-                 :file-path file-path}
+                 :file-uri file-uri-string}
                 {:success false
                  :error (:error write-result)
                  :error-type :write-failed
-                 :file-path file-path}))
+                 :file-uri file-uri-string}))
             {:success false
              :error "File does not exist but agent didn't provide new-file structure"
              :error-type :file-not-found
-             :file-path file-path})))
+             :file-uri file-uri-string})))
       ;; Parsing failed
       {:success false
        :error "Failed to parse agent response. Agent did not return expected format."

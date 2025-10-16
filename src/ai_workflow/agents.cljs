@@ -350,7 +350,8 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
     (def use-tool-ids (set use-tool-ids))
     (println (pr-str use-tool-ids) "\n"))
 
-  (p/let [fib-res (autonomous-conversation!+ "Generate the three first numbers in the fibonacci sequence without writing a function, but instead by starting with evaluating `[0 1]` and then each step read the result and evaluate `[second-number sum-of-first-and-second-number]`. In the last step evaluate just `second-number`."
+  (p/let [fib-res (autonomous-conversation!+ "# Fibonacci Generator
+Generate the three first numbers in the fibonacci sequence without writing a function, but instead by starting with evaluating `[0 1]` and then each step read the result and evaluate `[second-number sum-of-first-and-second-number]`. In the last step evaluate just `second-number`."
                                              {:model-id "grok-code-fast-1"
                                               :max-turns 12
                                               :tool-ids ["joyride_evaluate_code"]})]

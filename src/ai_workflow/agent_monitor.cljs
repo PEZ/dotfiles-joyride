@@ -11,7 +11,8 @@
 (defonce !agent-state
   (atom {:agent/conversations {}
          :agent/next-id 1
-         :agent/output-channel nil}))
+         :agent/output-channel nil
+         :agent/sidebar-slot nil}))
 
 ;; Output Channel Management
 
@@ -78,14 +79,14 @@
 ;; UI Rendering
 
 (defn status-icon
-  "Get icon for conversation status"
+  "Get codicon class for conversation status"
   [status]
   (case status
-    :started "⏸️"
-    :working "⚙️"
-    :done "✅"
-    :error "❌"
-    "❓"))
+    :started "codicon-debug-pause"
+    :working "codicon-loading codicon-modifier-spin"
+    :done "codicon-pass"
+    :error "codicon-error"
+    "codicon-question"))
 
 (defn format-time
   "Format JS Date to HH:MM"
@@ -103,7 +104,7 @@
   (let [{:agent.conversation/keys [id goal status model-id caller
                                     current-turn max-turns
                                     started-at error-message]} conv
-        icon (status-icon status)
+        icon-class (status-icon status)
         time-str (format-time started-at)]
     [:div {:style {:border "1px solid var(--vscode-panel-border)"
                    :padding "8px"
@@ -114,16 +115,19 @@
                     :align-items :center
                     :margin-bottom "4px"}}
       [:span {:style {:font-weight :bold}}
-       (str icon " [" id "] " (name status))]
+       [:i {:class (str "codicon " icon-class)
+            :style {:margin-right "4px"}}]
+       (str "[" id "] " (name status))]
       [:span {:style {:font-size "0.9em" :opacity "0.7"}}
        time-str]]
      [:div {:style {:font-size "0.9em" :margin-bottom "4px"}}
       [:strong "Caller: "] caller " | "
       [:strong "Model: "] model-id " | "
       [:strong "Turn: "] current-turn "/" max-turns]
-     [:div {:style {:max-height "60px"
+     [:div {:style {:max-height "max(100%, 120px)"
                     :overflow-y :auto
                     :font-size "0.9em"
+                    :white-space :pre-wrap
                     :padding "4px"
                     :background "var(--vscode-editor-background)"
                     :border-radius "2px"}}
@@ -139,20 +143,24 @@
   []
   (let [conversations (get-all-conversations)
         sorted-convs (reverse (sort-by :agent.conversation/id conversations))]
-    [:div {:style {:padding "10px"}}
+    [:div {:style {:padding 0}}
+     [:link {:rel "stylesheet"
+             :href "https://code.visualstudio.com/assets/css/codicons.css"}]
+     [:script {:type "text/javascript"}
+      "const vscode = acquireVsCodeApi();"]
      [:div {:style {:display :flex
                     :justify-content :space-between
                     :align-items :center
                     :margin-bottom "10px"}}
-      [:h2 {:style {:margin "0"}} "🤖 Sub Agents Monitor"]
-      [:button {:on-click "vscode.postMessage({command: 'showLogs'})"
+      [:h2 {:style {:margin "0"}} "Sub Agents Monitor"]
+      [:button {:onclick "vscode.postMessage({command: 'showLogs'})"
                 :style {:padding "4px 8px"
                         :background "var(--vscode-button-background)"
                         :color "var(--vscode-button-foreground)"
                         :border :none
                         :border-radius "2px"
                         :cursor :pointer}}
-       "📋 Show Logs"]]
+       "Show Logs"]]
      [:div {:style {:margin-top "10px"}}
       (if (empty? sorted-convs)
         [:p {:style {:font-style :italic :opacity "0.7"}}
@@ -161,17 +169,29 @@
 
 ;; Flare Management
 
+(defn ensure-sidebar-slot! []
+  (if-let [slot (:agent/sidebar-slot @!agent-state)]
+    slot
+    (let [free-slots (apply disj
+                            #{:sidebar-1 :sidebar-2 :sidebar-3 :sidebar-4 :sidebar-5}
+                            (vec (keys (flare/ls))))]
+      (when (seq free-slots)
+        (let [new-slot (first free-slots)]
+          (swap! !agent-state assoc :agent/sidebar-slot new-slot)
+          new-slot)))))
+
 (defn update-agent-monitor-flare!+
   "Update the agent monitor flare in sidebar"
   []
-  (flare/flare!+
-   {:key :sidebar-1
-    :title "Sub Agents"
-    :html (agent-monitor-html)
-    :message-handler
-    (fn [msg]
-      (when (= (.-command msg) "showLogs")
-        (.show (get-output-channel!))))}))
+  (when-let [slot (ensure-sidebar-slot!)]
+    (flare/flare!+
+     {:key slot
+      :title "Sub Agents"
+      :html (agent-monitor-html)
+      :reveal? false
+      :message-handler (fn [msg]
+                         (when (= (.-command msg) "showLogs")
+                           (.show (get-output-channel!))))})))
 
 ;; Public API for Integration
 

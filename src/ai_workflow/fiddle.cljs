@@ -52,3 +52,32 @@
 
   (unregister!)
   :rcf)
+
+
+(defn async-iterator-seq
+  "Consumes an async generator/iterator and returns a promise of all values.
+  Works with any JavaScript object that implements Symbol.asyncIterator.
+
+  Example:
+    (p/let [values (async-iterator-seq some-async-generator)]
+      (prn values)) ; => [val1 val2 val3 ...]"
+  [generator]
+  (let [iter (.call (aget generator js/Symbol.asyncIterator) generator)
+        results (atom [])]
+    (p/loop []
+      (p/let [v (.next iter)]
+        (if (.-done v)
+          @results
+          (do (swap! results conj (.-value v))
+              (p/recur)))))))
+
+(defn consume-lm-response
+  "Consumes a Language Model response stream and returns the complete text.
+
+  Example:
+    (p/let [response (make-lm-request model messages)
+            text (consume-lm-response response)]
+      (prn text))"
+  [response]
+  (p/let [chunks (async-iterator-seq (.-text response))]
+    (apply str chunks)))
