@@ -37,18 +37,16 @@
 
 (defn register-conversation!
   "Register a new conversation and return its ID"
-  [{:agent.conversation/keys [goal model-id max-turns caller]}]
+  [{:agent.conversation/keys [caller] :as conversation-data}]
   (let [id (:agent/next-id @!agent-state)
-        conversation {:agent.conversation/id id
-                      :agent.conversation/goal goal
-                      :agent.conversation/caller (or caller "Unknown")
-                      :agent.conversation/model-id model-id
-                      :agent.conversation/max-turns max-turns
-                      :agent.conversation/status :started
-                      :agent.conversation/started-at (js/Date.)
-                      :agent.conversation/updated-at (js/Date.)
-                      :agent.conversation/current-turn 0
-                      :agent.conversation/error-message nil}]
+        conversation (merge conversation-data
+                           {:agent.conversation/id id
+                            :agent.conversation/caller (or caller "Unknown")
+                            :agent.conversation/status :started
+                            :agent.conversation/started-at (js/Date.)
+                            :agent.conversation/updated-at (js/Date.)
+                            :agent.conversation/current-turn 0
+                            :agent.conversation/error-message nil})]
     (swap! !agent-state
            (fn [state]
              (-> state
@@ -207,12 +205,8 @@
 
 (defn start-monitoring-conversation!+
   "Start monitoring a conversation - registers it and updates flare"
-  [{:agent.conversation/keys [goal model-id max-turns caller]}]
-  (let [conv-id (register-conversation!
-                 {:agent.conversation/goal goal
-                  :agent.conversation/model-id model-id
-                  :agent.conversation/max-turns max-turns
-                  :agent.conversation/caller caller})]
+  [{:agent.conversation/keys [goal] :as conversation-data}]
+  (let [conv-id (register-conversation! conversation-data)]
     (log-to-agent-channel! conv-id (str "🚀 Starting conversation: " goal))
     (p/let [_ (update-agent-monitor-flare!+)]
       conv-id)))
