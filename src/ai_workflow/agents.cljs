@@ -251,17 +251,13 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
              (inc turn-count)
              turn-result))
           (do
-            (monitor/log-to-agent-channel! conv-id (str "🎯 Agentic conversation ended: " (name (:reason outcome))))
+            (monitor/log-to-agent-channel! conv-id (str "Exiting conversation loop: " (:reason outcome)))
             (format-completion-result final-history (:reason outcome) turn-result)))))))
 
 (defn agentic-conversation!+
   "Create an autonomous AI conversation that drives itself toward a goal"
-  [{:keys [model-id goal tool-ids max-turns progress-callback allow-unsafe-tools? caller conv-id]
-    :or {max-turns 10
-         allow-unsafe-tools? false
-         caller "autonomous-agent"
-         progress-callback (fn [step]
-                             (println "Progress:" step))}}]
+  ;; TODO: Why is `caller` unused?
+  [{:keys [model-id goal tool-ids max-turns progress-callback allow-unsafe-tools? caller conv-id]}]
   (p/let [tools-args (util/enable-specific-tools tool-ids allow-unsafe-tools?)
           model-info (util/get-model-by-id!+ model-id)]
     (if-not model-info
@@ -300,7 +296,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
   ([goal {:keys [model-id max-turns tool-ids progress-callback allow-unsafe-tools? caller]
           :or {model-id "gpt-4o-mini"
                tool-ids []
-               max-turns 6
+               max-turns 10
                allow-unsafe-tools? false
                caller "Unknown"}}]
 
@@ -310,7 +306,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                      :agent.conversation/max-turns max-turns
                      :agent.conversation/caller caller})
            progress-callback (or progress-callback
-                                 (partial monitor/log-and-update!+ conv-id nil))
+                                 #())
            result (agentic-conversation!+
                    {:model-id model-id
                     :goal goal
@@ -323,7 +319,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
      ;; Check for model error first
      (if (:error? result)
        (do
-         (progress-callback "❌ Model error: " (:error-message result))
+         (monitor/log-to-agent-channel! conv-id (str "❌ Model error: " (:error-message result)))
          result)
        ;; Show final summary with proper turn counting
        (let [actual-turns (count (filter #(= (:role %) :assistant) (:history result)))
@@ -334,7 +330,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                             :agent-finished "finished"
                             "ended unexpectedly")
                           " (" actual-turns " turns, " (count (:history result)) " conversation steps)")]
-         (progress-callback summary)
+         (monitor/log-to-agent-channel! conv-id summary)
          result)))))
 
 (comment
