@@ -1,13 +1,14 @@
 (ns ai-workflow.memory-agent
   "Autonomous memory recording agent using agentic workflow"
   (:require
-   [clojure.string :as string]
-   [clojure.edn :as edn]
-   [promesa.core :as p]
-   [joyride.core :as joy]
-   [ai-workflow.agents :as agents]
+   ["path" :as path]
    ["vscode" :as vscode]
-   ["path" :as path]))
+   [ai-workflow.agents :as agents]
+   [cljs.pprint]
+   [clojure.edn :as edn]
+   [clojure.string :as string]
+   [joyride.core :as joy]
+   [promesa.core :as p]))
 
 (def agent-model "grok-code-fast-1")
 (def default-max-turns 15)
@@ -53,12 +54,11 @@
    "domain-organized Memory Instructions** that persist across VS Code contexts. You know how to "
    (when-not domain "automatically bin learnings by domain, and ")
    "add to or create new memory files as needed.\n\n"
-   "**Critical**: Always use absolute paths when globbing, searching and reading files.\n\n"
 
    (when domain
-     (str "\n\n<DOMAIN>" domain "</DOMAIN>"))
+     (str "<DOMAIN>" domain "</DOMAIN>"))
 
-   "\n\n## Session Lesson\n\n<SESSION-LESSON>\n{LESSON}\n</SESSION-LESSON>\n\n"
+   "## Session Lesson\n\n<SESSION-LESSON>\n{LESSON}\n</SESSION-LESSON>\n\n"
 
    "## Your Mission\n\n"
    "Transform the `SESSION-LESSON` into **domain-targeted, succinct, reusable knowledge**, "
@@ -72,12 +72,19 @@
    "- **Be concise** - Memory entries should be scannable and actionable\n"
    "- Work systematically. Research first, then craft the complete solution.\n\n"
 
+   (when-not domain
+     (str
+      "## Available Memory Files\n\n"
+      "The following instruction files exist:\n"
+      "{DESCRIPTIONS}\n"
+      "The domain is encoded in the basename, `<domain>.instructions.md` for the main domain file, and `<domain>-memory.instructions.md` for the domain memory file. Use the domain and descriptions to find which domain (if any) best matches the `SESSION-LESSON`"))
+
    "## Action steps"
 
    (if-not domain
      (str "\n\n### 1. Determine the memory domain\n"
-          "1. Review the \"Available Memory Files\" section below - it lists all existing memory files with their descriptions.\n"
-          "2. Consider if any of these descriptions matches the lesson.\n"
+          "1. Review the \"Available Memory Files\" section - it lists all existing memory files with their descriptions.\n"
+          "1. Consider if any of these descriptions matches the lesson.\n"
           "   - If so: pick the best match and read that file\n"
           "   - Else: decide on a domain and domain slug for this new memory\n\n"
           "### 2. Read up on existing domain knowledge")
@@ -92,12 +99,12 @@
      (str "   - **Domain instructions**: `{SEARCH-DIRECTORY}/<domain>.instructions.md`\n"
           "   - **Domain memory**; `{SEARCH-DIRECTORY}/<domain>-memory.instructions.md`\n"))
 
-   "\n   **Critical**: Always use absolute paths when globbing, searching and reading files.\n"
-   "3. **Analyze** the specific `SESSION-LESSON` learned from user input, as it fits with your knowledge about the domain.\n"
-   "4. **Categorize** the learning:\n"
+   "\n   **Critical**: Always use absolute paths when reading files.\n"
+   "1. **Analyze** the specific `SESSION-LESSON` learned from user input, as it fits with your knowledge about the domain.\n"
+   "1. **Categorize** the learning:\n"
    "   - New memory\n"
    "   - Enhancement to existing memory\n"
-   "5. **Re-author the lesson into a memory**, with focus on the good pattern\n"
+   "1. **Re-author the lesson into a memory**, with focus on the good pattern\n"
    "   - Avoid creating redundancy\n"
    "   - Instead of comprehensive instructions, think about how to capture the lesson in a succinct and clear manner\n"
    "   - When including a code example, consider using code comments as part of your instruction's commentary. The memory heading, the prose and the code should cooperate in getting the message across succinctly and effectively.\n"
@@ -105,36 +112,38 @@
    "   - If the negative pattern `Y` seems important, weave it in using language such as 'Because X, instead of Y, do X.\n\n"
 
    (if domain
-     "### 2. Deliver results"
-     "### 3. Deliver results")
+     "### 2. Deliver results\n"
+     "### 3. Deliver results\n")
 
-   "\n\n**IMPORTANT**: Wrap your EDN deliverable in markers:\n\n"
-   "```\n---BEGIN RESULTS---\n{your EDN structure here}\n---END RESULTS---\n```\n\n"
+      "Your deliverable is an EDN structure, wrapped in `---BEGIN RESULTS---`/`---END RESULTS---` markers:\n\n"
 
    "- IF a memory file already exist:\n"
-   "  - Provide a new memory section to append to the file\n"
-   "  - Your deliverable is an EDN structure:\n\n"
+   "  - Provide a new memory section to be appended to the file:\n"
    "    ```clojure\n"
+   "    ---BEGIN RESULTS---\n"
    "    {:domain                                  ; string\n"
    "     :file-path path                          ; string, absolute path to memory file\n"
-   "     :heading memory-heading                  ; string, H2 heading for the new section\n"
+   "     :heading memory-heading                  ; string, will be used for a level 2 heading for the new section\n"
    "     :content memory-content-markdown         ; string, the new memory content\n"
    "     :applyTo [glob-patterns ...]             ; vector of strings, OPTIONAL - only if frontmatter needs updating\n"
    "     }\n"
+   "    ---END RESULTS---\n"
    "    ```\n"
    "  - Your task is complete!\n"
    "- ELSE IF no existing memory file:\n"
-   "  - Your deliverable is an EDN structure:\n\n"
+   "  - Provide the data for an entirely new memory file:\n\n"
    "    ```clojure\n"
+   "    ---BEGIN RESULTS---\n"
    "    {:new-file true                           ; boolean, REQUIRED for new files\n"
    "     :domain                                  ; string\n"
    "     :file-path path                          ; string, absolute path to memory file\n"
-   "     :description domain-memory-description   ; string, keep the description general, focusing on the domain responsibility rather than implementation specifics\n"
+   "     :description domain-memory-description   ; string, the description should be about the domain, not the memory\n"
    "     :domain-tagline memory-domain-tagline    ; string, a version of the domain-memory-description that is crafted for AI agent consumption\n"
    "     :applyTo [glob-patterns ...]             ; vector of strings\n"
-   "     :heading memory-heading                  ; string, E.g. `Clarity over brevity`\n"
-   "     :content memory-content-markdown         ; string, the memorization of the `SESSION-LESSON`\n"
+   "     :heading memory-heading                  ; string, E.g. `Clarity over brevity`, will be used for level 2 heading for this memory in the resulting markdown\n"
+   "     :content memory-content-markdown         ; string, the memorization of the `SESSION-LESSON`, without any headings\n"
    "     }\n"
+   "    ---END RESULTS---\n"
    "    ```\n"
    "  - Your task is complete!\n"))
 
@@ -183,9 +192,10 @@
 
   Returns:
     Complete goal prompt string ready for the autonomous agent"
-  [{:ma/keys [summary domain search-dir]}]
+  [{:ma/keys [summary domain search-dir description-listing]}]
   (-> (remember-prompt {:ma/domain domain})
       (string/replace "{SEARCH-DIRECTORY}" search-dir)
+      (string/replace "{DESCRIPTIONS}" description-listing)
       (string/replace "{LESSON}" summary)))
 
 (defn read-existing-file!+
@@ -338,17 +348,16 @@
     dir-path - Absolute path to directory
 
   Returns: Promise of vector of {:file string :description string} maps"
-  [dir-path]
-  (p/let [files (list-instruction-files!+ dir-path)
-          ;; Read each file and extract description
+  [search-dir]
+  (p/let [files (list-instruction-files!+ search-dir)
           file-data (p/all
                      (for [filename files]
-                       (p/let [content (read-existing-file!+ (str dir-path "/" filename))
+                       (p/let [file-path (path/join search-dir filename)
+                               content (read-existing-file!+ file-path)
                                description (extract-description-from-content content)]
-                         {:file filename
+                         {:file file-path
                           :description description})))]
-    ;; Filter out files without descriptions
-    (filterv :description file-data)))
+    (vec file-data)))
 
 (defn format-description-listing
   "Format file descriptions into a text listing for the prompt.
@@ -358,16 +367,14 @@
     search-dir - Base directory path
 
   Returns: Formatted string or empty string if no descriptions"
-  [descriptions search-dir]
-  (if (seq descriptions)
-    (str "\n\n## Available Memory Files\n\n"
-         "The following memory instruction files exist. Match the lesson to the most appropriate domain:\n\n"
-         (string/join "\n"
-                     (for [{:keys [file description]} descriptions]
-                       (str "- `" file "` - " description)))
-         "\n\n**To read a file**: Use `copilot_readFile` with absolute path like `"
-         search-dir "/" (:file (first descriptions)) "`\n")
-    ""))
+  [descriptions]
+  (when (seq descriptions)
+    (str "```clojure\n"
+         (with-out-str (cljs.pprint/pprint descriptions))
+         "\n```\n")
+    #_(string/join "\n"
+                 (for [{:keys [file description]} descriptions]
+                   (str "- " file ": " description)))))
 
 (defn normalize-scope
   "Convert scope to keyword, handling both string and keyword input.
@@ -386,6 +393,18 @@
     (= scope "global") :global
     (= scope "user") :global
     :else :global))
+
+(defn file-path->uri-string
+  "Convert file path to URI string, handling cases where it's already a URI string.
+
+  Args:
+    file-path - Either an absolute filesystem path or a URI string
+
+  Returns: URI string"
+  [file-path]
+  (if (string/starts-with? file-path "file://")
+    file-path
+    (.toString (vscode/Uri.file file-path))))
 
 (defn record-memory!+
   "Records a memory using autonomous agent workflow with orchestrator pattern.
@@ -425,13 +444,13 @@
 
           ;; Step 1b: Build description listing for available files
           file-descriptions (build-file-descriptions-map!+ search-dir)
-          description-listing (format-description-listing file-descriptions search-dir)
+          description-listing (format-description-listing file-descriptions)
 
           ;; Steps 2-3: Build complete goal prompt with description listing
-          goal (str (build-goal-prompt {:ma/summary summary
-                                        :ma/domain domain
-                                        :ma/search-dir search-dir})
-                    description-listing)
+          goal (build-goal-prompt {:ma/summary summary
+                                   :ma/domain domain
+                                   :ma/search-dir search-dir
+                                   :ma/description-listing description-listing})
 
           ;; Step 4: Define read-only tools for analysis
           tool-ids ["copilot_findFiles"
@@ -456,7 +475,7 @@
           ;; Step 7: Parse agent's decision (handles wrapped or direct EDN)
           {:keys [file-path] :as parsed} (when message-with-edn
                                            (extract-edn-from-response message-with-edn))
-          file-uri-string (.toString (vscode/Uri.file file-path))]
+          file-uri-string (file-path->uri-string file-path)]
 
     (if parsed
       ;; Step 8: Check if file exists first (handles agent misidentifying new vs existing)
@@ -496,6 +515,30 @@
       {:success false
        :error "Failed to parse agent response. Agent did not return expected format."
        :error-type :parse-failed})))
+
+(comment
+    (p/let [;; Step 1: Normalize scope to handle both strings and keywords
+            normalized-scope (normalize-scope "global")
+            ;; Step 2: Determine search directory from normalized scope
+            search-dir (case normalized-scope
+                         :global (user-data-instructions-path)
+                         :workspace (workspace-instructions-path)
+                         (user-data-instructions-path))
+
+            ;; Step 1b: Build description listing for available files
+            _ (def normalize-scope normalize-scope)
+            _ (def search-dir search-dir)
+            file-descriptions (build-file-descriptions-map!+ search-dir)
+            _ (def file-descriptions file-descriptions)
+            description-listing (format-description-listing file-descriptions)
+
+            ;; Steps 2-3: Build complete goal prompt with description listing
+            goal (build-goal-prompt {:ma/summary "Use REPL for debugging"
+                                     ;:ma/domain "clojure"
+                                     :ma/search-dir (.toString search-dir)
+                                     :ma/description-listing description-listing})]
+      (println goal))
+  )
 
 (comment
   ;; Basic usage - global memory with domain hint
