@@ -51,10 +51,12 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
 
   Returns:
     Vector of messages formatted for LM API with goal first, followed by conversation"
-  [history goal]
+  [history instructions goal]
   (let [goal-message {:role :user
-                      :content (str "GOAL: " goal
-                                    "\n\nPlease work autonomously toward this goal. "
+                      :content (str instructions
+                                    "\n\n"
+                                    "<GOAL>\n" goal "\n</GOAL>"
+                                    "\n\nPlease work autonomously toward the `GOAL`. "
                                     "Take initiative, use tools as needed, and continue "
                                     "until the goal is achieved.")}]
     (if (empty? history)
@@ -135,9 +137,9 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
 
 (defn execute-conversation-turn
   "Execute a single conversation turn - handles request/response cycle"
-  [{:keys [model-id goal history turn-count tools-args]}]
+  [{:keys [model-id goal instructions history turn-count tools-args]}]
   (p/catch
-   (p/let [messages (build-agentic-messages history goal)
+   (p/let [messages (build-agentic-messages history instructions goal)
            response (util/send-prompt-request!+
                      {:model-id model-id
                       :system-prompt agentic-system-prompt
@@ -191,10 +193,11 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
   The goal parameter is passed separately through all turns and combined with history
   by build-agentic-messages. This keeps the immutable goal separate from the growing
   conversation history."
-  [{:keys [model-id goal max-turns progress-callback tools-args conv-id]} history turn-count last-response]
+  [{:keys [model-id goal instructions max-turns progress-callback tools-args conv-id] :as conversation-data}
+   history turn-count last-response]
   (progress-callback (str "Turn " turn-count "/" max-turns))
   (p/let [;; Count tokens for this turn's messages
-          messages (build-agentic-messages history goal)
+          messages (build-agentic-messages history instructions goal)
           turn-tokens (util/count-message-tokens!+ model-id messages)
           current-total (:agent.conversation/total-tokens (state/get-conversation conv-id) 0)
           new-total (+ current-total turn-tokens)]
@@ -212,6 +215,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                turn-result (execute-conversation-turn
                             {:model-id model-id
                              :goal goal
+                             :instructions instructions
                              :history history
                              :turn-count turn-count
                              :tools-args tools-args})
@@ -250,8 +254,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
              (do
                (logging/log-to-channel! conv-id "↻ AI Agent continuing to next step...")
                (continue-conversation-loop
-                {:model-id model-id :goal goal :max-turns max-turns
-                 :progress-callback progress-callback :tools-args tools-args :conv-id conv-id}
+                conversation-data
                 final-history
                 (inc turn-count)
                 turn-result)))
@@ -275,7 +278,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
 
 (defn agentic-conversation!+
   "Create an autonomous AI conversation that drives itself toward a goal"
-  [{:keys [model-id goal tool-ids max-turns progress-callback allow-unsafe-tools? conv-id]}]
+  [{:keys [model-id tool-ids allow-unsafe-tools? conv-id] :as conversation-data}]
   (p/let [tools-args (util/enable-specific-tools tool-ids allow-unsafe-tools?)
           model-info (util/get-model-by-id!+ model-id)]
     (if-not model-info
@@ -288,12 +291,8 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
               cancellation-token-source (vscode/CancellationTokenSource.)
               _ (state/update-conversation! conv-id {:agent.conversation/cancellation-token-source cancellation-token-source})
               result (continue-conversation-loop
-                      {:model-id model-id
-                       :goal goal
-                       :max-turns max-turns
-                       :progress-callback progress-callback
-                       :tools-args (assoc tools-args :cancellationToken (.-token cancellation-token-source))
-                       :conv-id conv-id}
+                      (merge conversation-data
+                             {:tools-args (assoc tools-args :cancellationToken (.-token cancellation-token-source))})
                       [] ; empty initial history
                       1  ; start at turn 1
                       nil)]
@@ -337,6 +336,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
            result (agentic-conversation!+
                    {:model-id model-id
                     :goal goal
+                    :instructions "Go, go, go!"
                     :max-turns max-turns
                     :tool-ids tool-ids
                     :allow-unsafe-tools? allow-unsafe-tools?
