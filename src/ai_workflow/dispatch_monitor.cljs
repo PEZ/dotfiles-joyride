@@ -1,4 +1,4 @@
-(ns ai-workflow.agent-monitor
+(ns ai-workflow.dispatch-monitor
   "Agent conversation monitoring with flare UI and output channel logging"
   (:require
    ["vscode" :as vscode]
@@ -22,10 +22,10 @@
 ;; Output Channel Management
 
 (defn get-output-channel!
-  "Get or create the Sub Agents output channel"
+  "Get or create the Agent Dispatch output channel"
   []
   (or (:agent/output-channel @!agent-state)
-      (let [channel (vscode/window.createOutputChannel "Sub Agents")]
+      (let [channel (vscode/window.createOutputChannel "Joyride Agent Dispatch")]
         (swap! !agent-state assoc :agent/output-channel channel)
         channel)))
 
@@ -180,7 +180,7 @@
                     :align-items :center
                     :margin-bottom "10px"
                     :padding "0 8px"}}
-      [:h2 {:style {:margin "0"}} "Sub Agents Monitor"]
+      [:h2 {:style {:margin "0"}} "Dispatch Monitor"]
       [:button {:onclick "vscode.postMessage({command: 'showLogs'})"
                 :style {:padding "4px 8px"
                         :background "var(--vscode-button-background)"
@@ -215,7 +215,7 @@
   (when-let [slot (ensure-sidebar-slot!)]
     (flare/flare!+
      {:key slot
-      :title "Sub Agents"
+      :title "Agent Dispatch"
       :html (agent-monitor-html)
       :reveal? false
       :message-handler (fn [msg]
@@ -224,7 +224,7 @@
 
 ;; Public API for Integration
 
-(defn reveal-agent-monitor!+
+(defn reveal-dispatch-monitor!+
   []
   (update-agent-monitor-flare!+)
   (let [slot (:agent/sidebar-slot @!agent-state)

@@ -3,7 +3,7 @@
   (:require
    ["path" :as path]
    ["vscode" :as vscode]
-   [ai-workflow.agents :as agents]
+   [ai-workflow.dispatch :as agent-dispatch]
    [cljs.pprint]
    [clojure.edn :as edn]
    [clojure.string :as string]
@@ -458,7 +458,7 @@
                     "copilot_findTextInFiles"]
 
           ;; Step 5: Call agent for analysis and content creation
-          agent-result (agents/autonomous-conversation!+
+          agent-result (agent-dispatch/autonomous-conversation!+
                         goal
                         {:model-id model-id
                          :max-turns max-turns
@@ -561,13 +561,15 @@
 
   ;; Workspace-scoped memory
   (record-memory!+
-   {:summary "Threading macros improve readability in data pipelines"
+   {:title "Thread it"
+    :summary "Threading macros improve readability in data pipelines"
     :domain "clojure"
     :scope :workspace})
 
   ;; With custom options
   (record-memory!+
-   {:summary "Use --autostash flag with git rebase"
+   {:title "Autostach FTW"
+    :summary "Use --autostash flag with git rebase"
     :domain "git-workflow"
     :model-id "claude-sonnet-4"
     :max-turns 15

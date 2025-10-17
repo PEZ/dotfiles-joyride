@@ -1,5 +1,5 @@
-(ns ai-workflow.agents
-  "Autonomous AI conversation system with improved error handling and adaptability"
+(ns ai-workflow.dispatch
+  "Autonomous AI conversation system"
   (:require
    ["vscode" :as vscode]
    [ai-workflow.agent-monitor :as monitor]
