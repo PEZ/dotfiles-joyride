@@ -1,94 +1,24 @@
 (ns ai-workflow.dispatch-monitor
-  "Agent conversation monitoring with flare UI and output channel logging"
+  "Presentation layer for agent dispatch monitoring.
+
+  Renders conversation UI in sidebar flare and handles user interactions."
   (:require
-   ["vscode" :as vscode]
+   [ai-workflow.dispatch-state :as state]
+   [ai-workflow.dispatch-logging :as logging]
    [clojure.string :as string]
    [joyride.flare :as flare]
    [promesa.core :as p]))
 
-;; State Management
-
-(defonce !agent-state
-  (atom {:agent/conversations {}
-         :agent/next-id 1
-         :agent/output-channel nil
-         :agent/sidebar-slot nil}))
-
-(comment
-  (swap! !agent-state update :agent/conversations dissoc 2 3 10)
-  (swap! !agent-state assoc :agent/next-id 2)
-  :rcf)
-
-;; Output Channel Management
-
-(defn get-output-channel!
-  "Get or create the Agent Dispatch output channel"
-  []
-  (or (:agent/output-channel @!agent-state)
-      (let [channel (vscode/window.createOutputChannel "Joyride Agent Dispatch")]
-        (swap! !agent-state assoc :agent/output-channel channel)
-        channel)))
-
-(defn log-to-agent-channel!
-  "Log a message to the agent output channel with conversation ID prefix on all lines"
-  [conv-id message]
-  (let [channel (get-output-channel!)
-        lines (string/split (str message) #"\r?\n")
-        prefix (str "[" conv-id "] ")]
-    (doseq [line lines]
-      (.appendLine channel (str prefix line)))))
-
-;; Conversation Management
-
-(defn register-conversation!
-  "Register a new conversation and return its ID"
-  [conversation-data]
-  (let [id (:agent/next-id @!agent-state)
-        conversation (merge conversation-data
-                            {:agent.conversation/id id
-                             :agent.conversation/status :started
-                             :agent.conversation/started-at (js/Date.)
-                             :agent.conversation/updated-at (js/Date.)
-                             :agent.conversation/current-turn 0
-                             :agent.conversation/cancelled? false
-                             :agent.conversation/cancellation-token-source nil
-                             :agent.conversation/error-message nil})]
-    (swap! !agent-state
-           (fn [state]
-             (-> state
-                 (assoc-in [:agent/conversations id] conversation)
-                 (update :agent/next-id inc))))
-    id))
-
-(defn update-conversation!
-  "Update conversation status and metadata"
-  [id updates]
-  (swap! !agent-state
-         (fn [state]
-           (update-in state
-                      [:agent/conversations id]
-                      merge
-                      (assoc updates :agent.conversation/updated-at (js/Date.))))))
+;; UI Interaction Handlers
 
 (defn cancel-conversation!
-  "Cancel a running conversation by cancelling its cancellation token"
-  [id]
-  (when-let [conv (get-in @!agent-state [:agent/conversations id])]
-    (log-to-agent-channel! id "🛑 Cancellation requested")
+  "Handle cancel button click - cancels token and marks conversation cancelled"
+  [conv-id]
+  (when-let [conv (state/get-conversation conv-id)]
+    (logging/log-to-channel! conv-id "🛑 Cancellation requested")
     (when-let [token-source (:agent.conversation/cancellation-token-source conv)]
       (.cancel token-source))
-    (update-conversation! id {:agent.conversation/status :cancelled
-                              :agent.conversation/cancelled? true})))
-
-(defn get-conversation
-  "Get conversation by ID"
-  [id]
-  (get-in @!agent-state [:agent/conversations id]))
-
-(defn get-all-conversations
-  "Get all conversations"
-  []
-  (-> @!agent-state :agent/conversations vals))
+    (state/mark-conversation-cancelled! conv-id)))
 
 ;; UI Rendering
 
@@ -195,7 +125,7 @@
 (defn agent-monitor-html
   "Generate complete monitor HTML"
   []
-  (let [conversations (get-all-conversations)
+  (let [conversations (state/get-all-conversations)
         sorted-convs (reverse (sort-by :agent.conversation/id conversations))]
     [:div {:style {:padding 0}}
      [:style "body { margin: 0; padding: 0;}"]
@@ -227,14 +157,14 @@
 ;; Flare Management
 
 (defn ensure-sidebar-slot! []
-  (if-let [slot (:agent/sidebar-slot @!agent-state)]
+  (if-let [slot (state/get-sidebar-slot)]
     slot
     (let [free-slots (apply disj
                             #{:sidebar-1 :sidebar-2 :sidebar-3 :sidebar-4 :sidebar-5}
                             (vec (keys (flare/ls))))]
       (when (seq free-slots)
         (let [new-slot (first free-slots)]
-          (swap! !agent-state assoc :agent/sidebar-slot new-slot)
+          (state/set-sidebar-slot! new-slot)
           new-slot)))))
 
 (defn update-agent-monitor-flare!+
@@ -248,7 +178,7 @@
       :reveal? false
       :message-handler (fn [msg]
                          (case (.-command msg)
-                           "showLogs" (.show (get-output-channel!))
+                           "showLogs" (.show (logging/get-output-channel!))
                            "cancel" (when-let [id (.-id msg)]
                                      (cancel-conversation! id)
                                      (update-agent-monitor-flare!+))
@@ -257,17 +187,18 @@
 ;; Public API for Integration
 
 (defn reveal-dispatch-monitor!+
+  "Reveal the dispatch monitor in the sidebar"
   []
   (update-agent-monitor-flare!+)
-  (let [slot (:agent/sidebar-slot @!agent-state)
+  (let [slot (state/get-sidebar-slot)
         view (some-> (flare/ls) slot :view)]
     (.show view true)))
 
 (defn start-monitoring-conversation!+
-  "Start monitoring a conversation - registers it and updates flare"
+  "Start monitoring a conversation - registers it, logs, and updates flare"
   [{:agent.conversation/keys [goal] :as conversation-data}]
-  (let [conv-id (register-conversation! conversation-data)]
-    (log-to-agent-channel! conv-id (str "🚀 Starting conversation: " goal))
+  (let [conv-id (state/register-conversation! conversation-data)]
+    (logging/log-to-channel! conv-id (str "🚀 Starting conversation: " goal))
     (p/let [_ (update-agent-monitor-flare!+)]
       conv-id)))
 
@@ -275,9 +206,9 @@
   "Log messages and optionally update conversation status.
    Accepts variadic messages for compatibility with `println`."
   [conv-id status-updates & messages]
-  (log-to-agent-channel! conv-id (string/join " " messages))
+  (logging/log-to-channel! conv-id (string/join " " messages))
   (when status-updates
-    (update-conversation! conv-id status-updates))
+    (state/update-conversation! conv-id status-updates))
   (update-agent-monitor-flare!+))
 
 (comment
@@ -326,10 +257,10 @@
     (println "Error conversation created"))
 
   ;; Check state
-  @!agent-state
+  @state/!agent-state
 
   ;; Get all conversations
-  (get-all-conversations)
+  (state/get-all-conversations)
 
   ;; Manually update flare
   (update-agent-monitor-flare!+)

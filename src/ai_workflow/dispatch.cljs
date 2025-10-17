@@ -2,6 +2,8 @@
   "Autonomous AI conversation system"
   (:require
    ["vscode" :as vscode]
+   [ai-workflow.dispatch-state :as state]
+   [ai-workflow.dispatch-logging :as logging]
    [ai-workflow.dispatch-monitor :as monitor]
    [ai-workflow.chat-util :as util]
    [clojure.edn :as edn]
@@ -165,10 +167,10 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
   [history tool-calls turn-count conv-id]
   (if (seq tool-calls)
     (do
-      (monitor/log-to-agent-channel! conv-id (str "🔧 AI Agent executing " (count tool-calls) " tool(s)"))
+      (logging/log-to-channel! conv-id (str "🔧 AI Agent executing " (count tool-calls) " tool(s)"))
       (p/let [logger (partial monitor/log-and-update!+ conv-id nil)
               tool-results (util/execute-tool-calls!+ tool-calls logger)]
-        (monitor/log-to-agent-channel! conv-id (str "✅ Tools executed, processed results: " tool-results))
+        (logging/log-to-channel! conv-id (str "✅ Tools executed, processed results: " tool-results))
         (add-tool-results history tool-results turn-count)))
     history))
 
@@ -204,9 +206,9 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
   conversation history."
   [{:keys [model-id goal max-turns progress-callback tools-args conv-id]} history turn-count last-response]
   (progress-callback (str "Turn " turn-count "/" max-turns))
-  (monitor/log-to-agent-channel! conv-id (str "Turn " turn-count "/" max-turns))
-  (monitor/update-conversation! conv-id {:agent.conversation/current-turn turn-count
-                                         :agent.conversation/status :working})
+  (logging/log-to-channel! conv-id (str "Turn " turn-count "/" max-turns))
+  (state/update-conversation! conv-id {:agent.conversation/current-turn turn-count
+                                       :agent.conversation/status :working})
   (p/let [_ (monitor/update-agent-monitor-flare!+)]
     (if (> turn-count max-turns)
       (format-completion-result history :max-turns-reached last-response)
@@ -230,8 +232,8 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
 
                ;; Log AI's response
                _ (when ai-text
-                   (monitor/log-to-agent-channel! conv-id "🤖 AI Agent says:")
-                   (monitor/log-to-agent-channel! conv-id ai-text))
+                   (logging/log-to-channel! conv-id "🤖 AI Agent says:")
+                   (logging/log-to-channel! conv-id ai-text))
 
                ;; Add AI response to history
                history-with-assistant (add-assistant-response history ai-text tool-calls turn-count)
@@ -244,12 +246,12 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
 
          (if (:continue? outcome)
            ;; Check for cancellation before continuing (catches cancellations between turns)
-           (if (:agent.conversation/cancelled? (monitor/get-conversation conv-id))
+           (if (:agent.conversation/cancelled? (state/get-conversation conv-id))
              (do
-               (monitor/log-to-agent-channel! conv-id "🛑 Conversation cancelled by user")
+               (logging/log-to-channel! conv-id "🛑 Conversation cancelled by user")
                (format-completion-result final-history :cancelled turn-result))
              (do
-               (monitor/log-to-agent-channel! conv-id "↻ AI Agent continuing to next step...")
+               (logging/log-to-channel! conv-id "↻ AI Agent continuing to next step...")
                (continue-conversation-loop
                 {:model-id model-id :goal goal :max-turns max-turns
                  :progress-callback progress-callback :tools-args tools-args :conv-id conv-id}
@@ -257,7 +259,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                 (inc turn-count)
                 turn-result)))
            (do
-             (monitor/log-to-agent-channel! conv-id (str "Exiting conversation loop: " (:reason outcome)))
+             (logging/log-to-channel! conv-id (str "Exiting conversation loop: " (:reason outcome)))
              (format-completion-result final-history (:reason outcome) turn-result))))
 
        (fn [error]
@@ -265,10 +267,10 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
          (if (or (= (.-message error) "Cancelled")
                  (re-find #"cancel" (.-message error)))
            (do
-             (monitor/log-to-agent-channel! conv-id "🛑 Conversation cancelled by user")
+             (logging/log-to-channel! conv-id "🛑 Conversation cancelled by user")
              (format-completion-result history :cancelled last-response))
            (do
-             (monitor/log-to-agent-channel! conv-id (str "❌ Error: " (.-message error)))
+             (logging/log-to-channel! conv-id (str "❌ Error: " (.-message error)))
              {:history history
               :reason :error
               :error-message (.-message error)
@@ -276,8 +278,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
 
 (defn agentic-conversation!+
   "Create an autonomous AI conversation that drives itself toward a goal"
-  ;; TODO: Why is `caller` unused?
-  [{:keys [model-id goal tool-ids max-turns progress-callback allow-unsafe-tools? caller conv-id]}]
+  [{:keys [model-id goal tool-ids max-turns progress-callback allow-unsafe-tools? conv-id]}]
   (p/let [tools-args (util/enable-specific-tools tool-ids allow-unsafe-tools?)
           model-info (util/get-model-by-id!+ model-id)]
     (if-not model-info
@@ -288,7 +289,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
        :final-response nil}
       (p/let [;; Create cancellation token and store it in conversation
               cancellation-token-source (vscode/CancellationTokenSource.)
-              _ (monitor/update-conversation! conv-id {:agent.conversation/cancellation-token-source cancellation-token-source})
+              _ (state/update-conversation! conv-id {:agent.conversation/cancellation-token-source cancellation-token-source})
               result (continue-conversation-loop
                       {:model-id model-id
                        :goal goal
@@ -300,7 +301,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                       1  ; start at turn 1
                       nil)]
         ;; Update final status
-        (monitor/update-conversation!
+        (state/update-conversation!
          conv-id
          {:agent.conversation/status (case (:reason result)
                                        :task-complete :done
@@ -346,7 +347,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
      ;; Check for model error first
      (if (:error? result)
        (do
-         (monitor/log-to-agent-channel! conv-id (str "❌ Model error: " (:error-message result)))
+         (logging/log-to-channel! conv-id (str "❌ Model error: " (:error-message result)))
          result)
        ;; Show final summary with proper turn counting
        (let [actual-turns (count (filter #(= (:role %) :assistant) (:history result)))
@@ -357,7 +358,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                             :agent-finished "finished"
                             "ended unexpectedly")
                           " (" actual-turns " turns, " (count (:history result)) " conversation steps)")]
-         (monitor/log-to-agent-channel! conv-id summary)
+         (logging/log-to-channel! conv-id summary)
          result)))))
 
 (comment
@@ -405,13 +406,13 @@ Generate the six first numbers in the fibonacci sequence without writing a funct
                               :model-id "claude-sonnet-4.5"
                               :max-turns 15
                               :caller "Mr Clojurian"
-                              :progress-callback vscode/window.showInformationMessage
                               :tool-ids use-tool-ids})
 
   (autonomous-conversation!+ (str "Analyze this project structure and create documentation. Keep each step laser focused."
                                   #_#_"\nAvailable tools: "
                                     (pr-str use-tool-ids))
-                             {:model-id "claude-sonnet-4"
+                             {:title "Project Summarizer"
+                              :model-id "claude-sonnet-4.5"
                               :max-turns 12
                               :progress-callback vscode/window.showInformationMessage
                               :tool-ids use-tool-ids})
