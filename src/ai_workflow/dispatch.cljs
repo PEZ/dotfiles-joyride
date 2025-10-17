@@ -211,53 +211,68 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
     (if (> turn-count max-turns)
       (format-completion-result history :max-turns-reached last-response)
 
-      (p/let [;; Execute the conversation turn
-              turn-result (execute-conversation-turn
-                           {:model-id model-id
-                            :goal goal
-                            :history history
-                            :turn-count turn-count
-                            :tools-args tools-args})
+      (p/catch
+       (p/let [;; Execute the conversation turn
+               turn-result (execute-conversation-turn
+                            {:model-id model-id
+                             :goal goal
+                             :history history
+                             :turn-count turn-count
+                             :tools-args tools-args})
 
-              ;; Check for errors first
-              _ (when (:error turn-result)
-                  (throw (js/Error. (:message turn-result))))
+               ;; Check for errors first
+               _ (when (:error turn-result)
+                   (throw (js/Error. (:message turn-result))))
 
-              ai-text (:text turn-result)
-              tool-calls (or (seq (:tool-calls turn-result))
-                             (parse-tool-calls ai-text (generate-call-id)))
+               ai-text (:text turn-result)
+               tool-calls (or (seq (:tool-calls turn-result))
+                              (parse-tool-calls ai-text (generate-call-id)))
 
-              ;; Log AI's response
-              _ (when ai-text
-                  (monitor/log-to-agent-channel! conv-id "🤖 AI Agent says:")
-                  (monitor/log-to-agent-channel! conv-id ai-text))
+               ;; Log AI's response
+               _ (when ai-text
+                   (monitor/log-to-agent-channel! conv-id "🤖 AI Agent says:")
+                   (monitor/log-to-agent-channel! conv-id ai-text))
 
-              ;; Add AI response to history
-              history-with-assistant (add-assistant-response history ai-text tool-calls turn-count)
+               ;; Add AI response to history
+               history-with-assistant (add-assistant-response history ai-text tool-calls turn-count)
 
-              ;; Execute tools and update history
-              final-history (execute-tools-if-present!+ history-with-assistant tool-calls turn-count conv-id)
+               ;; Execute tools and update history
+               final-history (execute-tools-if-present!+ history-with-assistant tool-calls turn-count conv-id)
 
-              ;; Determine what to do next
-              outcome (determine-conversation-outcome ai-text tool-calls turn-count max-turns)]
+               ;; Determine what to do next
+               outcome (determine-conversation-outcome ai-text tool-calls turn-count max-turns)]
 
-        (if (:continue? outcome)
-          ;; Check for cancellation before continuing to next turn
-          (if (:agent.conversation/cancelled? (monitor/get-conversation conv-id))
-            (do
-              (monitor/log-to-agent-channel! conv-id "🛑 Conversation cancelled by user")
-              (format-completion-result final-history :cancelled turn-result))
-            (do
-              (monitor/log-to-agent-channel! conv-id "↻ AI Agent continuing to next step...")
-              (continue-conversation-loop
-               {:model-id model-id :goal goal :max-turns max-turns
-                :progress-callback progress-callback :tools-args tools-args :conv-id conv-id}
-               final-history
-               (inc turn-count)
-               turn-result)))
-          (do
-            (monitor/log-to-agent-channel! conv-id (str "Exiting conversation loop: " (:reason outcome)))
-            (format-completion-result final-history (:reason outcome) turn-result)))))))
+         (if (:continue? outcome)
+           ;; Check for cancellation before continuing (catches cancellations between turns)
+           (if (:agent.conversation/cancelled? (monitor/get-conversation conv-id))
+             (do
+               (monitor/log-to-agent-channel! conv-id "🛑 Conversation cancelled by user")
+               (format-completion-result final-history :cancelled turn-result))
+             (do
+               (monitor/log-to-agent-channel! conv-id "↻ AI Agent continuing to next step...")
+               (continue-conversation-loop
+                {:model-id model-id :goal goal :max-turns max-turns
+                 :progress-callback progress-callback :tools-args tools-args :conv-id conv-id}
+                final-history
+                (inc turn-count)
+                turn-result)))
+           (do
+             (monitor/log-to-agent-channel! conv-id (str "Exiting conversation loop: " (:reason outcome)))
+             (format-completion-result final-history (:reason outcome) turn-result))))
+
+       (fn [error]
+         ;; Handle cancellation errors
+         (if (or (= (.-message error) "Cancelled")
+                 (re-find #"cancel" (.-message error)))
+           (do
+             (monitor/log-to-agent-channel! conv-id "🛑 Conversation cancelled by user")
+             (format-completion-result history :cancelled last-response))
+           (do
+             (monitor/log-to-agent-channel! conv-id (str "❌ Error: " (.-message error)))
+             {:history history
+              :reason :error
+              :error-message (.-message error)
+              :final-response last-response})))))))
 
 (defn agentic-conversation!+
   "Create an autonomous AI conversation that drives itself toward a goal"
@@ -271,12 +286,15 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
        :reason :model-not-found-error
        :error-message (str "Model not found: " model-id)
        :final-response nil}
-      (p/let [result (continue-conversation-loop
+      (p/let [;; Create cancellation token and store it in conversation
+              cancellation-token-source (vscode/CancellationTokenSource.)
+              _ (monitor/update-conversation! conv-id {:agent.conversation/cancellation-token-source cancellation-token-source})
+              result (continue-conversation-loop
                       {:model-id model-id
                        :goal goal
                        :max-turns max-turns
                        :progress-callback progress-callback
-                       :tools-args tools-args
+                       :tools-args (assoc tools-args :cancellationToken (.-token cancellation-token-source))
                        :conv-id conv-id}
                       [] ; empty initial history
                       1  ; start at turn 1
@@ -292,6 +310,8 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
           :agent.conversation/error-message (when (= (:reason result) :error)
                                               (:error-message result))})
         (monitor/update-agent-monitor-flare!+)
+        ;; Dispose the token source
+        (.dispose cancellation-token-source)
         result))))
 
 (defn autonomous-conversation!+

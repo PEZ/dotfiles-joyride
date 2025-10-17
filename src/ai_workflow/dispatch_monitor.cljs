@@ -51,6 +51,7 @@
                              :agent.conversation/updated-at (js/Date.)
                              :agent.conversation/current-turn 0
                              :agent.conversation/cancelled? false
+                             :agent.conversation/cancellation-token-source nil
                              :agent.conversation/error-message nil})]
     (swap! !agent-state
            (fn [state]
@@ -70,10 +71,12 @@
                       (assoc updates :agent.conversation/updated-at (js/Date.))))))
 
 (defn cancel-conversation!
-  "Cancel a running conversation by setting its cancelled? flag"
+  "Cancel a running conversation by cancelling its cancellation token"
   [id]
-  (when (get-in @!agent-state [:agent/conversations id])
+  (when-let [conv (get-in @!agent-state [:agent/conversations id])]
     (log-to-agent-channel! id "🛑 Cancellation requested")
+    (when-let [token-source (:agent.conversation/cancellation-token-source conv)]
+      (.cancel token-source))
     (update-conversation! id {:agent.conversation/status :cancelled
                               :agent.conversation/cancelled? true})))
 
