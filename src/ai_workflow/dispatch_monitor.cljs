@@ -45,12 +45,13 @@
   [conversation-data]
   (let [id (:agent/next-id @!agent-state)
         conversation (merge conversation-data
-                           {:agent.conversation/id id
-                            :agent.conversation/status :started
-                            :agent.conversation/started-at (js/Date.)
-                            :agent.conversation/updated-at (js/Date.)
-                            :agent.conversation/current-turn 0
-                            :agent.conversation/error-message nil})]
+                            {:agent.conversation/id id
+                             :agent.conversation/status :started
+                             :agent.conversation/started-at (js/Date.)
+                             :agent.conversation/updated-at (js/Date.)
+                             :agent.conversation/current-turn 0
+                             :agent.conversation/cancelled? false
+                             :agent.conversation/error-message nil})]
     (swap! !agent-state
            (fn [state]
              (-> state
@@ -67,6 +68,14 @@
                       [:agent/conversations id]
                       merge
                       (assoc updates :agent.conversation/updated-at (js/Date.))))))
+
+(defn cancel-conversation!
+  "Cancel a running conversation by setting its cancelled? flag"
+  [id]
+  (when (get-in @!agent-state [:agent/conversations id])
+    (log-to-agent-channel! id "🛑 Cancellation requested")
+    (update-conversation! id {:agent.conversation/status :cancelled
+                              :agent.conversation/cancelled? true})))
 
 (defn get-conversation
   "Get conversation by ID"
@@ -88,6 +97,7 @@
     :working "codicon-loading codicon-modifier-spin"
     :done "codicon-pass"
     :error "codicon-error"
+    :cancelled "codicon-debug-stop"
     "codicon-question"))
 
 (defn format-time
@@ -112,6 +122,7 @@
                      :done "var(--vscode-charts-green)"
                      :error "var(--vscode-charts-red)"
                      :working "var(--vscode-charts-blue)"
+                     :cancelled "var(--vscode-charts-orange)"
                      nil)
         time-str (format-time started-at)]
     [:div {:style {:border "1px solid var(--vscode-panel-border)"
@@ -141,8 +152,22 @@
         (str "[" id "] ")
         [:span {:style {:color "var(--vscode-charts-foreground)"}}
          title]]]
-      [:span {:style {:font-size "0.9em" :opacity "0.7" :flex-shrink "0"}}
-       time-str]]
+      [:div {:style {:display :flex
+                     :align-items :center
+                     :gap "4px"}}
+       (when (#{:working :started} status)
+         [:button {:onclick (str "vscode.postMessage({command: 'cancel', id: " id "})")
+                   :style {:padding "2px 4px"
+                           :background "transparent"
+                           :border "1px solid var(--vscode-button-border)"
+                           :border-radius "2px"
+                           :cursor :pointer
+                           :flex-shrink "0"}}
+          [:i {:class "codicon codicon-debug-stop"
+               :style {:color "var(--vscode-errorForeground)"
+                       :font-size "14px"}}]])
+       [:span {:style {:font-size "0.9em" :opacity "0.7" :flex-shrink "0"}}
+        time-str]]]
      [:div {:style {:font-size "0.9em" :margin-bottom "4px"}}
       [:strong "Turn: "] current-turn "/" max-turns " | "
       (when caller
@@ -219,8 +244,12 @@
       :html (agent-monitor-html)
       :reveal? false
       :message-handler (fn [msg]
-                         (when (= (.-command msg) "showLogs")
-                           (.show (get-output-channel!))))})))
+                         (case (.-command msg)
+                           "showLogs" (.show (get-output-channel!))
+                           "cancel" (when-let [id (.-id msg)]
+                                     (cancel-conversation! id)
+                                     (update-agent-monitor-flare!+))
+                           nil))})))
 
 ;; Public API for Integration
 

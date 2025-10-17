@@ -2,7 +2,7 @@
   "Autonomous AI conversation system"
   (:require
    ["vscode" :as vscode]
-   [ai-workflow.agent-monitor :as monitor]
+   [ai-workflow.dispatch-monitor :as monitor]
    [ai-workflow.chat-util :as util]
    [clojure.edn :as edn]
    [promesa.core :as p]))
@@ -242,14 +242,19 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
               outcome (determine-conversation-outcome ai-text tool-calls turn-count max-turns)]
 
         (if (:continue? outcome)
-          (do
-            (monitor/log-to-agent-channel! conv-id "↻ AI Agent continuing to next step...")
-            (continue-conversation-loop
-             {:model-id model-id :goal goal :max-turns max-turns
-              :progress-callback progress-callback :tools-args tools-args :conv-id conv-id}
-             final-history
-             (inc turn-count)
-             turn-result))
+          ;; Check for cancellation before continuing to next turn
+          (if (:agent.conversation/cancelled? (monitor/get-conversation conv-id))
+            (do
+              (monitor/log-to-agent-channel! conv-id "🛑 Conversation cancelled by user")
+              (format-completion-result final-history :cancelled turn-result))
+            (do
+              (monitor/log-to-agent-channel! conv-id "↻ AI Agent continuing to next step...")
+              (continue-conversation-loop
+               {:model-id model-id :goal goal :max-turns max-turns
+                :progress-callback progress-callback :tools-args tools-args :conv-id conv-id}
+               final-history
+               (inc turn-count)
+               turn-result)))
           (do
             (monitor/log-to-agent-channel! conv-id (str "Exiting conversation loop: " (:reason outcome)))
             (format-completion-result final-history (:reason outcome) turn-result)))))))
@@ -277,13 +282,15 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                       1  ; start at turn 1
                       nil)]
         ;; Update final status
-        (monitor/update-conversation! conv-id
-                                      {:agent.conversation/status (case (:reason result)
-                                                                    :task-complete :done
-                                                                    :error :error
-                                                                    :done)
-                                       :agent.conversation/error-message (when (= (:reason result) :error)
-                                                                           (:error-message result))})
+        (monitor/update-conversation!
+         conv-id
+         {:agent.conversation/status (case (:reason result)
+                                       :task-complete :done
+                                       :cancelled :cancelled
+                                       :error :error
+                                       :done)
+          :agent.conversation/error-message (when (= (:reason result) :error)
+                                              (:error-message result))})
         (monitor/update-agent-monitor-flare!+)
         result))))
 
@@ -360,7 +367,8 @@ Generate the six first numbers in the fibonacci sequence without writing a funct
     (def fib-res fib-res))
 
   (autonomous-conversation!+ "Count all .cljs files and show the result"
-                             {:tool-ids use-tool-ids
+                             {:title "Power Counter"
+                              :tool-ids use-tool-ids
                               :caller "repl-file-counter"})
 
   (autonomous-conversation!+ "Show an information message that says 'Hello from the adaptive AI agent!' using VS Code APIs"
@@ -373,7 +381,8 @@ Generate the six first numbers in the fibonacci sequence without writing a funct
   (autonomous-conversation!+ (str "Analyze this project structure and create documentation. For tool calls use this syntax: \n\nBEGIN-TOOL-CALL\n{:name \"tool_name\", :input {:someParam \"value\", :someOtherParam [\"value\" 42]}}\nEND-TOOL-CALL\n\nThe result of the tool calls will be provided to you as part of the next step. Keep each step laser focused."
                                   "\nAvailable tools: "
                                   (pr-str use-tool-ids))
-                             {:model-id "claude-sonnet-4.5"
+                             {:title "Project Summarizer"
+                              :model-id "claude-sonnet-4.5"
                               :max-turns 15
                               :caller "Mr Clojurian"
                               :progress-callback vscode/window.showInformationMessage
