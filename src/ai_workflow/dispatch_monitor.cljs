@@ -28,6 +28,9 @@
   (case status
     :started "codicon-debug-pause"
     :working "codicon-loading codicon-modifier-spin"
+    :task-complete "codicon-pass-filled"
+    :max-turns-reached "codicon-clock"
+    :agent-finished "codicon-check"
     :done "codicon-pass"
     :error "codicon-error"
     :cancelled "codicon-debug-stop"
@@ -53,6 +56,9 @@
                                    total-tokens]} conv
         icon-class (status-icon status)
         icon-color (case status
+                     :task-complete "var(--vscode-charts-green)"
+                     :max-turns-reached "var(--vscode-charts-yellow)"
+                     :agent-finished "var(--vscode-charts-green)"
                      :done "var(--vscode-charts-green)"
                      :error "var(--vscode-charts-red)"
                      :working "var(--vscode-charts-blue)"

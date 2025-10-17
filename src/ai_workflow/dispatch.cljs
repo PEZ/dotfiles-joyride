@@ -314,7 +314,9 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
         (state/update-conversation!
          conv-id
          {:agent.conversation/status (case (:reason result)
-                                       :task-complete :done
+                                       :task-complete :task-complete
+                                       :max-turns-reached :max-turns-reached
+                                       :agent-finished :agent-finished
                                        :cancelled :cancelled
                                        :error :error
                                        :done)
