@@ -206,16 +206,17 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
   conversation history."
   [{:keys [model-id goal max-turns progress-callback tools-args conv-id]} history turn-count last-response]
   (progress-callback (str "Turn " turn-count "/" max-turns))
-  (logging/log-to-channel! conv-id (str "Turn " turn-count "/" max-turns))
   (p/let [;; Count tokens for this turn's messages
           messages (build-agentic-messages history goal)
           turn-tokens (util/count-message-tokens!+ model-id messages)
           current-total (:agent.conversation/total-tokens (state/get-conversation conv-id) 0)
-          new-total (+ current-total turn-tokens)
-          _ (state/update-conversation! conv-id {:agent.conversation/current-turn turn-count
-                                                  :agent.conversation/status :working
-                                                  :agent.conversation/total-tokens new-total})
-          _ (monitor/update-agent-monitor-flare!+)]
+          new-total (+ current-total turn-tokens)]
+
+    (logging/log-to-channel! conv-id (str "📊 Turn " turn-count "/" max-turns " - Starting with " turn-tokens " tokens (total: " new-total " tokens)"))
+    (state/update-conversation! conv-id {:agent.conversation/current-turn turn-count
+                                         :agent.conversation/status :working
+                                         :agent.conversation/total-tokens new-total})
+    (monitor/update-agent-monitor-flare!+)
     (if (> turn-count max-turns)
       (format-completion-result history :max-turns-reached last-response)
 
@@ -248,7 +249,10 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                final-history (execute-tools-if-present!+ history-with-assistant tool-calls turn-count conv-id)
 
                ;; Determine what to do next
-               outcome (determine-conversation-outcome ai-text tool-calls turn-count max-turns)]
+               outcome (determine-conversation-outcome ai-text tool-calls turn-count max-turns)
+
+               final-tokens (:agent.conversation/total-tokens (state/get-conversation conv-id))]
+         (logging/log-to-channel! conv-id (str "✓ Turn " turn-count " completed (total: " final-tokens " tokens)"))
 
          (if (:continue? outcome)
            ;; Check for cancellation before continuing (catches cancellations between turns)
@@ -414,13 +418,13 @@ Generate the nine first numbers in the fibonacci sequence without writing a func
                               :caller "Mr Clojurian"
                               :tool-ids use-tool-ids})
 
-  (autonomous-conversation!+ (str "Analyze this project structure and create documentation. Keep each step laser focused."
-                                  #_#_"\nAvailable tools: "
-                                    (pr-str use-tool-ids))
+  (autonomous-conversation!+ "Analyze the project structure of this workspace and create documentation. Keep each step laser focused."
+                             #_#_"\nAvailable tools: "
+                               (pr-str use-tool-ids)
                              {:title "Project Summarizer"
                               :model-id "claude-sonnet-4.5"
+                              :caller "A friend"
                               :max-turns 12
-                              :progress-callback vscode/window.showInformationMessage
                               :tool-ids use-tool-ids})
 
   (autonomous-conversation!+ "Create a file docs/greeting.md with a greeting to Clojurians"

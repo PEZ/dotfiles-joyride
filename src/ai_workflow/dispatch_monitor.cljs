@@ -103,14 +103,12 @@
        [:span {:style {:font-size "0.9em" :opacity "0.7" :flex-shrink "0"}}
         time-str]]]
      [:div {:style {:font-size "0.9em" :margin-bottom "4px"}}
-      [:strong "Turn: "] current-turn "/" max-turns
-      (when (and total-tokens (pos? total-tokens))
-        [:span " (" total-tokens " tokens)"])
-      " | "
+      current-turn "/" max-turns " | "
+      [:strong "Tks: "] total-tokens " | "
+      model-id " | "
       (when caller
         [:span
-         [:strong "Caller: "] caller " | "])
-      [:strong "Model: "] model-id]
+         [:strong "Who: "] caller])]
      [:div {:style {:max-height "120px"
                     :overflow-y :auto
                     :font-size "0.9em"

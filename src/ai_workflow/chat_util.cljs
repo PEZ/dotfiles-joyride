@@ -242,9 +242,18 @@
   (enable-specific-tools ["joyride_evaluate_code"]))
 
 (defn count-message-tokens!+
-  "Count tokens for a sequence of messages using the model's tokenizer"
+  "Count tokens for a message chain including tool calls and results.
+   Takes message maps with :role and :content, converts them to proper
+   LanguageModelChatMessage objects for accurate token counting."
   [model-id messages]
   (p/let [model (get-model-by-id!+ model-id)
-          message-contents (map :content messages)
-          token-counts (p/all (map #(.countTokens model %) message-contents))]
+          ;; Convert to LanguageModelChatMessage objects for proper token counting
+          chat-messages (mapv (fn [{:keys [role content]}]
+                                (case role
+                                  :system (vscode/LanguageModelChatMessage.User content)
+                                  :user (vscode/LanguageModelChatMessage.User content)
+                                  :assistant (vscode/LanguageModelChatMessage.Assistant content)))
+                              messages)
+          ;; Count tokens for each message (handles tool calls/results automatically)
+          token-counts (p/all (to-array (map #(.countTokens model %) chat-messages)))]
     (reduce + token-counts)))
