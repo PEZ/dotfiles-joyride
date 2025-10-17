@@ -49,7 +49,8 @@
   (let [{:agent.conversation/keys [id goal status model-id
                                    caller title
                                    current-turn max-turns
-                                   started-at error-message]} conv
+                                   started-at error-message
+                                   total-tokens]} conv
         icon-class (status-icon status)
         icon-color (case status
                      :done "var(--vscode-charts-green)"
@@ -102,7 +103,10 @@
        [:span {:style {:font-size "0.9em" :opacity "0.7" :flex-shrink "0"}}
         time-str]]]
      [:div {:style {:font-size "0.9em" :margin-bottom "4px"}}
-      [:strong "Turn: "] current-turn "/" max-turns " | "
+      [:strong "Turn: "] current-turn "/" max-turns
+      (when (and total-tokens (pos? total-tokens))
+        [:span " (" total-tokens " tokens)"])
+      " | "
       (when caller
         [:span
          [:strong "Caller: "] caller " | "])

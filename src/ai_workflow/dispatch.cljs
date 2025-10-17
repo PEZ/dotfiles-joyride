@@ -207,9 +207,15 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
   [{:keys [model-id goal max-turns progress-callback tools-args conv-id]} history turn-count last-response]
   (progress-callback (str "Turn " turn-count "/" max-turns))
   (logging/log-to-channel! conv-id (str "Turn " turn-count "/" max-turns))
-  (state/update-conversation! conv-id {:agent.conversation/current-turn turn-count
-                                       :agent.conversation/status :working})
-  (p/let [_ (monitor/update-agent-monitor-flare!+)]
+  (p/let [;; Count tokens for this turn's messages
+          messages (build-agentic-messages history goal)
+          turn-tokens (util/count-message-tokens!+ model-id messages)
+          current-total (:agent.conversation/total-tokens (state/get-conversation conv-id) 0)
+          new-total (+ current-total turn-tokens)
+          _ (state/update-conversation! conv-id {:agent.conversation/current-turn turn-count
+                                                  :agent.conversation/status :working
+                                                  :agent.conversation/total-tokens new-total})
+          _ (monitor/update-agent-monitor-flare!+)]
     (if (> turn-count max-turns)
       (format-completion-result history :max-turns-reached last-response)
 
@@ -379,7 +385,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
     (println (pr-str use-tool-ids) "\n"))
 
   (p/let [fib-res (autonomous-conversation!+ "# Fibonacci Generator
-Generate the six first numbers in the fibonacci sequence without writing a function, but instead by starting with evaluating `[0 1]` and then each step read the result and evaluate `[second-number sum-of-first-and-second-number]`. In the last step evaluate just `second-number`."
+Generate the nine first numbers in the fibonacci sequence without writing a function, but instead by starting with evaluating `[0 1]` and then each step read the result and evaluate `[second-number sum-of-first-and-second-number]`. In the last step evaluate just `second-number`."
                                              {:model-id "grok-code-fast-1"
                                               :caller "Mr Clojurian"
                                               :title "Expensive fibs"

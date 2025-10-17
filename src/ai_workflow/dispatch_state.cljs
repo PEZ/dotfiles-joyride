@@ -19,12 +19,13 @@
   [conversation-data]
   (let [id (:agent/next-id @!agent-state)
         conversation (merge conversation-data
-                           {:agent.conversation/id id
-                            :agent.conversation/status :started
-                            :agent.conversation/current-turn 0
-                            :agent.conversation/started-at (js/Date.)
-                            :agent.conversation/cancelled? false
-                            :agent.conversation/cancellation-token-source nil})]
+                            {:agent.conversation/id id
+                             :agent.conversation/status :started
+                             :agent.conversation/current-turn 0
+                             :agent.conversation/started-at (js/Date.)
+                             :agent.conversation/cancelled? false
+                             :agent.conversation/cancellation-token-source nil
+                             :agent.conversation/total-tokens 0})]
     (swap! !agent-state
            (fn [state]
              (-> state

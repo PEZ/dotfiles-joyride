@@ -150,7 +150,6 @@
        (js/Promise.resolve []))))
 
 (comment
-  (js/JSON.stringify (first tool-calls))
   (execute-tool-calls!+ #js [#js {:callId "foo"
                                   :name "joyride_evaluate_code"
                                   :input #js {:code "(vscode/window.showInformationMessage \"hello\")"}}])
@@ -241,3 +240,11 @@
   "Get only the Joyride evaluation tool"
   []
   (enable-specific-tools ["joyride_evaluate_code"]))
+
+(defn count-message-tokens!+
+  "Count tokens for a sequence of messages using the model's tokenizer"
+  [model-id messages]
+  (p/let [model (get-model-by-id!+ model-id)
+          message-contents (map :content messages)
+          token-counts (p/all (map #(.countTokens model %) message-contents))]
+    (reduce + token-counts)))
