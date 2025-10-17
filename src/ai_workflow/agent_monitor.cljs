@@ -103,7 +103,8 @@
 (defn conversation-html
   "Generate HTML for a single conversation entry"
   [conv]
-  (let [{:agent.conversation/keys [id goal status model-id caller
+  (let [{:agent.conversation/keys [id goal status model-id
+                                   caller title
                                    current-turn max-turns
                                    started-at error-message]} conv
         icon-class (status-icon status)
@@ -129,11 +130,14 @@
             :style (merge {:padding-top "2px"}
                           (when icon-color
                             {:color icon-color}))}]
-       (str "[" id "] ") [:strong "Turn: "] current-turn "/" max-turns]
+       (str "[" id "] ") title]
       [:span {:style {:font-size "0.9em" :opacity "0.7"}}
        time-str]]
      [:div {:style {:font-size "0.9em" :margin-bottom "4px"}}
-      [:strong "Caller: "] caller " | "
+      [:strong "Turn: "] current-turn "/" max-turns " | "
+      (when caller
+        [:span
+         [:strong "Caller: "] caller " | "])
       [:strong "Model: "] model-id]
      [:div {:style {:max-height "120px"
                     :overflow-y :auto
@@ -210,13 +214,17 @@
 
 ;; Public API for Integration
 
+(defn reveal-agent-monitor!+
+  []
+  (update-agent-monitor-flare!+)
+  (let [slot (:agent/sidebar-slot @!agent-state)
+        view (some-> (flare/ls) slot :view)]
+    (.show view true)))
+
 (defn start-monitoring-conversation!+
   "Start monitoring a conversation - registers it and updates flare"
-  [{:agent.conversation/keys [goal caller] :as conversation-data}]
-  (let [conversation-data (assoc conversation-data
-                                 :agent.conversation/caller
-                                 (or caller "Unknown"))
-        conv-id (register-conversation! conversation-data)]
+  [{:agent.conversation/keys [goal] :as conversation-data}]
+  (let [conv-id (register-conversation! conversation-data)]
     (log-to-agent-channel! conv-id (str "🚀 Starting conversation: " goal))
     (p/let [_ (update-agent-monitor-flare!+)]
       conv-id)))
@@ -238,7 +246,8 @@
                    {:agent.conversation/goal "Test workflow with flare updates"
                     :agent.conversation/model-id "gpt-4o-mini"
                     :agent.conversation/max-turns 5
-                    :agent.conversation/caller "repl-test"})]
+                    :agent.conversation/caller "repl-test"
+                    :agent.conversation/title "Monior test"})]
     (def test-conv-id conv-id)
     (println "Started conversation" conv-id))
 

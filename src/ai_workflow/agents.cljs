@@ -293,18 +293,18 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
    (autonomous-conversation!+ goal
                               {}))
 
-  ([goal {:keys [model-id max-turns tool-ids progress-callback allow-unsafe-tools? caller]
+  ([goal {:keys [model-id max-turns tool-ids progress-callback allow-unsafe-tools? caller title]
           :or {model-id "gpt-4o-mini"
                tool-ids []
                max-turns 10
-               allow-unsafe-tools? false
-               caller "Unknown"}}]
+               allow-unsafe-tools? false}}]
 
    (p/let [conv-id (monitor/start-monitoring-conversation!+
-                    {:agent.conversation/goal goal
-                     :agent.conversation/model-id model-id
-                     :agent.conversation/max-turns max-turns
-                     :agent.conversation/caller caller})
+                    (cond-> {:agent.conversation/goal goal
+                             :agent.conversation/model-id model-id
+                             :agent.conversation/max-turns max-turns
+                             :agent.conversation/caller caller
+                             :agent.conversation/title title}))
            progress-callback (or progress-callback
                                  #())
            result (agentic-conversation!+
@@ -351,11 +351,14 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
     (println (pr-str use-tool-ids) "\n"))
 
   (p/let [fib-res (autonomous-conversation!+ "# Fibonacci Generator
-Generate the three first numbers in the fibonacci sequence without writing a function, but instead by starting with evaluating `[0 1]` and then each step read the result and evaluate `[second-number sum-of-first-and-second-number]`. In the last step evaluate just `second-number`."
+Generate the six first numbers in the fibonacci sequence without writing a function, but instead by starting with evaluating `[0 1]` and then each step read the result and evaluate `[second-number sum-of-first-and-second-number]`. In the last step evaluate just `second-number`."
                                              {:model-id "grok-code-fast-1"
+                                              :caller "Mr Clojurian"
+                                              :title "Expensive fibs"
                                               :max-turns 12
                                               :tool-ids ["joyride_evaluate_code"]})]
     (def fib-res fib-res))
+
   (autonomous-conversation!+ "Count all .cljs files and show the result"
                              {:tool-ids use-tool-ids
                               :caller "repl-file-counter"})
@@ -370,8 +373,9 @@ Generate the three first numbers in the fibonacci sequence without writing a fun
   (autonomous-conversation!+ (str "Analyze this project structure and create documentation. For tool calls use this syntax: \n\nBEGIN-TOOL-CALL\n{:name \"tool_name\", :input {:someParam \"value\", :someOtherParam [\"value\" 42]}}\nEND-TOOL-CALL\n\nThe result of the tool calls will be provided to you as part of the next step. Keep each step laser focused."
                                   "\nAvailable tools: "
                                   (pr-str use-tool-ids))
-                             {:model-id "claude-opus-4"
-                              :max-turns 12
+                             {:model-id "claude-sonnet-4.5"
+                              :max-turns 15
+                              :caller "Mr Clojurian"
                               :progress-callback vscode/window.showInformationMessage
                               :tool-ids use-tool-ids})
 

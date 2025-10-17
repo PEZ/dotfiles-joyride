@@ -429,7 +429,7 @@
       - :write-failed - File write operation failed
       - :file-not-found - Tried to append to non-existent file
       - :parse-failed - Could not parse agent response"
-  [{:keys [summary domain caller scope model-id max-turns progress-callback]
+  [{:keys [summary domain caller title scope model-id max-turns progress-callback]
     :or {scope :global
          model-id agent-model
          max-turns default-max-turns
@@ -464,6 +464,7 @@
                          :max-turns max-turns
                          :tool-ids tool-ids
                          :caller caller
+                         :title title
                          :progress-callback progress-callback})
 
           ;; Step 6: Search agent messages backwards for EDN structure
