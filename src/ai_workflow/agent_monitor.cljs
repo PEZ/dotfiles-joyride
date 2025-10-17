@@ -138,7 +138,9 @@
                             {:color icon-color}))}]
        [:span {:style {:overflow :hidden
                        :text-overflow :ellipsis}}
-        (str "[" id "] ") title]]
+        (str "[" id "] ")
+        [:span {:style {:color "var(--vscode-charts-foreground)"}}
+         title]]]
       [:span {:style {:font-size "0.9em" :opacity "0.7" :flex-shrink "0"}}
        time-str]]
      [:div {:style {:font-size "0.9em" :margin-bottom "4px"}}
