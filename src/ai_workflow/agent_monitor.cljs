@@ -125,13 +125,21 @@
       [:span {:style {:font-weight :bold
                       :display :flex
                       :align-items :center
-                      :gap "4px"}}
+                      :gap "4px"
+                      :flex "1"
+                      :min-width "0"
+                      :overflow :hidden
+                      :text-overflow :ellipsis
+                      :white-space :nowrap}}
        [:i {:class (str "codicon " icon-class)
-            :style (merge {:padding-top "2px"}
+            :style (merge {:padding-top "2px"
+                           :flex-shrink "0"}
                           (when icon-color
                             {:color icon-color}))}]
-       (str "[" id "] ") title]
-      [:span {:style {:font-size "0.9em" :opacity "0.7"}}
+       [:span {:style {:overflow :hidden
+                       :text-overflow :ellipsis}}
+        (str "[" id "] ") title]]
+      [:span {:style {:font-size "0.9em" :opacity "0.7" :flex-shrink "0"}}
        time-str]]
      [:div {:style {:font-size "0.9em" :margin-bottom "4px"}}
       [:strong "Turn: "] current-turn "/" max-turns " | "
