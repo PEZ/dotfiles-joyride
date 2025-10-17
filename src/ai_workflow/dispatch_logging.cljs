@@ -1,6 +1,6 @@
 (ns ai-workflow.dispatch-logging
   "Logging infrastructure for agent dispatch system.
-  
+
   Manages output channel for conversation logs."
   (:require
    ["vscode" :as vscode]
@@ -8,15 +8,13 @@
 
 ;; Output Channel Management
 
-(defonce !output-channel (atom nil))
-
 (defn get-output-channel!
   "Get or create the output channel for agent logs"
   []
-  (if-let [channel @!output-channel]
+  (if-let [channel (state/get-output-channel)]
     channel
     (let [channel (vscode/window.createOutputChannel "Agent Dispatch")]
-      (reset! !output-channel channel)
+      (state/set-output-channel! channel)
       channel)))
 
 (defn log-to-channel!
@@ -30,5 +28,5 @@
 (defn clear-log!
   "Clear the output channel"
   []
-  (when-let [channel @!output-channel]
+  (when-let [channel (state/get-output-channel)]
     (.clear channel)))

@@ -1,6 +1,6 @@
 (ns ai-workflow.dispatch-state
   "Pure state management for agent dispatch conversations.
-  
+
   This namespace provides the single source of truth for conversation data
   with pure functions operating on a centralized atom. No side effects.")
 
@@ -8,7 +8,9 @@
 
 (defonce !agent-state
   (atom {:agent/conversations {}
-         :agent/next-id 1}))
+         :agent/next-id 1
+         :agent/output-channel nil
+         :agent/sidebar-slot nil}))
 
 ;; Pure State Operations
 
@@ -65,3 +67,13 @@
   "Set the sidebar slot for the monitor"
   [slot]
   (swap! !agent-state assoc :agent/sidebar-slot slot))
+
+(defn get-output-channel
+  "Get the output channel from state"
+  []
+  (:agent/output-channel @!agent-state))
+
+(defn set-output-channel!
+  "Set the output channel in state"
+  [channel]
+  (swap! !agent-state assoc :agent/output-channel channel))
