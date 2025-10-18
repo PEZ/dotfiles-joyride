@@ -372,6 +372,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                             :max-turns-reached "reached max turns"
                             :cancelled "was CANCELLED"
                             :agent-finished "finished"
+                            :error "encountered an ERROR"
                             "ended unexpectedly")
                           " (" actual-turns " turns, " (count (:history result)) " conversation steps)")]
          (logging/log-to-channel! conv-id summary)
