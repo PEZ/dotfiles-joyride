@@ -226,41 +226,39 @@
 
 (deftest format-description-listing-test
   (testing "Formats description listing for prompt"
-    (testing "Should format non-empty descriptions"
+    (testing "Should format as EDN in code block"
       (let [descriptions [{:file "clojure-memory.instructions.md"
                            :description "Clojure best practices"}
                           {:file "git-workflow-memory.instructions.md"
                            :description "Git workflow patterns"}]
-            result (mk/format-description-listing descriptions "/test/dir")]
-        (is (string/includes? result "## Available Memory Files"))
-        (is (string/includes? result "clojure-memory.instructions.md"))
-        (is (string/includes? result "Clojure best practices"))
-        (is (string/includes? result "git-workflow-memory.instructions.md"))
-        (is (string/includes? result "Git workflow patterns"))
-        (is (string/includes? result "/test/dir/clojure-memory.instructions.md"))))
+            result (mk/format-description-listing descriptions)]
+        (is (string/includes? result "```clojure"))
+        (is (string/includes? result ":file \"clojure-memory.instructions.md\""))
+        (is (string/includes? result ":description \"Clojure best practices\""))
+        (is (string/includes? result "```\n"))))
 
-    (testing "Should return empty string for empty descriptions"
-      (let [result (mk/format-description-listing [] "/test/dir")]
-        (is (= "" result))))))
+    (testing "Should return nil for empty descriptions"
+      (let [result (mk/format-description-listing [])]
+        (is (nil? result))))))
 
 (deftest integration-description-listing-test
   (testing "Integration: description listing in goal prompt"
-    (testing "Should include file descriptions in prompt"
+    (testing "Should include file descriptions in prompt as EDN"
       (let [test-dir "/fake/dir"
             descriptions [{:file "clojure-memory.instructions.md"
                            :description "Clojure patterns"}
                           {:file "git-workflow-memory.instructions.md"
                            :description "Git workflows"}]
-            listing (mk/format-description-listing descriptions test-dir)
+            listing (mk/format-description-listing descriptions)
             prompt (mk/build-goal-prompt {:ma/summary "Test"
                                           :ma/domain nil
-                                          :ma/search-dir test-dir})
-            full-goal (str prompt listing)]
+                                          :ma/search-dir test-dir
+                                          :ma/description-listing listing})
+            full-goal prompt]
         (is (string/includes? full-goal "## Available Memory Files"))
-        (is (string/includes? full-goal "clojure-memory.instructions.md"))
-        (is (string/includes? full-goal "Review the \"Available Memory Files\" section"))
-        (is (not (string/includes? full-goal "Search all `{SEARCH-DIRECTORY}/*.instructions.md`"))
-            "Should not contain old search instruction")))))
+        (is (string/includes? full-goal "```clojure"))
+        (is (string/includes? full-goal ":file \"clojure-memory.instructions.md\""))
+        (is (string/includes? full-goal "Review the \"Available Memory Files\" section"))))))
 
 (deftest extract-edn-from-response-test
   (testing "Extracts EDN from wrapped response"
