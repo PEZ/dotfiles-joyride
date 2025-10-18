@@ -6,7 +6,11 @@
 (ns lm-dispatch.agent
   "Autonomous AI conversation system"
   (:require
+   ["path" :as path]
    ["vscode" :as vscode]
+   [agents.instructions-selector :as selector]
+   [clojure.string :as string]
+   [lm-dispatch.instructions-util :as instr-util]
    [lm-dispatch.state :as state]
    [lm-dispatch.logging :as logging]
    [lm-dispatch.monitor :as monitor]
@@ -307,6 +311,81 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
         (.dispose cancellation-token-source)
         result))))
 
+(defn concatenate-instruction-files!+
+  "Slurp instruction files and concatenate with separators.
+
+  Args:
+    file-paths - Vector of absolute file paths
+
+  Returns: Promise of concatenated string with '# From: filename' separators"
+  [file-paths]
+  (if (empty? file-paths)
+    (p/resolved "")
+    (p/let [contents (p/all (for [file-path file-paths]
+                              (p/let [content (instr-util/read-file-content!+ file-path)
+                                      filename (path/basename file-path)]
+                                {:filename filename
+                                 :content (or content "")})))]
+      (clojure.string/join
+       "\n\n"
+       (for [{:keys [filename content]} contents]
+         (str "# From: " filename "\n\n" content))))))
+
+(defn collect-all-instruction-descriptions!+
+  "Collect instruction file descriptions from both workspace and global areas.
+
+  Returns: Promise of vector of {:file :filename :description :domain} maps"
+  []
+  (p/let [;; Try workspace instructions (might not exist)
+          workspace-descriptions (p/catch
+                                  (p/let [ws-path (instr-util/workspace-instructions-path)]
+                                    (instr-util/build-file-descriptions-map!+ ws-path))
+                                  (fn [_] []))
+          ;; Get global user instructions
+          user-descriptions (instr-util/build-file-descriptions-map!+
+                             (instr-util/user-data-instructions-path))]
+    ;; Combine both, workspace first
+    (vec (concat workspace-descriptions user-descriptions))))
+
+(defn prepare-instructions-with-selection!+
+  "Prepare instructions by selecting relevant files and concatenating with context files.
+
+  Args:
+    goal - The task goal to match instructions against
+    context-files - Vector of file paths to include as additional context
+
+  Returns: Promise of concatenated instructions string"
+  [{:keys [goal context-files]}]
+  (p/let [;; Step 1: Collect all available instruction descriptions
+          all-descriptions (collect-all-instruction-descriptions!+)
+
+          ;; Step 2: Slurp context files if provided (for selector prompt)
+          context-content (when (seq context-files)
+                            (concatenate-instruction-files!+ context-files))
+
+          ;; Step 3: Dispatch selector to choose relevant instructions
+          selected-paths (selector/select-instructions!+
+                          {:goal goal
+                           :file-descriptions all-descriptions
+                           :context-content context-content})
+
+          ;; Step 4: Slurp selected instruction files
+          selected-content (concatenate-instruction-files!+ selected-paths)
+
+          ;; Step 5: Slurp context files again (to append after selected)
+          final-context-content (if (seq context-files)
+                                  (concatenate-instruction-files!+ context-files)
+                                  "")
+
+          ;; Step 6: Concatenate with separator
+          final-instructions (if (seq final-context-content)
+                               (str selected-content
+                                    (when (seq selected-content) "\n\n")
+                                    "# === Context Files ===\n\n"
+                                    final-context-content)
+                               selected-content)]
+    final-instructions))
+
 (defn autonomous-conversation!+
   "Start an autonomous AI conversation toward a goal with flexible configuration.
 
@@ -317,16 +396,21 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
     :progress-callback - Function called with progress updates (default: no-op)
     :allow-unsafe-tools? - Allow file write operations (default: false)
     :caller - String identifying who started the conversation
-    :title - Display title for the conversation"
+    :title - Display title for the conversation
+    :use-instruction-selection? - Enable automatic instruction file selection (default: false)
+    :context-files - Vector of file paths to include as additional context (default: [])"
   ([goal]
    (autonomous-conversation!+ goal
                               {}))
 
-  ([goal {:keys [model-id max-turns tool-ids progress-callback allow-unsafe-tools? caller title]
+  ([goal {:keys [model-id max-turns tool-ids progress-callback allow-unsafe-tools? caller title
+                 use-instruction-selection? context-files]
           :or {model-id "gpt-4o-mini"
                tool-ids []
                max-turns 10
-               allow-unsafe-tools? false}}]
+               allow-unsafe-tools? false
+               use-instruction-selection? false
+               context-files []}}]
 
    (p/let [conv-id (monitor/start-monitoring-conversation!+
                     (cond-> {:agent.conversation/goal goal
@@ -336,10 +420,19 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                              :agent.conversation/title title}))
            progress-callback (or progress-callback
                                  #())
+           ;; Prepare instructions based on selection setting
+           instructions (if use-instruction-selection?
+                          (prepare-instructions-with-selection!+ {:goal goal
+                                                                  :context-files context-files})
+                          ;; Default simple instructions, with context-files if provided
+                          (if (seq context-files)
+                            (p/let [context-content (concatenate-instruction-files!+ context-files)]
+                              (str "Go, go, go!\n\n# === Context Files ===\n\n" context-content))
+                            (p/resolved "Go, go, go!")))
            result (agentic-conversation!+
                    {:model-id model-id
                     :goal goal
-                    :instructions "Go, go, go!"
+                    :instructions instructions
                     :max-turns max-turns
                     :tool-ids tool-ids
                     :allow-unsafe-tools? allow-unsafe-tools?
