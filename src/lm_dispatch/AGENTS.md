@@ -156,7 +156,7 @@ The agent engine is the heart of the system, implementing autonomous conversatio
 
 - **Goal Injection**: The goal is never stored in history. Instead, it's injected as the first message on every turn, ensuring the agent always remembers its objective.
 
-- **Tool Call Parsing**: Supports both native VS Code tool calls and EDN format fallback for models without native support.
+- **Tool Call Parsing**: Uses native VS Code tool calls returned in the response stream.
 
 - **Cancellation**: Checks for cancellation at multiple points:
   - During response streaming (every 200ms)
@@ -368,9 +368,10 @@ This provides:
 - Cumulative total tracking
 - Early warning if approaching limits
 
-### Tool Call Formats
+### Tool Call Format
 
-**Native VS Code Format:**
+The system uses the native VS Code Language Model API format for tool calls:
+
 ```javascript
 // LM returns tool calls in response stream
 {
@@ -384,18 +385,7 @@ This provides:
 }
 ```
 
-**EDN Fallback Format:**
-```clojure
-"BEGIN-TOOL-CALL
-{:name "copilot_readFile"
- :input {:filePath "/path/to/file"
-         :startLine 1
-         :endLine 10}}
-END-TOOL-CALL"
-
-;; Parsed by extract-tool-call-edn and parse-tool-calls
-;; Automatically augmented with unique :callId
-```
+Tool calls are returned directly by the language model in the response stream and executed immediately.
 
 ### Error Recovery
 

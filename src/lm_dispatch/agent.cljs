@@ -11,7 +11,6 @@
    [lm-dispatch.logging :as logging]
    [lm-dispatch.monitor :as monitor]
    [lm-dispatch.util :as util]
-   [clojure.edn :as edn]
    [promesa.core :as p]))
 
 ; To run all tests:
@@ -179,30 +178,6 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
         (add-tool-results history tool-results turn-count)))
     history))
 
-(defn- generate-call-id
-  "Generate a unique call ID using random number and timestamp"
-  []
-  (let [random-part (.toString (.floor js/Math (* (.random js/Math) 1000000)))
-        timestamp-part (.toString (.now js/Date))]
-    (str "call-" random-part "-" timestamp-part)))
-
-(defn- extract-tool-call-edn
-  "Extract EDN strings from tool call blocks in text"
-  [text]
-  (let [pattern #"BEGIN-TOOL-CALL\s*\n(.*?)\nEND-TOOL-CALL"]
-    (->> (re-seq pattern text)
-         (map second))))
-
-(defn- parse-tool-calls
-  "Parse tool calls from text and augment each with a unique :callId"
-  [text unique-id]
-  (some->> text
-           extract-tool-call-edn
-           (map edn/read-string)
-           (mapv (fn [i tool] (assoc tool :callId (str unique-id "-" i)))
-                 (range))
-           (clj->js)))
-
 (defn continue-conversation-loop
   "Main conversation loop.
 
@@ -241,8 +216,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                    (throw (js/Error. (:message turn-result))))
 
                ai-text (:text turn-result)
-               tool-calls (or (seq (:tool-calls turn-result))
-                              (parse-tool-calls ai-text (generate-call-id)))
+               tool-calls (seq (:tool-calls turn-result))
 
                ;; Log AI's response
                _ (when ai-text
@@ -461,29 +435,4 @@ Generate the nine first numbers in the fibonacci sequence without writing a func
                                   :name "joyride_evaluate_code"
                                   :input {:code "(vscode/window.showInformationMessage \"hello\")"}})
 
-  (def example-tool-call {:name "tool_name"
-                          :input {:someParam "value"
-                                  :someOtherParam ["value" 42]}})
-
-  (-> example-tool-call
-      pr-str
-      clojure.edn/read-string)
-
-  (autonomous-conversation!+ "print a greeting using the joyride repl. For tool calls use this syntax: \n\nBEGIN-TOOL-CALL\n{:name \"tool_name\", :input {:someParam \"value\", :someOtherParam [\"value\" 42]}}\nEND-TOOL-CALL\n\nThe results from the tool call will be provided to you as part of the next step."
-                             {:model-id "claude-sonnet-4.5"
-                              :max-turns 2
-                              :progress-callback (fn [step]
-                                                   (println "🔄" step)
-                                                   (vscode/window.showInformationMessage step))
-                              :tool-ids ["joyride_evaluate_code"
-                                         "copilot_getVSCodeAPI"]})
-
-  (autonomous-conversation!+ "print a greeting using the joyride repl. For tool calls use this syntax: \n\n<Tool>\n<tool_name>...</tool_name>\n<parameters>\n<some-param>...</some-param>\n<some-other-param>...</some-other-param>\n</parameters>\n</Tool>\n\nThe results from the tool call will be provided to you as part of the next step."
-                             {:model-id "claude-opus-4"
-                              :max-turns 4
-                              :progress-callback (fn [step]
-                                                   (println "🔄" step)
-                                                   (vscode/window.showInformationMessage step))
-                              :tool-ids ["joyride_evaluate_code"
-                                         "copilot_getVSCodeAPI"]})
   :rcf)
