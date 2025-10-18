@@ -6,6 +6,9 @@
    ["vscode" :as vscode]
    [lm-dispatch.state :as state]))
 
+; To run all tests:
+#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
+
 ;; Output Channel Management
 
 (defn get-output-channel!

@@ -14,6 +14,9 @@
    [clojure.edn :as edn]
    [promesa.core :as p]))
 
+; To run all tests:
+#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
+
 (def agentic-system-prompt
   "You are an autonomous AI agent with the ability to take initiative and drive conversations toward goals.
 

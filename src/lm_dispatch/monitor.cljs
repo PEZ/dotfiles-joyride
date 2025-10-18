@@ -14,6 +14,9 @@
    [joyride.flare :as flare]
    [promesa.core :as p]))
 
+; To run all tests:
+#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
+
 ;; UI Interaction Handlers
 
 (defn cancel-conversation!

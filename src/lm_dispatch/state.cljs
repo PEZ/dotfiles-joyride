@@ -9,6 +9,9 @@
   This namespace provides the single source of truth for conversation data
   with pure functions operating on a centralized atom. No side effects.")
 
+; To run all tests:
+#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
+
 ;; State Atom
 
 (defonce !agent-state

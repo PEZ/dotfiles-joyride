@@ -1,9 +1,17 @@
+; AGENTS, please:
+; - remember interactive programming
+; - consider TDD in the repl
+; - prefer your structural editing tools
+
 (ns lm-dispatch.ui
   (:require
    ["vscode" :as vscode]
    [lm-dispatch.util :as util]
    [clojure.string :as string]
    [promesa.core :as p]))
+
+; To run all tests:
+#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 (defn pick-model!+ []
   (p/let [models-map (util/get-available-models+)
