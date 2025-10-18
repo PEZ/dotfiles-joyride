@@ -153,7 +153,9 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                       :system-prompt agentic-system-prompt
                       :messages messages
                       :options tools-args})
-           result (util/collect-response-with-tools!+ response)]
+           ;; Extract cancellation token from tools-args and pass it to stream iteration
+           cancellation-token (when tools-args (.-cancellationToken (clj->js tools-args)))
+           result (util/collect-response-with-tools!+ response cancellation-token)]
      (assoc result :turn turn-count))
    (fn [error]
      {:message (.-message error)

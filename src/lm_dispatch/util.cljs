@@ -167,31 +167,36 @@
   :rcf)
 
 (defn collect-response-with-tools!+
-  "Collect all text and tool calls from a streaming response."
-  [response]
-  (p/let [stream (.-stream response)
-          async-iter-symbol js/Symbol.asyncIterator
-          iterator-fn (aget stream async-iter-symbol)
-          iterator (.call iterator-fn stream)]
-    (letfn [(collect-parts [text-acc tool-calls]
-              (p/let [result (.next iterator)]
-                (if (.-done result)
-                  {:text text-acc :tool-calls tool-calls :response response}
-                  (let [part (.-value result)]
-                    ;; Check if this is a tool call part
-                    (cond
-                      ;; Regular text part
-                      (and (.-value part) (string? (.-value part)))
-                      (collect-parts (str text-acc (.-value part)) tool-calls)
+  "Collect all text and tool calls from a streaming response with cancellation support."
+  ([response]
+   (collect-response-with-tools!+ response nil))
+  ([response cancellation-token]
+   (p/let [stream (.-stream response)
+           async-iter-symbol js/Symbol.asyncIterator
+           iterator-fn (aget stream async-iter-symbol)
+           iterator (.call iterator-fn stream)]
+     (letfn [(collect-parts [text-acc tool-calls]
+               ;; Check cancellation token before each iteration
+               (if (and cancellation-token (.-isCancellationRequested cancellation-token))
+                 (p/rejected (js/Error. "Cancelled"))
+                 (p/let [result (.next iterator)]
+                   (if (.-done result)
+                     {:text text-acc :tool-calls tool-calls :response response}
+                     (let [part (.-value result)]
+                       ;; Check if this is a tool call part
+                       (cond
+                         ;; Regular text part
+                         (and (.-value part) (string? (.-value part)))
+                         (collect-parts (str text-acc (.-value part)) tool-calls)
 
-                      ;; Tool call part
-                      (and (.-callId part) (.-name part))
-                      (collect-parts text-acc (conj tool-calls part))
+                         ;; Tool call part
+                         (and (.-callId part) (.-name part))
+                         (collect-parts text-acc (conj tool-calls part))
 
-                      ;; Other parts - continue
-                      :else
-                      (collect-parts text-acc tool-calls))))))]
-      (collect-parts "" []))))
+                         ;; Other parts - continue
+                         :else
+                         (collect-parts text-acc tool-calls)))))))]
+       (collect-parts "" [])))))
 
 (defn build-message-chain
   "Build a message chain with system instructions."

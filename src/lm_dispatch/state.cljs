@@ -49,13 +49,13 @@
            (update-in state [:agent/conversations conv-id] merge updates))))
 
 (defn mark-conversation-cancelled!
-  "Mark conversation as cancelled (state only, does not interact with token)"
+  "Mark conversation cancellation as requested (actual :cancelled status set by promise completion)"
   [conv-id]
   (swap! !agent-state
          (fn [state]
            (-> state
                (assoc-in [:agent/conversations conv-id :agent.conversation/cancelled?] true)
-               (assoc-in [:agent/conversations conv-id :agent.conversation/status] :cancelled)))))
+               (assoc-in [:agent/conversations conv-id :agent.conversation/status] :cancel-requested)))))
 
 (defn get-conversation
   "Get conversation by ID"

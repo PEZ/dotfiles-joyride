@@ -36,6 +36,7 @@
   (case status
     :started "codicon-debug-pause"
     :working "codicon-loading codicon-modifier-spin"
+    :cancel-requested "codicon-loading codicon-modifier-spin"
     :task-complete "codicon-pass-filled"
     :max-turns-reached "codicon-clock"
     :agent-finished "codicon-check"
@@ -70,6 +71,7 @@
                      :done "var(--vscode-charts-green)"
                      :error "var(--vscode-charts-red)"
                      :working "var(--vscode-charts-blue)"
+                     :cancel-requested "var(--vscode-charts-orange)"
                      :cancelled "var(--vscode-charts-orange)"
                      nil)
         time-str (format-time started-at)]
