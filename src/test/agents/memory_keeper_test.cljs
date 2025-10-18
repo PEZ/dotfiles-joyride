@@ -1,3 +1,7 @@
+; AGENTS, please:
+; - remember interactive programming
+; - consider TDD in the repl
+; - prefer your structural editing tools
 (ns test.agents.memory-keeper-test
   (:require
    [cljs.test :refer [deftest is testing run-tests]]
@@ -347,3 +351,85 @@
     (is (= :global (mk/normalize-scope nil)))
     (is (= :global (mk/normalize-scope "invalid")))
     (is (= :global (mk/normalize-scope 123)))))
+
+(deftest clean-heading-test
+  (testing "Removes ## prefix with space"
+    (is (= "My Heading" (mk/clean-heading "## My Heading"))))
+
+  (testing "Leaves heading unchanged when no ## prefix"
+    (is (= "My Heading" (mk/clean-heading "My Heading"))))
+
+  (testing "Requires space after ## - doesn't remove without space"
+    (is (= "##NoSpace" (mk/clean-heading "##NoSpace"))))
+
+  (testing "Trims trailing whitespace"
+    (is (= "Trailing" (mk/clean-heading "## Trailing  "))))
+
+  (testing "Handles multiple spaces after ##"
+    (is (= "Double Space" (mk/clean-heading "##  Double Space")))))
+
+(deftest update-frontmatter-applyTo-test
+  (testing "Updates applyTo with single pattern"
+    (let [content "---\ndescription: 'Test'\napplyTo: '**/*.clj'\n---\n\n# Content"
+          result (mk/update-frontmatter-applyTo content ["**/*.cljs"])]
+      (is (string/includes? result "applyTo: '**/*.cljs'"))
+      (is (string/includes? result "description: 'Test'"))))
+
+  (testing "Updates applyTo with multiple patterns"
+    (let [content "---\ndescription: 'Test'\napplyTo: '**/*.clj'\n---\n\n# Content"
+          result (mk/update-frontmatter-applyTo content ["**/*.clj" "**/*.cljs"])]
+      (is (string/includes? result "applyTo: '**/*.clj, **/*.cljs'"))))
+
+  (testing "Returns original when no frontmatter"
+    (let [content "# Just content"
+          result (mk/update-frontmatter-applyTo content ["**/*.clj"])]
+      (is (= content result))))
+
+  (testing "Preserves other frontmatter fields"
+    (let [content "---\ndescription: 'Test'\napplyTo: '**/*.clj'\n---\n\n# Content"
+          result (mk/update-frontmatter-applyTo content ["**/*.cljs"])]
+      (is (string/includes? result "description: 'Test'"))
+      (is (string/includes? result "# Content")))))
+
+(deftest file-path->uri-string-test
+  (testing "Converts filesystem path to URI string"
+    (let [path "/Users/test/file.md"
+          result (mk/file-path->uri-string path)]
+      (is (string/starts-with? result "file://"))
+      (is (string/includes? result "/Users/test/file.md"))))
+
+  (testing "Returns URI string unchanged (idempotent)"
+    (let [uri "file:///Users/test/file.md"
+          result (mk/file-path->uri-string uri)]
+      (is (= uri result))))
+
+  (testing "Handles different path formats"
+    (let [path "/path/to/memory.instructions.md"
+          result (mk/file-path->uri-string path)]
+      (is (string/starts-with? result "file://"))
+      (is (string/includes? result "/path/to/memory.instructions.md")))))
+
+(deftest remember-prompt-test
+  (testing "With domain - includes domain tag and specific instructions"
+    (let [result (mk/remember-prompt {:ma/domain "clojure"})]
+      (is (string/includes? result "<DOMAIN>clojure</DOMAIN>"))
+      (is (string/includes? result "the clojure domain-organized"))
+      (is (not (string/includes? result "automatically bin learnings by domain")))
+      (is (not (string/includes? result "## Available Memory Files")))
+      (is (string/includes? result "### 1. Read up on existing domain knowledge"))
+      (is (string/includes? result "### 2. Deliver results"))))
+
+  (testing "Without domain - includes domain determination steps"
+    (let [result (mk/remember-prompt {:ma/domain nil})]
+      (is (not (string/includes? result "<DOMAIN>")))
+      (is (string/includes? result "automatically bin learnings by domain"))
+      (is (string/includes? result "## Available Memory Files"))
+      (is (string/includes? result "{DESCRIPTIONS}"))
+      (is (string/includes? result "### 1. Determine the memory domain"))
+      (is (string/includes? result "### 2. Read up on existing domain knowledge"))
+      (is (string/includes? result "### 3. Deliver results"))))
+
+  (testing "Contains required placeholders"
+    (let [result (mk/remember-prompt {:ma/domain "test"})]
+      (is (string/includes? result "{LESSON}"))
+      (is (string/includes? result "{SEARCH-DIRECTORY}")))))
