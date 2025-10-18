@@ -39,7 +39,7 @@
     :cancel-requested "codicon-loading codicon-modifier-spin"
     :task-complete "codicon-pass-filled"
     :max-turns-reached "codicon-clock"
-    :agent-finished "codicon-check"
+    :agent-finished "codicon-info"
     :done "codicon-pass"
     :error "codicon-error"
     :cancelled "codicon-debug-stop"
@@ -67,7 +67,7 @@
         icon-color (case status
                      :task-complete "var(--vscode-charts-green)"
                      :max-turns-reached "var(--vscode-charts-yellow)"
-                     :agent-finished "var(--vscode-charts-green)"
+                     :agent-finished "var(--vscode-charts-blue)"
                      :done "var(--vscode-charts-green)"
                      :error "var(--vscode-charts-red)"
                      :working "var(--vscode-charts-blue)"
