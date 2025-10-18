@@ -1,5 +1,13 @@
 # lm_dispatch System Documentation
 
+## Quick Navigation
+
+**Quick Start:** Read [Overview](#overview), [Architecture](#architecture), and [Usage Examples](#usage-examples)
+**Deep Dive:** See [Detailed Architecture](#detailed-architecture) and [Advanced Topics](#advanced-topics)
+**Reference:** Check [Design Principles](#design-principles) and [Testing](#testing)
+
+> **Note:** This document contains both a concise overview (sections 1-5) and detailed deep-dive sections (starting at "Detailed Architecture"). Choose based on your needs.
+
 ## Overview
 
 `lm_dispatch` is an autonomous AI agent conversation system built in ClojureScript for VS Code using Joyride. It enables AI agents to work autonomously toward goals by executing multi-turn conversations with tool usage, monitoring, and cancellation support.
@@ -22,12 +30,21 @@ The system follows a clean separation of concerns with five main namespaces:
 
 The primary entry point for creating autonomous AI conversations with options for model selection, tool configuration, turn limits, and progress tracking.
 
+**Options:**
+- `:model-id` - LM model ID (default: "gpt-4o-mini")
+- `:max-turns` - Maximum conversation turns (default: 10)
+- `:tool-ids` - Vector of tool IDs to enable (default: [])
+- `:progress-callback` - Function called with progress updates
+- `:allow-unsafe-tools?` - Allow file write operations (default: false)
+- `:caller` - String identifying who started the conversation
+- `:title` - Display title for the conversation
+
 **Agentic System Prompt**:
 The system prompt defines agent behavior to break goals into steps, use tools proactively, adapt when tools fail, never stop to ask questions, and signal completion with markers.
 
 **Key Functions**:
 - `autonomous-conversation!+` - Main entry point
-- `build-agentic-messages` - Message construction
+- `build-agentic-messages` - Message construction (args: history, instructions, goal)
 - `continue-conversation-loop` - Main recursive loop
 - `execute-conversation-turn` - Single turn execution
 - `execute-tools-if-present!+` - Tool execution
@@ -39,6 +56,16 @@ The system prompt defines agent behavior to break goals into steps, use tools pr
 **Purpose**: Single source of truth for conversation state
 
 The state atom stores all conversations, next ID counter, output channel, and sidebar slot.
+
+**State Structure:**
+```clojure
+{:agent/conversations {}      ; Map of conversation-id -> conversation-data
+ :agent/next-id 1             ; Auto-incrementing ID counter
+ :agent/output-channel nil    ; VS Code output channel
+ :agent/sidebar-slot nil      ; Flare sidebar slot (:sidebar-1 through :sidebar-5)
+ :debug-mode? false           ; Optional debug logging mode
+ :debug-logs []}              ; Optional in-memory debug logs
+```
 
 **Status Values**:
 - :started - Conversation registered
@@ -75,6 +102,14 @@ Provides functions for model management, tool management, message handling, requ
 **Purpose**: Manage output channel and debug logs
 
 Creates Agent Dispatch output channel in VS Code for logging with conversation ID prefixes and debug mode support.
+
+**Debug Mode Features:**
+- `enable-debug-mode!` / `disable-debug-mode!` - Toggle debug logging
+- `add-debug-log!` - Log entries to memory (when debug enabled)
+- `get-debug-logs` / `get-all-debug-logs` - Retrieve logs for inspection
+- `clear-debug-logs!` - Clear logs while keeping debug mode on
+
+Debug mode stores logs in-memory for testing and detailed inspection without cluttering the output channel.
 
 ## Design Principles
 
@@ -174,9 +209,14 @@ Low-level VS Code API wrappers.
 By default, filters out dangerous write operations:
 - `copilot_createFile`
 - `copilot_insertEdit`
+- `copilot_createDirectory`
+- `copilot_editNotebook`
 - `copilot_runInTerminal`
+- `copilot_installExtension`
 - `copilot_runVscodeCommand`
-- etc.
+- `copilot_createNewWorkspace`
+- `copilot_createAndRunTask`
+- `copilot_createNewJupyterNotebook`
 
 Can be overridden with `:allow-unsafe-tools? true`
 
@@ -206,9 +246,9 @@ Optional in-memory log collection for inspection and testing.
 (require '[lm-dispatch.agent :as agent])
 (require '[promesa.core :as p])
 
-(p/let [result (agent/autonomous-conversation!+ 
+(p/let [result (agent/autonomous-conversation!+
                  "Count all .cljs files in this workspace and show the total"
-                 {:tool-ids ["copilot_findFiles" 
+                 {:tool-ids ["copilot_findFiles"
                              "joyride_evaluate_code"]
                   :max-turns 5
                   :caller "file-counter"})]
@@ -218,14 +258,14 @@ Optional in-memory log collection for inspection and testing.
 ### Example 2: Code Analysis
 
 ```clojure
-(agent/autonomous-conversation!+ 
+(agent/autonomous-conversation!+
   "Analyze the lm_dispatch system and create a summary of its key components"
   {:model-id "claude-sonnet-4"
-   :tool-ids ["copilot_readFile" 
+   :tool-ids ["copilot_readFile"
               "copilot_findFiles"
               "copilot_searchCodebase"]
    :max-turns 20
-   :progress-callback (fn [step] 
+   :progress-callback (fn [step]
                         (println "Progress:" step))
    :caller "code-analyzer"
    :title "Architecture Analysis"})
@@ -234,7 +274,7 @@ Optional in-memory log collection for inspection and testing.
 ### Example 3: REPL Fibonacci Generator
 
 ```clojure
-(agent/autonomous-conversation!+ 
+(agent/autonomous-conversation!+
   "Generate the first 10 fibonacci numbers using REPL evaluation"
   {:model-id "gpt-4o-mini"
    :tool-ids ["joyride_evaluate_code"]
@@ -248,11 +288,11 @@ Optional in-memory log collection for inspection and testing.
 (require '[lm-dispatch.ui :as ui])
 
 ;; Show tool picker with pre-selected tools
-(p/let [selected-tools (ui/tools-picker+ 
-                         #{"joyride_evaluate_code" 
+(p/let [selected-tools (ui/tools-picker+
+                         #{"joyride_evaluate_code"
                            "copilot_readFile"
                            "copilot_findFiles"})]
-  (agent/autonomous-conversation!+ 
+  (agent/autonomous-conversation!+
     "Your custom goal here"
     {:tool-ids selected-tools
      :max-turns 15
@@ -318,7 +358,7 @@ Tokens counted at the start of each turn:
         turn-tokens (util/count-message-tokens!+ model-id messages)
         current-total (:agent.conversation/total-tokens conv)
         new-total (+ current-total turn-tokens)]
-  (state/update-conversation! conv-id 
+  (state/update-conversation! conv-id
     {:agent.conversation/total-tokens new-total})
   ...)
 ```
@@ -347,9 +387,9 @@ This provides:
 **EDN Fallback Format:**
 ```clojure
 "BEGIN-TOOL-CALL
-{:name "copilot_readFile" 
- :input {:filePath "/path/to/file" 
-         :startLine 1 
+{:name "copilot_readFile"
+ :input {:filePath "/path/to/file"
+         :startLine 1
          :endLine 10}}
 END-TOOL-CALL"
 
@@ -421,15 +461,15 @@ Each namespace includes extensive comment blocks with test expressions:
 ```clojure
 (comment
   ;; Test conversation
-  (p/let [result (autonomous-conversation!+ 
+  (p/let [result (autonomous-conversation!+
                    "Count to 3"
                    {:tool-ids ["joyride_evaluate_code"]
                     :max-turns 3})]
     (def test-result result))
-  
+
   ;; Inspect result
   test-result
-  
+
   :rcf) ;; Rich Comment Form marker
 ```
 

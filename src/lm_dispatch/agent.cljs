@@ -55,6 +55,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
 
   Args:
     history - Vector of conversation entries with :role :assistant or :tool-results
+    instructions - String with additional instructions to prepend to goal
     goal - String describing the task (immutable, never stored in history)
 
   Returns:
@@ -87,10 +88,15 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                     history)))))
 
 (defn agent-indicates-completion?
-  "Check if AI agent indicates the task is complete"
+  "Check if AI agent indicates the task is complete.
+
+  Uses a two-phase approach:
+  1. Check for completion indicators
+  2. Exclude negations (not, hasn't, isn't, etc.)"
   [ai-text]
   (when ai-text
-    (re-find #"(?i)(~~~GOAL-ACHIEVED~~~|task.*(?!\bnot\b).*(complete|done|finished)|goal.*(?!\bnot\b).*(achieved|reached|accomplished)|mission.*(?!\bnot\b).*(complete|success)|successfully (completed|finished))" ai-text)))
+    (and (re-find #"(?i)(~~~GOAL-ACHIEVED~~~|task.*(complete|done|finished)|goal.*(achieved|reached|accomplished)|mission.*(complete|success)|successfully (completed|finished))" ai-text)
+         (not (re-find #"(?i)(not|n't|hasn't|haven't|isn't|aren't).{0,10}(complete|done|finished|achieved|reached|accomplished)" ai-text)))))
 
 (defn- agent-indicates-continuation? [ai-text]
   (when ai-text
@@ -328,7 +334,16 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
         result))))
 
 (defn autonomous-conversation!+
-  "Start an autonomous AI conversation toward a goal with flexible configuration"
+  "Start an autonomous AI conversation toward a goal with flexible configuration.
+
+  Options:
+    :model-id - LM model ID (default: gpt-4o-mini)
+    :max-turns - Maximum conversation turns (default: 10)
+    :tool-ids - Vector of tool IDs to enable (default: [])
+    :progress-callback - Function called with progress updates (default: no-op)
+    :allow-unsafe-tools? - Allow file write operations (default: false)
+    :caller - String identifying who started the conversation
+    :title - Display title for the conversation"
   ([goal]
    (autonomous-conversation!+ goal
                               {}))
