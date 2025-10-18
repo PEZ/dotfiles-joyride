@@ -1,6 +1,7 @@
 ; AGENTS, please:
 ; - remember interactive programming
 ; - consider TDD in the repl
+;            run tests: (require 'run-all-tests :reload) (run-all-tests/run!+)
 ; - prefer your structural editing tools
 (ns test.lm-dispatch.monitor-test
   (:require

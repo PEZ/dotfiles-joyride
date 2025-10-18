@@ -8,14 +8,7 @@
             [cljs.test]
             ["vscode" :as vscode]))
 
-; Can we use vscode/workspace.fs to glob tests files? Then load them, then use cljs.test/run- ... whatever runs all loaded teests.
-
-(comment
-   ; Returns a promise
-  (joyride/load-file "src/test/lm_dispatch/state_test.cljs")
-  )
-
-(defn run-all-tests!+
+(defn run!+
   "Find, load, and run all test files matching *_test.cljs pattern.
 
   Returns a promise that resolves when all tests are complete.
@@ -26,7 +19,7 @@
   3. Runs all loaded tests using cljs.test/run-all-tests
 
   Example:
-    (run-all-tests!+)"
+    (run!+)"
   []
   (p/let [;; Find all test files
           test-uris (vscode/workspace.findFiles "src/test/**/*_test.cljs")
@@ -48,7 +41,6 @@
           successful (filter :success load-results)
           failed (remove :success load-results)
 
-          ;; Report any load failures
           _ (when (seq failed)
               (println "\n⚠️  Failed to load" (count failed) "test file(s):")
               (doseq [{:keys [path error]} failed]
@@ -57,14 +49,13 @@
           _ (println "\n✅ Loaded" (count successful) "test file(s)")
           _ (println "\n🏃 Running all tests...\n")
 
-          ;; Run all tests matching test.* namespace pattern
           _ (cljs.test/run-all-tests #"test\..*")]
 
     (println "\n✨ Test run complete!")))
 
 (comment
   ;; Run all tests
-  (run-all-tests!+)
+  (run!+)
 
   ;; Test file finding
   (p/let [test-uris (vscode/workspace.findFiles "src/test/**/*_test.cljs")]

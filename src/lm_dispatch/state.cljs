@@ -1,11 +1,7 @@
 ; AGENTS, please:
 ; - remember interactive programming
-; - consider TDD in the repl, existing tests: src/test/lm_dispatch/monitor_test.cljs
-; - prefer your structural editing tools
-; AGENTS, please:
-; - remember interactive programming
 ; - consider TDD in the repl, existing tests: src/test/lm_dispatch/state_test.cljs
-; - run tests: (require '[run-all-tests :as rat]) (rat/run-all-tests!+)
+;            run tests: (require 'run-all-tests :reload) (run-all-tests/run!+)
 ; - prefer your structural editing tools
 (ns lm-dispatch.state
   "Pure state management for agent dispatch conversations.
