@@ -1,12 +1,15 @@
 ; AGENTS, please:
 ; - remember interactive programming
-; - consider TDD in the repl. To run all tests:
-#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
+; - consider TDD in the repl
 ; - prefer your structural editing tools
+
 (ns test.lm-dispatch.util-test
   (:require
    [lm-dispatch.util :as util]
    [cljs.test :refer [deftest is testing]]))
+
+; To run all tests:
+#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 (deftest create-chat-message-test
   (testing "Creates proper JS message objects with correct role strings"

@@ -1,7 +1,6 @@
 ; AGENTS, please:
 ; - remember interactive programming
-; - consider TDD in the repl. To run all tests:
-#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
+; - consider TDD in the repl
 ; - prefer your structural editing tools
 
 (ns test.lm-dispatch.agent-test
@@ -9,6 +8,9 @@
    [cljs.test :refer [deftest is testing]]
    [clojure.string :as string]
    [lm-dispatch.agent :as agent]))
+
+; To run all tests:
+#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 (deftest agent-indicates-completion?-test
   (testing "Detects completion markers"

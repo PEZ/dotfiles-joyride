@@ -1,13 +1,16 @@
 ; AGENTS, please:
 ; - remember interactive programming
-; - consider TDD in the repl. To run all tests:
-#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
+; - consider TDD in the repl
 ; - prefer your structural editing tools
+
 (ns test.agents.memory-keeper-test
   (:require
    [cljs.test :refer [deftest is testing run-tests]]
    [clojure.string :as string]
    [agents.memory-keeper :as mk]))
+
+; To run all tests:
+#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 (deftest append-memory-section-test
   (testing "Appends new section to existing content"

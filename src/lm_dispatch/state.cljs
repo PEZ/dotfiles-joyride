@@ -1,8 +1,8 @@
 ; AGENTS, please:
 ; - remember interactive programming
 ; - consider TDD in the repl, existing tests: src/test/lm_dispatch/state_test.cljs
-#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 ; - prefer your structural editing tools
+
 (ns lm-dispatch.state
   "Pure state management for agent dispatch conversations.
 

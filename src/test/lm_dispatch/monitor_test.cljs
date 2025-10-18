@@ -1,12 +1,15 @@
 ; AGENTS, please:
 ; - remember interactive programming
-; - consider TDD in the repl. To run all tests:
-#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
+; - consider TDD in the repl
 ; - prefer your structural editing tools
+
 (ns test.lm-dispatch.monitor-test
   (:require
    [lm-dispatch.monitor :as monitor]
    [cljs.test :refer [deftest is testing]]))
+
+; To run all tests:
+#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 (deftest status-icons
   (testing "Status icon returns correct codicon classes"

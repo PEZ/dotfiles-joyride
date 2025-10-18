@@ -1,12 +1,15 @@
 ; AGENTS, please:
 ; - remember interactive programming
-; - consider TDD in the repl. To run all tests:
-#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
+; - consider TDD in the repl
 ; - prefer your structural editing tools
+
 (ns test.lm-dispatch.state-test
   (:require
    [lm-dispatch.state :as state]
    [cljs.test :refer [deftest is testing]]))
+
+; To run all tests:
+#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 (deftest conversation-registration
   (testing "Register conversation creates unique IDs"
