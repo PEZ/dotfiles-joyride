@@ -425,13 +425,13 @@ Generate the nine first numbers in the fibonacci sequence without writing a func
                               :caller "Mr Clojurian"
                               :tool-ids use-tool-ids})
 
-  (autonomous-conversation!+ "Analyze the project structure of this workspace and create documentation. Keep each step laser focused."
+  (autonomous-conversation!+ "Analyze the lm_dispatch system in this workspace, by reading the code and using the repl, and create documentation."
                              #_#_"\nAvailable tools: "
                                (pr-str use-tool-ids)
                              {:title "Project Summarizer"
                               :model-id "claude-sonnet-4.5"
-                              :caller "A friend"
-                              :max-turns 12
+                              :caller "Mr Clojurian"
+                              :max-turns 25
                               :tool-ids use-tool-ids})
 
   (autonomous-conversation!+ "Create a file docs/greeting.md with a greeting to Clojurians"
