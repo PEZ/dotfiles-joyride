@@ -166,6 +166,25 @@
                                   :name "joyride_evaluate_code"}])
   :rcf)
 
+(defn cancellable-iterator-next!+
+  "Call .next() on iterator with cancellation token support.
+   Uses promise racing with periodic polling to detect cancellation
+   even when .next() is blocking on streaming data."
+  [iterator cancellation-token]
+  (if (and cancellation-token (.-isCancellationRequested cancellation-token))
+    (p/rejected (js/Error. "Cancelled"))
+    (let [next-promise (.next iterator)
+          poll-interval-ms 200  ; Check every 200ms
+          cancel-poller (p/loop [elapsed 0]
+                          (if (>= elapsed 30000)  ; After 30s, stop polling and just wait
+                            next-promise
+                            (p/let [_ (p/delay poll-interval-ms)]
+                              (if (and cancellation-token
+                                       (.-isCancellationRequested cancellation-token))
+                                (p/rejected (js/Error. "Cancelled"))
+                                (p/recur (+ elapsed poll-interval-ms))))))]
+      (p/race [next-promise cancel-poller]))))
+
 (defn collect-response-with-tools!+
   "Collect all text and tool calls from a streaming response with cancellation support."
   ([response]
@@ -176,26 +195,23 @@
            iterator-fn (aget stream async-iter-symbol)
            iterator (.call iterator-fn stream)]
      (letfn [(collect-parts [text-acc tool-calls]
-               ;; Check cancellation token before each iteration
-               (if (and cancellation-token (.-isCancellationRequested cancellation-token))
-                 (p/rejected (js/Error. "Cancelled"))
-                 (p/let [result (.next iterator)]
-                   (if (.-done result)
-                     {:text text-acc :tool-calls tool-calls :response response}
-                     (let [part (.-value result)]
-                       ;; Check if this is a tool call part
-                       (cond
-                         ;; Regular text part
-                         (and (.-value part) (string? (.-value part)))
-                         (collect-parts (str text-acc (.-value part)) tool-calls)
+               (p/let [result (cancellable-iterator-next!+ iterator cancellation-token)]
+                 (if (.-done result)
+                   {:text text-acc :tool-calls tool-calls :response response}
+                   (let [part (.-value result)]
+                     ;; Check if this is a tool call part
+                     (cond
+                       ;; Regular text part
+                       (and (.-value part) (string? (.-value part)))
+                       (collect-parts (str text-acc (.-value part)) tool-calls)
 
-                         ;; Tool call part
-                         (and (.-callId part) (.-name part))
-                         (collect-parts text-acc (conj tool-calls part))
+                       ;; Tool call part
+                       (and (.-callId part) (.-name part))
+                       (collect-parts text-acc (conj tool-calls part))
 
-                         ;; Other parts - continue
-                         :else
-                         (collect-parts text-acc tool-calls)))))))]
+                       ;; Other parts - continue
+                       :else
+                       (collect-parts text-acc tool-calls))))))]
        (collect-parts "" [])))))
 
 (defn build-message-chain

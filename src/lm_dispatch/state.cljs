@@ -49,13 +49,19 @@
            (update-in state [:agent/conversations conv-id] merge updates))))
 
 (defn mark-conversation-cancelled!
-  "Mark conversation cancellation as requested (actual :cancelled status set by promise completion)"
+  "Mark conversation as cancelled and trigger the cancellation token"
   [conv-id]
-  (swap! !agent-state
-         (fn [state]
-           (-> state
-               (assoc-in [:agent/conversations conv-id :agent.conversation/cancelled?] true)
-               (assoc-in [:agent/conversations conv-id :agent.conversation/status] :cancel-requested)))))
+  (let [conv (get-in @!agent-state [:agent/conversations conv-id])
+        token-source (:agent.conversation/cancellation-token-source conv)]
+    ;; Cancel the VS Code cancellation token
+    (when token-source
+      (.cancel token-source))
+    ;; Update state
+    (swap! !agent-state
+           (fn [state]
+             (-> state
+                 (assoc-in [:agent/conversations conv-id :agent.conversation/cancelled?] true)
+                 (assoc-in [:agent/conversations conv-id :agent.conversation/status] :cancel-requested))))))
 
 (defn get-conversation
   "Get conversation by ID"

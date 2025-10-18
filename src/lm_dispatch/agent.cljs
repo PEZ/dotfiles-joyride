@@ -305,18 +305,22 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                              {:tools-args (assoc tools-args :cancellationToken (.-token cancellation-token-source))})
                       [] ; empty initial history
                       1  ; start at turn 1
-                      nil)]
+                      nil)
+              ;; Check if conversation was cancelled and override reason if so
+              final-reason (if (:agent.conversation/cancelled? (state/get-conversation conv-id))
+                             :cancelled
+                             (:reason result))]
         ;; Update final status
         (state/update-conversation!
          conv-id
-         {:agent.conversation/status (case (:reason result)
+         {:agent.conversation/status (case final-reason
                                        :task-complete :task-complete
                                        :max-turns-reached :max-turns-reached
                                        :agent-finished :agent-finished
                                        :cancelled :cancelled
                                        :error :error
                                        :done)
-          :agent.conversation/error-message (when (= (:reason result) :error)
+          :agent.conversation/error-message (when (= final-reason :error)
                                               (:error-message result))})
         (monitor/update-agent-monitor-flare!+)
         ;; Dispose the token source
