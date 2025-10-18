@@ -190,12 +190,12 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
 (defn- parse-tool-calls
   "Parse tool calls from text and augment each with a unique :callId"
   [text unique-id]
-  (->> text
-       extract-tool-call-edn
-       (map edn/read-string)
-       (mapv (fn [i tool] (assoc tool :callId (str unique-id "-" i)))
-             (range))
-       (clj->js)))
+  (some->> text
+           extract-tool-call-edn
+           (map edn/read-string)
+           (mapv (fn [i tool] (assoc tool :callId (str unique-id "-" i)))
+                 (range))
+           (clj->js)))
 
 (defn continue-conversation-loop
   "Main conversation loop.

@@ -437,8 +437,7 @@
   [{:keys [summary domain caller title scope model-id max-turns progress-callback]
     :or {scope :global
          model-id agent-model
-         max-turns default-max-turns
-         progress-callback #(println "📝" %)}}]
+         max-turns default-max-turns}}]
   (p/let [;; Step 1: Normalize scope to handle both strings and keywords
           normalized-scope (normalize-scope scope)
           ;; Step 2: Determine search directory from normalized scope
