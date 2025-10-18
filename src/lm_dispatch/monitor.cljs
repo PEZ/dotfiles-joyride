@@ -1,3 +1,7 @@
+; AGENTS, please:
+; - remember interactive programming
+; - consider TDD in the repl, existing tests: src/test/lm_dispatch/monitor_test.cljs
+; - prefer your structural editing tools
 (ns lm-dispatch.monitor
   "Presentation layer for agent dispatch monitoring.
 
