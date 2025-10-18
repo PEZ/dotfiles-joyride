@@ -363,11 +363,14 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
          (logging/log-to-channel! conv-id (str "❌ Model error: " (:error-message result)))
          result)
        ;; Show final summary with proper turn counting
-       (let [actual-turns (count (filter #(= (:role %) :assistant) (:history result)))
+       (let [conv (state/get-conversation conv-id)
+             final-status (keyword (:agent.conversation/status conv))
+             actual-turns (count (filter #(= (:role %) :assistant) (:history result)))
              summary (str "🎯 Agentic task "
-                          (case (:reason result)
+                          (case final-status
                             :task-complete "COMPLETED successfully!"
                             :max-turns-reached "reached max turns"
+                            :cancelled "was CANCELLED"
                             :agent-finished "finished"
                             "ended unexpectedly")
                           " (" actual-turns " turns, " (count (:history result)) " conversation steps)")]

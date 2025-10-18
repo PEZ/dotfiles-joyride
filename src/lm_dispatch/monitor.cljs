@@ -37,7 +37,7 @@
     :started "codicon-debug-pause"
     :working "codicon-loading codicon-modifier-spin"
     :cancel-requested "codicon-loading codicon-modifier-spin"
-    :task-complete "codicon-pass-filled"
+    :task-complete "codicon-check"
     :max-turns-reached "codicon-clock"
     :agent-finished "codicon-info"
     :done "codicon-pass"
