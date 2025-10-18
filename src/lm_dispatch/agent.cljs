@@ -1,11 +1,11 @@
-(ns ai-workflow.dispatch
+(ns lm-dispatch.agent
   "Autonomous AI conversation system"
   (:require
    ["vscode" :as vscode]
-   [ai-workflow.dispatch-state :as state]
-   [ai-workflow.dispatch-logging :as logging]
-   [ai-workflow.dispatch-monitor :as monitor]
-   [ai-workflow.chat-util :as util]
+   [lm-dispatch.state :as state]
+   [lm-dispatch.logging :as logging]
+   [lm-dispatch.monitor :as monitor]
+   [lm-dispatch.util :as util]
    [clojure.edn :as edn]
    [promesa.core :as p]))
 
@@ -362,7 +362,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
 
 (comment
 
-  (require '[ai-workflow.ui :as ui])
+  (require '[lm-dispatch.ui :as ui])
   (p/let [use-tool-ids (ui/tools-picker+ ["joyride_evaluate_code"
                                           "copilot_searchCodebase"
                                           "copilot_searchWorkspaceSymbols"

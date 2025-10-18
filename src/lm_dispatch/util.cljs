@@ -1,4 +1,4 @@
-(ns ai-workflow.chat-util
+(ns lm-dispatch.util
   (:require
    ["vscode" :as vscode]
    [promesa.core :as p]))

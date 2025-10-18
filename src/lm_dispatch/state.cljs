@@ -1,4 +1,4 @@
-(ns ai-workflow.dispatch-state
+(ns lm-dispatch.state
   "Pure state management for agent dispatch conversations.
 
   This namespace provides the single source of truth for conversation data

@@ -1,6 +1,6 @@
-(ns ai-workflow.agent-monitor-test
+(ns lm-dispatch.monitor-test
   (:require
-   [ai-workflow.agent-monitor :as monitor]
+   [lm-dispatch.monitor :as monitor]
    [cljs.test :refer [deftest is testing]]))
 
 (deftest conversation-registration

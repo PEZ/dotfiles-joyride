@@ -1,9 +1,9 @@
-(ns ai-workflow.memory-agent
-  "Autonomous memory recording agent using agentic workflow"
+(ns agents.memory-keeper
+  "Autonomous memory recording agent using the LM agent dispatch system"
   (:require
    ["path" :as path]
    ["vscode" :as vscode]
-   [ai-workflow.dispatch :as agent-dispatch]
+   [lm-dispatch.agent :as agent-dispatch]
    [cljs.pprint]
    [clojure.edn :as edn]
    [clojure.string :as string]

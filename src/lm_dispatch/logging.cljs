@@ -1,10 +1,10 @@
-(ns ai-workflow.dispatch-logging
+(ns lm-dispatch.logging
   "Logging infrastructure for agent dispatch system.
 
   Manages output channel for conversation logs."
   (:require
    ["vscode" :as vscode]
-   [ai-workflow.dispatch-state :as state]))
+   [lm-dispatch.state :as state]))
 
 ;; Output Channel Management
 

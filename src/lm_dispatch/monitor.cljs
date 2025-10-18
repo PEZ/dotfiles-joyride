@@ -1,10 +1,10 @@
-(ns ai-workflow.dispatch-monitor
+(ns lm-dispatch.monitor
   "Presentation layer for agent dispatch monitoring.
 
   Renders conversation UI in sidebar flare and handles user interactions."
   (:require
-   [ai-workflow.dispatch-state :as state]
-   [ai-workflow.dispatch-logging :as logging]
+   [lm-dispatch.state :as state]
+   [lm-dispatch.logging :as logging]
    [clojure.string :as string]
    [joyride.flare :as flare]
    [promesa.core :as p]))

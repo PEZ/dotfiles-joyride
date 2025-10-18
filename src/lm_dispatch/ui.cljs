@@ -1,7 +1,7 @@
-(ns ai-workflow.ui
+(ns lm-dispatch.ui
   (:require
    ["vscode" :as vscode]
-   [ai-workflow.chat-util :as util]
+   [lm-dispatch.util :as util]
    [clojure.string :as string]
    [promesa.core :as p]))
 

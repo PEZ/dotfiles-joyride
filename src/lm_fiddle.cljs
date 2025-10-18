@@ -1,4 +1,4 @@
-(ns ai-workflow.fiddle
+(ns lm-fiddle
   (:require ["vscode" :as vscode]
             [promesa.core :as p]))
 
