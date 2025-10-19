@@ -15,7 +15,8 @@
 
 
 
-(def selector-model-id "grok-code-fast-1")
+;(def selector-model-id "grok-code-fast-1")
+(def selector-model-id "claude-haiku-4.5")
 (def selector-max-turns 10)
 (def selector-tool-ids ["copilot_findFiles"
                         "copilot_readFile"
@@ -136,14 +137,12 @@
 (comment
   ;; Example 1: Test instruction selection for a Clojure TDD task
   (p/let [selected (select-instructions!+
-                    {:goal "Add a new Clojure function using TDD"
+                    {:goal "Add a new Clojure function using TDD, minding the rules of this project"
                      :context-content nil
                      :caller "rcf-test"})]
     (def test-selection selected)
     selected)
 
-  ;; Inspect results
-  test-selection
   (count test-selection)
 
   ;; Example 2: Test with context content
@@ -153,8 +152,6 @@
                      :context-content context})]
     (def joyride-selection selected)
     selected)
-
-  joyride-selection
 
   ;; Example 3: Test parsing selection results
   (parse-selection-result {:text "/path/to/file1.instructions.md\n/path/to/file2.instructions.md"})
