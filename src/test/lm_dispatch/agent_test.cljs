@@ -7,6 +7,7 @@
   (:require
    [cljs.test :refer [deftest is testing]]
    [clojure.string :as string]
+   [promesa.core :as p]
    [lm-dispatch.agent :as agent]))
 
 ; To run all tests:
@@ -143,3 +144,38 @@
           "Tool results should become user messages")
       (is (string/includes? (:content (second messages)) "result 1")
           "Should contain tool result content"))))
+
+(deftest concatenate-instruction-files-test
+  (testing "Concatenates empty file list to empty string"
+    (p/let [result (agent/concatenate-instruction-files!+ [])]
+      (is (= "" result)
+          "Empty list should return empty string"))))
+
+
+(deftest collect-all-instruction-descriptions-test
+  (testing "Collects instruction descriptions"
+    (p/let [descriptions (agent/collect-all-instruction-descriptions!+)]
+      (is (vector? descriptions)
+          "Should return a vector")
+      (is (every? map? descriptions)
+          "Each item should be a map")
+      (is (every? #(contains? % :file) descriptions)
+          "Each description should have :file key")
+      (is (every? #(contains? % :filename) descriptions)
+          "Each description should have :filename key"))))
+
+(deftest prepare-instructions-with-selection-test
+  (testing "Prepares instructions without context files"
+    (p/let [result (agent/prepare-instructions-with-selection!+
+                    {:goal "Test task"
+                     :context-files []})]
+      (is (string? result)
+          "Should return a string")))
+
+  (testing "Includes context separator when context-files provided"
+    (p/let [result (agent/prepare-instructions-with-selection!+
+                    {:goal "Test with context"
+                     :context-files []})]
+      ;; With empty context-files, shouldn't have separator
+      (is (not (string/includes? result "# === Context Files ==="))
+          "Should not include separator for empty context-files"))))

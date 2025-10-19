@@ -482,6 +482,7 @@ Generate the nine first numbers in the fibonacci sequence without writing a func
                                              {:model-id "grok-code-fast-1"
                                               :caller "Mr Clojurian"
                                               :title "Expensive fibs"
+                                              :use-instruction-selection? true
                                               :max-turns 12
                                               :tool-ids ["joyride_evaluate_code"]})]
     (def fib-res fib-res))

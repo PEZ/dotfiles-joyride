@@ -15,9 +15,9 @@
   (testing "Status icon returns correct codicon classes"
     (is (= "codicon-debug-pause" (monitor/status-icon :started)))
     (is (= "codicon-loading codicon-modifier-spin" (monitor/status-icon :working)))
-    (is (= "codicon-pass-filled" (monitor/status-icon :task-complete)))
+    (is (= "codicon-check" (monitor/status-icon :task-complete)))
     (is (= "codicon-clock" (monitor/status-icon :max-turns-reached)))
-    (is (= "codicon-check" (monitor/status-icon :agent-finished)))
+    (is (= "codicon-info" (monitor/status-icon :agent-finished)))
     (is (= "codicon-pass" (monitor/status-icon :done)))
     (is (= "codicon-error" (monitor/status-icon :error)))
     (is (= "codicon-debug-stop" (monitor/status-icon :cancelled)))
