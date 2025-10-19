@@ -149,7 +149,10 @@
                    :progress-callback #()})
           selected-paths (parse-selection-result (:final-response result))
           _ (if (seq selected-paths)
-              (logging/log-to-channel! conv-id (str "✅ Selected " (count selected-paths) " instruction file(s)"))
+              (do
+                (logging/log-to-channel! conv-id (str "✅ Selected " (count selected-paths) " instruction file(s):"))
+                (doseq [[idx p] (map-indexed vector selected-paths)]
+                  (logging/log-to-channel! conv-id (str "    " (inc idx) ". " p))))
               (logging/log-to-channel! conv-id "ℹ️ No instruction files selected"))]
     selected-paths))
 
