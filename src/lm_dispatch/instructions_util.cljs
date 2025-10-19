@@ -11,6 +11,9 @@
    [joyride.core :as joy]
    [promesa.core :as p]))
 
+;; To run all tests:
+#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
+
 (defn user-data-instructions-path
   "Get path to global user data instructions directory.
 
@@ -134,9 +137,77 @@
                           :domain domain})))]
     (vec file-data)))
 
-(comment
-  (require '[promesa.core :as p])
+(defn concatenate-instruction-files!+
+  "Slurp instruction files and concatenate with separators.
 
+  Args:
+    file-paths - Vector of absolute file paths
+
+  Returns: Promise of concatenated string with '# From: filename' separators"
+  [file-paths]
+  (if (empty? file-paths)
+    (p/resolved "")
+    (p/let [contents (p/all (for [file-path file-paths]
+                              (p/let [content (read-file-content!+ file-path)
+                                      filename (path/basename file-path)]
+                                {:filename filename
+                                 :content (or content "")})))]
+      (string/join
+       "\n\n"
+       (for [{:keys [filename content]} contents]
+         (str "# From: " filename "\n\n" content))))))
+
+(defn collect-all-instruction-descriptions!+
+  "Collect instruction file descriptions from both workspace and global areas.
+
+  Returns: Promise of vector of {:file :filename :description :domain} maps"
+  []
+  (p/let [;; Try workspace instructions (might not exist)
+          workspace-descriptions (p/catch
+                                  (p/let [ws-path (workspace-instructions-path)]
+                                    (build-file-descriptions-map!+ ws-path))
+                                  (fn [_] []))
+          ;; Get global user instructions
+          user-descriptions (build-file-descriptions-map!+
+                             (user-data-instructions-path))]
+    ;; Combine both, workspace first
+    (vec (concat workspace-descriptions user-descriptions))))
+
+(defn prepare-instructions-from-selected-paths!+
+  "Concatenate selected instruction files with context files.
+
+  This function assumes instruction selection has already happened upstream.
+  Designed to be called after select-instructions!+ or when paths are known.
+
+  Args:
+    conversation-data - Map with namespaced keys:
+      :agent.conversation/selected-paths - Vector of selected instruction file paths
+      :agent.conversation/context-files - Vector of context file paths
+
+  Returns: Promise of concatenated instructions string"
+  [{:agent.conversation/keys [selected-paths context-files]}]
+  (p/let [;; Slurp selected instruction files
+          selected-content (concatenate-instruction-files!+ (or selected-paths []))
+
+          ;; Slurp context files
+          context-content (concatenate-instruction-files!+ (or context-files []))
+
+          ;; Concatenate with separator if both exist
+          final-instructions (cond
+                               (and (seq selected-content) (seq context-content))
+                               (str selected-content
+                                    "\n\n"
+                                    "# === Context Files ===\n\n"
+                                    context-content)
+
+                               (seq context-content)
+                               context-content
+
+                               :else
+                               selected-content)]
+    final-instructions))
+
+(comment
   ;; Test path utilities
   (user-data-instructions-path)
   (workspace-instructions-path)
@@ -149,11 +220,22 @@
   ;; Test file listing
   (p/let [files (list-instruction-files!+ (user-data-instructions-path))]
     (def user-files files)
-    (println "User files:" files))
+    (count files))
+
+  user-files
 
   ;; Test building descriptions map
   (p/let [descriptions (build-file-descriptions-map!+ (user-data-instructions-path))]
     (def user-descriptions descriptions)
-    (cljs.pprint/pprint descriptions))
+    (count descriptions))
+
+  user-descriptions
+
+  ;; Test collecting all descriptions
+  (p/let [descriptions (collect-all-instruction-descriptions!+)]
+    (def all-descriptions descriptions)
+    (count descriptions))
+
+  all-descriptions
 
   :rcf)

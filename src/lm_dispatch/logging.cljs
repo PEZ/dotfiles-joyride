@@ -83,10 +83,10 @@
   (:debug-mode? @state/!agent-state)
 
   ;; Run a conversation with debug logging
-  (require '[lm-dispatch.agent :as agent])
+  (require '[lm-dispatch.agent-orchestrator :as orchestrator])
   (require '[promesa.core :as p])
 
-  (p/let [result (agent/autonomous-conversation!+
+  (p/let [result (orchestrator/autonomous-conversation!+
                   "Count to 3"
                   {:model-id "grok-code-fast-1"
                    :caller "debug-test"

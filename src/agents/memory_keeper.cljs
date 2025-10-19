@@ -8,12 +8,15 @@
   (:require
    ["path" :as path]
    ["vscode" :as vscode]
-   [lm-dispatch.agent :as agent-dispatch]
+   [lm-dispatch.agent-orchestrator :as agent-orchestrator]
    [cljs.pprint]
    [clojure.edn :as edn]
    [clojure.string :as string]
    [joyride.core :as joy]
    [promesa.core :as p]))
+
+;; To run all tests:
+#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 (def agent-model "grok-code-fast-1")
 (def default-max-turns 15)
@@ -425,6 +428,8 @@
       :max-turns - Optional turn limit override (default: 10)
       :caller - Optional, but encouraged, who's recording the memory
       :progress-callback - Optional progress function
+      :use-instruction-selection? - Enable automatic instruction file selection (default: false)
+      :context-file-paths - Vector of additional instruction file paths to include as context
 
   Returns:
     Promise of result map:
@@ -434,7 +439,8 @@
       - :write-failed - File write operation failed
       - :file-not-found - Tried to append to non-existent file
       - :parse-failed - Could not parse agent response"
-  [{:keys [summary domain caller title scope model-id max-turns progress-callback]
+  [{:keys [summary domain caller title scope model-id max-turns progress-callback
+           use-instruction-selection? context-file-paths]
     :or {scope :global
          model-id agent-model
          max-turns default-max-turns}}]
@@ -462,14 +468,16 @@
                     "copilot_findTextInFiles"]
 
           ;; Step 5: Call agent for analysis and content creation
-          agent-result (agent-dispatch/autonomous-conversation!+
+          agent-result (agent-orchestrator/autonomous-conversation!+
                         goal
                         {:model-id model-id
                          :max-turns max-turns
                          :tool-ids tool-ids
                          :caller caller
                          :title title
-                         :progress-callback progress-callback})
+                         :progress-callback progress-callback
+                         :use-instruction-selection? use-instruction-selection?
+                         :context-file-paths context-file-paths})
 
           ;; Step 6: Search agent messages backwards for EDN structure
           ;; Agent may include EDN in any message, not just the last one
@@ -546,44 +554,81 @@
   )
 
 (comment
-  ;; Basic usage - global memory with domain hint
-  (record-memory!+
-   {:summary "Use REPL evaluation of subexpressions instead of println for debugging"})
+  ;; Example 1: Basic usage - global memory with domain hint
+  (p/let [result (record-memory!+
+                  {:summary "Use REPL evaluation of subexpressions instead of println for debugging"
+                   :domain "clojure"})]
+    (def basic-result result)
+    result)
 
-  (record-memory!+
-   {:summary "Use REPL evaluation of subexpressions instead of println for debugging"
-    :domain "clojure"})
+  basic-result
 
-  (record-memory!+
-   {:summary "Use REPL evaluation of subexpressions instead of println for debugging"
-    :domain "clojure"
-    :model-id "claude-sonnet-4"})
+  ;; Example 2: Without domain hint (agent determines domain automatically)
+  (p/let [result (record-memory!+
+                  {:summary "Always verify API responses before assuming success"})]
+    (def no-domain-result result)
+    result)
 
-  ;; Without domain hint (universal memory)
-  (record-memory!+
-   {:summary "Always verify API responses before assuming success"})
+  no-domain-result
 
-  ;; Workspace-scoped memory
-  (record-memory!+
-   {:title "Thread it"
-    :summary "Threading macros improve readability in data pipelines"
-    :domain "clojure"
-    :scope :workspace})
+  ;; Example 3: Workspace-scoped memory
+  (p/let [result (record-memory!+
+                  {:title "Thread it"
+                   :summary "Threading macros improve readability in data pipelines"
+                   :domain "clojure"
+                   :scope :workspace})]
+    (def workspace-result result)
+    result)
 
-  ;; With custom options
-  (record-memory!+
-   {:title "Autostach FTW"
-    :summary "Use --autostash flag with git rebase"
-    :domain "git-workflow"
-    :model-id "claude-sonnet-4"
-    :max-turns 15
-    :progress-callback vscode/window.showInformationMessage})
+  workspace-result
 
-  ;; Get result and inspect
-  (p/let [result (record-memory!+ {:summary "Some lesson..."
+  ;; Example 4: With instruction selection enabled
+  ;; This will automatically select relevant instruction files based on the summary
+  (p/let [result (record-memory!+
+                  {:summary "Prefer structural editing tools over string replacement when editing Clojure files"
+                   :domain "clojure"
+                   :use-instruction-selection? true
+                   :caller "rcf-test"})]
+    (def instruction-selection-result result)
+    result)
+
+  instruction-selection-result
+
+  ;; Example 5: With specific context files
+  ;; Provide specific instruction files as context
+  (p/let [context-paths [(user-data-instructions-path "clojure.instructions.md")
+                         (user-data-instructions-path "clojure-memory.instructions.md")]
+          result (record-memory!+
+                  {:summary "Use inline def for REPL debugging instead of println"
+                   :domain "clojure"
+                   :context-file-paths context-paths
+                   :caller "rcf-context-test"})]
+    (def context-result result)
+    result)
+
+  context-result
+
+  ;; Example 6: With custom model and progress callback
+  (p/let [result (record-memory!+
+                  {:title "Autostash FTW"
+                   :summary "Use --autostash flag with git rebase"
+                   :domain "git-workflow"
+                   :model-id "claude-sonnet-4"
+                   :max-turns 15
+                   :use-instruction-selection? true
+                   :progress-callback (fn [turn max-turns _msg]
+                                        (js/console.log (str "Turn " turn "/" max-turns)))})]
+    (def custom-result result)
+    result)
+
+  custom-result
+
+  ;; Example 7: Inspect result structure
+  (p/let [result (record-memory!+ {:summary "Test result inspection"
                                    :domain "testing"})]
-    (println "Success:" (:success result))
-    (println "File path:" (:file-path result)))
+    {:success? (:success result)
+     :file-uri (:file-uri result)
+     :has-error? (some? (:error result))})
 
   :rcf)
 

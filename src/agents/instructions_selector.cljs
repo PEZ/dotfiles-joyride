@@ -8,9 +8,12 @@
   (:require
    [cljs.pprint]
    [clojure.string :as string]
-   [lm-dispatch.agent :as agent]
+   [lm-dispatch.agent-core :as agent-core]
    [lm-dispatch.instructions-util :as instr-util]
+   [lm-dispatch.monitor :as monitor]
    [promesa.core :as p]))
+
+
 
 (def selector-model-id "grok-code-fast-1")
 (def selector-max-turns 10)
@@ -103,35 +106,67 @@
     goal - The task goal to match instructions against
     file-descriptions - Vector of {:file :filename :description :domain} maps
     context-content - Optional string with slurped context-files content
+    caller - Optional caller identification
 
   Returns: Promise of vector of selected file paths (absolute), sorted with most important last"
   [{:keys [goal file-descriptions context-content caller]}]
   (p/let [selection-goal (build-selection-prompt {:goal goal
                                                   :file-descriptions file-descriptions
                                                   :context-content context-content})
-          result (agent/autonomous-conversation!+
-                  selection-goal
+          ;; Register conversation manually since we're using core directly
+          conv-id (monitor/start-monitoring-conversation!+
+                   {:agent.conversation/goal selection-goal
+                    :agent.conversation/model-id selector-model-id
+                    :agent.conversation/max-turns selector-max-turns
+                    :agent.conversation/caller (or caller "Instruction Selector")
+                    :agent.conversation/title "Selecting Instructions"})
+          result (agent-core/agentic-conversation!+
                   {:model-id selector-model-id
+                   :goal selection-goal
+                   :instructions "Go, go, go!"
                    :max-turns selector-max-turns
                    :tool-ids selector-tool-ids
-                   :caller "instructions-selector"
-                   :title "Selecting Instructions"})
+                   :conv-id conv-id
+                   :progress-callback #()})
           selected-paths (parse-selection-result (:final-response result))]
     selected-paths))
 
+
+
 (comment
-  (require '[promesa.core :as p])
-  (require '[lm-dispatch.instructions-util :as instr-util])
-
-  ;; Test with user descriptions
-  (p/let [descriptions (instr-util/build-file-descriptions-map!+ (instr-util/user-data-instructions-path))
-          selected (select-instructions!+ {:goal "Add a new Clojure function using TDD"}
-                                          :file-descriptions descriptions
-                                          :context-content nil)]
+  ;; Example 1: Test instruction selection for a Clojure TDD task
+  (p/let [descriptions (instr-util/collect-all-instruction-descriptions!+)
+          selected (select-instructions!+
+                    {:goal "Add a new Clojure function using TDD"
+                     :file-descriptions descriptions
+                     :context-content nil
+                     :caller "rcf-test"})]
     (def test-selection selected)
-    (cljs.pprint/pprint selected))
+    selected)
 
-  ;; Test parsing
+  ;; Inspect results
+  test-selection
+  (count test-selection)
+
+  ;; Example 2: Test with context content
+  (p/let [descriptions (instr-util/collect-all-instruction-descriptions!+)
+          context "Working on a Joyride script for VS Code automation"
+          selected (select-instructions!+
+                    {:goal "Create a new Joyride command"
+                     :file-descriptions descriptions
+                     :context-content context})]
+    (def joyride-selection selected)
+    selected)
+
+  joyride-selection
+
+  ;; Example 3: Test parsing selection results
   (parse-selection-result {:text "/path/to/file1.instructions.md\n/path/to/file2.instructions.md"})
+
+  ;; Test with empty result
+  (parse-selection-result {:text ""})
+
+  ;; Test with nil
+  (parse-selection-result nil)
 
   :rcf)

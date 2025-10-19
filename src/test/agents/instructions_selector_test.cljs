@@ -7,7 +7,6 @@
   (:require
    [cljs.test :refer [deftest is testing]]
    [clojure.string :as string]
-   [lm-dispatch.agent :as agent]
    [lm-dispatch.instructions-util :as instr-util]
    [promesa.core :as p]))
 
@@ -39,7 +38,7 @@
 
 (deftest concatenate-instruction-files-test
   (testing "Returns empty string for empty file list"
-    (p/let [result (agent/concatenate-instruction-files!+ [])]
+    (p/let [result (instr-util/concatenate-instruction-files!+ [])]
       (is (= "" result)
           "Should return empty string for empty list")))
 
@@ -48,7 +47,7 @@
             user-path (instr-util/user-data-instructions-path)
             files (instr-util/list-instruction-files!+ user-path)
             test-files (take 2 files)
-            result (agent/concatenate-instruction-files!+ test-files)]
+            result (instr-util/concatenate-instruction-files!+ test-files)]
       (is (string? result)
           "Should return a string")
       (is (string/includes? result "# From:")
@@ -58,7 +57,7 @@
 
 (deftest collect-all-instruction-descriptions-test
   (testing "Collects descriptions from workspace and global areas"
-    (p/let [descriptions (agent/collect-all-instruction-descriptions!+)]
+    (p/let [descriptions (instr-util/collect-all-instruction-descriptions!+)]
       (is (vector? descriptions)
           "Should return a vector")
       (is (> (count descriptions) 0)

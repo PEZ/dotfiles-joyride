@@ -8,7 +8,8 @@
    [cljs.test :refer [deftest is testing]]
    [clojure.string :as string]
    [promesa.core :as p]
-   [lm-dispatch.agent :as agent]))
+   [lm-dispatch.agent-core :as agent]
+   [lm-dispatch.instructions-util :as instr-util]))
 
 ;; To run all tests:
 #_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
@@ -147,14 +148,14 @@
 
 (deftest concatenate-instruction-files-test
   (testing "Concatenates empty file list to empty string"
-    (p/let [result (agent/concatenate-instruction-files!+ [])]
+    (p/let [result (instr-util/concatenate-instruction-files!+ [])]
       (is (= "" result)
           "Empty list should return empty string"))))
 
 
 (deftest collect-all-instruction-descriptions-test
   (testing "Collects instruction descriptions"
-    (p/let [descriptions (agent/collect-all-instruction-descriptions!+)]
+    (p/let [descriptions (instr-util/collect-all-instruction-descriptions!+)]
       (is (vector? descriptions)
           "Should return a vector")
       (is (every? map? descriptions)
@@ -166,14 +167,14 @@
 
 (deftest prepare-instructions-from-selected-paths-test
   (testing "Returns empty string for empty inputs"
-    (p/let [result (agent/prepare-instructions-from-selected-paths!+
+    (p/let [result (instr-util/prepare-instructions-from-selected-paths!+
                     {:agent.conversation/selected-paths []
                      :agent.conversation/context-files []})]
       (is (= "" result)
           "Empty paths should return empty string")))
 
   (testing "Handles nil inputs gracefully"
-    (p/let [result (agent/prepare-instructions-from-selected-paths!+
+    (p/let [result (instr-util/prepare-instructions-from-selected-paths!+
                     {:agent.conversation/selected-paths nil
                      :agent.conversation/context-files nil})]
       (is (= "" result)

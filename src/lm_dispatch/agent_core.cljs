@@ -3,13 +3,11 @@
 ;; - Work using TDD in the repl, existing tests: src/test/lm_dispatch/agent_test.cljs
 ;; - Always prefer your structural editing tools
 
-(ns lm-dispatch.agent
-  "Autonomous AI conversation system"
+(ns lm-dispatch.agent-core
+  "Pure autonomous AI conversation engine - no instruction selection dependencies"
   (:require
-   ["path" :as path]
    ["vscode" :as vscode]
    [clojure.string :as string]
-   [lm-dispatch.instructions-util :as instr-util]
    [lm-dispatch.state :as state]
    [lm-dispatch.logging :as logging]
    [lm-dispatch.monitor :as monitor]
@@ -270,7 +268,20 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
               :final-response last-response})))))))
 
 (defn agentic-conversation!+
-  "Create an autonomous AI conversation that drives itself toward a goal"
+  "Create an autonomous AI conversation that drives itself toward a goal.
+
+  Args:
+    conversation-data - Map with keys:
+      :model-id - LM model ID
+      :goal - String describing the task
+      :instructions - String with additional instructions
+      :max-turns - Maximum conversation turns
+      :progress-callback - Function called with progress updates
+      :tool-ids - Vector of tool IDs to enable
+      :allow-unsafe-tools? - Allow file write operations
+      :conv-id - Conversation ID for state tracking
+
+  Returns: Promise of result map with :history, :reason, :final-response"
   [{:keys [model-id tool-ids allow-unsafe-tools? conv-id] :as conversation-data}]
   (p/let [tools-args (util/enable-specific-tools tool-ids allow-unsafe-tools?)
           model-info (util/get-model-by-id!+ model-id)]
@@ -309,274 +320,3 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
         ;; Dispose the token source
         (.dispose cancellation-token-source)
         result))))
-
-(defn concatenate-instruction-files!+
-  "Slurp instruction files and concatenate with separators.
-
-  Args:
-    file-paths - Vector of absolute file paths
-
-  Returns: Promise of concatenated string with '# From: filename' separators"
-  [file-paths]
-  (if (empty? file-paths)
-    (p/resolved "")
-    (p/let [contents (p/all (for [file-path file-paths]
-                              (p/let [content (instr-util/read-file-content!+ file-path)
-                                      filename (path/basename file-path)]
-                                {:filename filename
-                                 :content (or content "")})))]
-      (clojure.string/join
-       "\n\n"
-       (for [{:keys [filename content]} contents]
-         (str "# From: " filename "\n\n" content))))))
-
-(defn collect-all-instruction-descriptions!+
-  "Collect instruction file descriptions from both workspace and global areas.
-
-  Returns: Promise of vector of {:file :filename :description :domain} maps"
-  []
-  (p/let [;; Try workspace instructions (might not exist)
-          workspace-descriptions (p/catch
-                                  (p/let [ws-path (instr-util/workspace-instructions-path)]
-                                    (instr-util/build-file-descriptions-map!+ ws-path))
-                                  (fn [_] []))
-          ;; Get global user instructions
-          user-descriptions (instr-util/build-file-descriptions-map!+
-                             (instr-util/user-data-instructions-path))]
-    ;; Combine both, workspace first
-    (vec (concat workspace-descriptions user-descriptions))))
-
-(defn prepare-instructions-from-selected-paths!+
-  "Concatenate selected instruction files with context files.
-
-  This function assumes instruction selection has already happened upstream.
-  Designed to be called after select-instructions!+ or when paths are known.
-
-  Args:
-    conversation-data - Map with namespaced keys:
-      :agent.conversation/selected-paths - Vector of selected instruction file paths
-      :agent.conversation/context-files - Vector of context file paths
-
-  Returns: Promise of concatenated instructions string"
-  [{:agent.conversation/keys [selected-paths context-files]}]
-  (p/let [;; Slurp selected instruction files
-          selected-content (concatenate-instruction-files!+ (or selected-paths []))
-
-          ;; Slurp context files
-          context-content (concatenate-instruction-files!+ (or context-files []))
-
-          ;; Concatenate with separator if both exist
-          final-instructions (cond
-                               (and (seq selected-content) (seq context-content))
-                               (str selected-content
-                                    "\n\n"
-                                    "# === Context Files ===\n\n"
-                                    context-content)
-
-                               (seq context-content)
-                               context-content
-
-                               :else
-                               selected-content)]
-    final-instructions))
-
-(defn autonomous-conversation!+
-  "Start an autonomous AI conversation toward a goal with flexible configuration.
-
-  Options:
-    :model-id - LM model ID (default: gpt-4o-mini)
-    :max-turns - Maximum conversation turns (default: 10)
-    :tool-ids - Vector of tool IDs to enable (default: [])
-    :progress-callback - Function called with progress updates (default: no-op)
-    :allow-unsafe-tools? - Allow file write operations (default: false)
-    :caller - String identifying who started the conversation
-    :title - Display title for the conversation
-    :instructions - Instructions string to prepend to goal (default: 'Go, go, go!')
-
-  For instruction selection, callers should:
-    1. Call collect-all-instruction-descriptions!+ to get available instructions
-    2. Call selector/select-instructions!+ to choose relevant ones
-    3. Call prepare-instructions-from-selected-paths!+ to prepare instructions
-    4. Pass the result as :instructions parameter"
-  ([goal]
-   (autonomous-conversation!+ goal
-                              {}))
-
-  ([goal {:keys [model-id max-turns tool-ids progress-callback allow-unsafe-tools? caller title
-                 instructions]
-          :or {model-id "gpt-4o-mini"
-               tool-ids []
-               max-turns 10
-               allow-unsafe-tools? false
-               instructions "Go, go, go!"}}]
-
-   (p/let [conv-id (monitor/start-monitoring-conversation!+
-                    (cond-> {:agent.conversation/goal goal
-                             :agent.conversation/model-id model-id
-                             :agent.conversation/max-turns max-turns
-                             :agent.conversation/caller caller
-                             :agent.conversation/title title}))
-           progress-callback (or progress-callback
-                                 #())
-           result (agentic-conversation!+
-                   {:model-id model-id
-                    :goal goal
-                    :instructions instructions
-                    :max-turns max-turns
-                    :tool-ids tool-ids
-                    :allow-unsafe-tools? allow-unsafe-tools?
-                    :caller caller
-                    :conv-id conv-id
-                    :progress-callback progress-callback})]
-     ;; Check for model error first
-     (if (:error? result)
-       (do
-         (logging/log-to-channel! conv-id (str "❌ Model error: " (:error-message result)))
-         result)
-       ;; Show final summary with proper turn counting
-       (let [conv (state/get-conversation conv-id)
-             final-status (keyword (:agent.conversation/status conv))
-             actual-turns (count (filter #(= (:role %) :assistant) (:history result)))
-             summary (str "🎯 Agentic task "
-                          (case final-status
-                            :task-complete "COMPLETED successfully!"
-                            :max-turns-reached "reached max turns"
-                            :cancelled "was CANCELLED"
-                            :agent-finished "finished"
-                            :error "encountered an ERROR"
-                            "ended unexpectedly")
-                          " (" actual-turns " turns, " (count (:history result)) " conversation steps)")]
-         (logging/log-to-channel! conv-id summary)
-         result)))))
-
-(comment
-
-  (require '[lm-dispatch.ui :as ui])
-  (p/let [use-tool-ids (ui/tools-picker+ ["joyride_evaluate_code"
-                                          "copilot_searchCodebase"
-                                          "copilot_searchWorkspaceSymbols"
-                                          "copilot_listCodeUsages"
-                                          "copilot_getVSCodeAPI"
-                                          "copilot_findFiles"
-                                          "copilot_findTextInFiles"
-                                          "copilot_readFile"
-                                          "copilot_listDirectory"
-                                          "copilot_insertEdit"
-                                          "copilot_createFile"])]
-    (def use-tool-ids (set use-tool-ids))
-    (println (pr-str use-tool-ids) "\n"))
-
-  (p/let [fib-res (autonomous-conversation!+ "# Fibonacci Generator
-Generate the nine first numbers in the fibonacci sequence without writing a function, but instead by starting with evaluating `[0 1]` and then each step read the result and evaluate `[second-number sum-of-first-and-second-number]`. In the last step evaluate just `second-number`."
-                                             {:model-id "grok-code-fast-1"
-                                              :caller "Mr Clojurian"
-                                              :title "Expensive fibs"
-                                              :use-instruction-selection? true
-                                              :max-turns 12
-                                              :tool-ids ["joyride_evaluate_code"]})]
-    (def fib-res fib-res))
-
-  (autonomous-conversation!+ "Count all .cljs files and show the result"
-                             {:title "Power Counter"
-                              :tool-ids use-tool-ids
-                              :caller "repl-file-counter"})
-
-  (autonomous-conversation!+ "Show an information message that says 'Hello from the adaptive AI agent!' using VS Code APIs"
-                             {:tool-ids ["joyride_evaluate_code"
-                                         "copilot_getVSCodeAPI"]
-                              :caller "repl-greeting-test"
-                              :max-turns 4})
-
-
-  (autonomous-conversation!+ (str "Analyze this project structure and create documentation. For tool calls use this syntax: \n\nBEGIN-TOOL-CALL\n{:name \"tool_name\", :input {:someParam \"value\", :someOtherParam [\"value\" 42]}}\nEND-TOOL-CALL\n\nThe result of the tool calls will be provided to you as part of the next step. Keep each step laser focused."
-                                  "\nAvailable tools: "
-                                  (pr-str use-tool-ids))
-                             {:title "Project Summarizer"
-                              :model-id "claude-sonnet-4.5"
-                              :max-turns 15
-                              :caller "Mr Clojurian"
-                              :tool-ids use-tool-ids})
-
-  (autonomous-conversation!+ "Analyze the lm_dispatch system in this workspace, by reading the code and using the repl, and create documentation."
-                             #_#_"\nAvailable tools: "
-                               (pr-str use-tool-ids)
-                             {:title "Project Summarizer"
-                              :model-id "claude-sonnet-4.5"
-                              :caller "Mr Clojurian"
-                              :max-turns 25
-                              :tool-ids use-tool-ids})
-
-  (autonomous-conversation!+ "Create a file docs/greeting.md with a greeting to Clojurians"
-                             {:model-id "claude-sonnet-4"
-                              :max-turns 15
-                              :progress-callback (fn [step]
-                                                   (println "🔄" step)
-                                                   (vscode/window.showInformationMessage step))
-                              :tool-ids use-tool-ids})
-
-  (def example-joyride-tool-call {:callId "foo"
-                                  :name "joyride_evaluate_code"
-                                  :input {:code "(vscode/window.showInformationMessage \"hello\")"}})
-
-  ;; === Using Instruction Selection (External Composition Pattern) ===
-  ;;
-  ;; The instruction selector allows intelligent selection of relevant instruction files
-  ;; based on task goals. This demonstrates the external composition pattern where
-  ;; callers orchestrate: collect → select → prepare → execute.
-
-  (require '[agents.instructions-selector :as selector])
-
-  ;; Example: Custom autonomous task with instruction selection
-  (p/let [;; 1. Collect available instruction descriptions
-          descriptions (collect-all-instruction-descriptions!+)
-
-          ;; 2. Select relevant instructions for your task
-          selected-paths (selector/select-instructions!+
-                          {:goal "Create a new Clojure namespace with TDD approach"
-                           :file-descriptions descriptions})
-
-          ;; 3. Prepare instructions from selected paths
-          instructions (prepare-instructions-from-selected-paths!+
-                        {:agent.conversation/selected-paths selected-paths})
-
-          ;; 4. Run autonomous conversation with the prepared instructions
-          result (autonomous-conversation!+
-                  "Create a new namespace 'my.new.feature' with tests"
-                  {:instructions instructions
-                   :model-id "grok-code-fast-1"
-                   :max-turns 10
-                   :tool-ids ["joyride_evaluate_code"
-                              "copilot_readFile"
-                              "copilot_createFile"]
-                   :caller "custom-task-example"})]
-    (def task-result result)
-    (println "Task result:" (:reason result)))
-
-  ;; Example: With context files
-  (p/let [descriptions (collect-all-instruction-descriptions!+)
-
-          ;; Define context files relevant to your task
-          context-files ["/Users/pez/.config/joyride/src/my_lib.cljs"]
-
-          ;; Select instructions with context
-          selected-paths (selector/select-instructions!+
-                          {:goal "Refactor my-lib to use protocols"
-                           :file-descriptions descriptions
-                           :context-content (concatenate-instruction-files!+ context-files)})
-
-          ;; Prepare instructions including context
-          instructions (prepare-instructions-from-selected-paths!+
-                        {:agent.conversation/selected-paths selected-paths
-                         :agent.conversation/context-files context-files})
-
-          result (autonomous-conversation!+
-                  "Refactor my-lib to use protocols for better extensibility"
-                  {:instructions instructions
-                   :max-turns 20
-                   :tool-ids ["joyride_evaluate_code"
-                              "copilot_readFile"
-                              "copilot_insertEdit"]
-                   :caller "refactoring-task"})]
-    (println "Refactoring complete:" (:reason result)))
-
-  :rcf)
