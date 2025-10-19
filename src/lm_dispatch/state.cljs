@@ -1,7 +1,7 @@
-; AGENTS, please:
-; - remember interactive programming
-; - consider TDD in the repl, existing tests: src/test/lm_dispatch/state_test.cljs
-; - prefer your structural editing tools
+;; AGENTS, please read this preamble before working with the namespace:
+;; - Use interactive programming
+;; - Work using TDD in the repl, existing tests: src/test/lm_dispatch/state_test.cljs
+;; - Always prefer your structural editing tools
 
 (ns lm-dispatch.state
   "Pure state management for agent dispatch conversations.
@@ -9,7 +9,7 @@
   This namespace provides the single source of truth for conversation data
   with pure functions operating on a centralized atom. No side effects.")
 
-; To run all tests:
+;; To run all tests:
 #_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 ;; State Atom
@@ -53,13 +53,11 @@
   [conv-id]
   (let [conv (get-in @!agent-state [:agent/conversations conv-id])
         token-source (:agent.conversation/cancellation-token-source conv)]
-    ;; Cancel the VS Code cancellation token
     (when token-source
       (.cancel token-source))
-    ;; Update state
     (swap! !agent-state
            (fn [state]
-             (-> state
+             (-> state ; TODO: This is confusing, is it cancelled or is cancel requested?
                  (assoc-in [:agent/conversations conv-id :agent.conversation/cancelled?] true)
                  (assoc-in [:agent/conversations conv-id :agent.conversation/status] :cancel-requested))))))
 

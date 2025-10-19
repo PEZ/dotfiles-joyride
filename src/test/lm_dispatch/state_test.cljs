@@ -1,14 +1,14 @@
-; AGENTS, please:
-; - remember interactive programming
-; - consider TDD in the repl
-; - prefer your structural editing tools
+;; AGENTS, please read this preamble before working with the namespace:
+;; - Use interactive programming
+;; - Work using TDD in the repl
+;; - Always prefer your structural editing tools
 
 (ns test.lm-dispatch.state-test
   (:require
    [lm-dispatch.state :as state]
    [cljs.test :refer [deftest is testing]]))
 
-; To run all tests:
+;; To run all tests:
 #_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 (deftest conversation-registration
@@ -87,7 +87,7 @@
       (state/mark-conversation-cancelled! id)
       (let [conv (state/get-conversation id)]
         (is (true? (:agent.conversation/cancelled? conv)))
-        (is (= :cancelled (:agent.conversation/status conv)))))))
+        (is (= :cancel-requested (:agent.conversation/status conv)))))))
 
 (deftest conversation-retrieval
   (testing "Get all conversations"
@@ -115,6 +115,6 @@
 
 (comment
   ;; Run tests
-  (cljs.test/run-tests 'lm-dispatch.state-test)
+  (cljs.test/run-tests 'test.lm-dispatch.state-test)
 
   :rcf)

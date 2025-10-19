@@ -1,7 +1,7 @@
-; AGENTS, please:
-; - remember interactive programming
-; - consider TDD in the repl
-; - prefer your structural editing tools
+;; AGENTS, please read this preamble before working with the namespace:
+;; - Use interactive programming
+;; - Work using TDD in the repl
+;; - Always prefer your structural editing tools
 (ns run-all-tests
   (:require [joyride.core :as joyride]
             [promesa.core :as p]

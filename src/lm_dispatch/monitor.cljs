@@ -1,7 +1,7 @@
-; AGENTS, please:
-; - remember interactive programming
-; - consider TDD in the repl, existing tests: src/test/lm_dispatch/monitor_test.cljs
-; - prefer your structural editing tools
+;; AGENTS, please read this preamble before working with the namespace:
+;; - Use interactive programming
+;; - Work using TDD in the repl, existing tests: src/test/lm_dispatch/monitor_test.cljs
+;; - Always prefer your structural editing tools
 
 (ns lm-dispatch.monitor
   "Presentation layer for agent dispatch monitoring.
@@ -14,7 +14,7 @@
    [joyride.flare :as flare]
    [promesa.core :as p]))
 
-; To run all tests:
+;; To run all tests:
 #_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 ;; UI Interaction Handlers

@@ -1,7 +1,7 @@
-; AGENTS, please:
-; - remember interactive programming
-; - consider TDD in the repl
-; - prefer your structural editing tools
+;; AGENTS, please read this preamble before working with the namespace:
+;; - Use interactive programming
+;; - Work using TDD in the repl
+;; - Always prefer your structural editing tools
 
 (ns lm-dispatch.ui
   (:require
@@ -10,7 +10,7 @@
    [clojure.string :as string]
    [promesa.core :as p]))
 
-; To run all tests:
+;; To run all tests:
 #_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 (defn pick-model!+ []

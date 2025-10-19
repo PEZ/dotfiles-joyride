@@ -1,7 +1,7 @@
-; AGENTS, please:
-; - remember interactive programming
-; - consider TDD in the repl, existing tests: src/test/lm_dispatch/agent_test.cljs
-; - prefer your structural editing tools
+;; AGENTS, please read this preamble before working with the namespace:
+;; - Use interactive programming
+;; - Work using TDD in the repl, existing tests: src/test/lm_dispatch/agent_test.cljs
+;; - Always prefer your structural editing tools
 
 (ns lm-dispatch.agent
   "Autonomous AI conversation system"
@@ -16,7 +16,7 @@
    [lm-dispatch.util :as util]
    [promesa.core :as p]))
 
-; To run all tests:
+;; To run all tests:
 #_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 (def agentic-system-prompt

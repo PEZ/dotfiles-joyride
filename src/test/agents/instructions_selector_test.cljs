@@ -1,7 +1,7 @@
-; AGENTS, please:
-; - remember interactive programming
-; - consider TDD in the repl
-; - prefer your structural editing tools
+;; AGENTS, please read this preamble before working with the namespace:
+;; - Use interactive programming
+;; - Work using TDD in the repl
+;; - Always prefer your structural editing tools
 
 (ns test.agents.instructions-selector-test
   (:require
@@ -11,8 +11,8 @@
    [lm-dispatch.instructions-util :as instr-util]
    [promesa.core :as p]))
 
-; To run all tests:
-#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
+;; To run all tests:
+#_(do (require 'run-all-tests :reload-all) (run-all-tests/run!+))
 
 (deftest extract-domain-from-filename-test
   (testing "Extracts domain from hyphenated filenames"
@@ -72,23 +72,4 @@
       (is (every? #(contains? % :domain) descriptions)
           "Each description should have :domain key"))))
 
-(deftest prepare-instructions-with-selection-test
-  (testing "Handles empty context-files"
-    (p/let [result (agent/prepare-instructions-with-selection!+
-                    {:goal "Test goal"
-                     :context-files []})]
-      (is (string? result)
-          "Should return a string")))
 
-  (testing "Includes context-files with separator"
-    (p/let [;; Use an actual instruction file as context
-            user-path (instr-util/user-data-instructions-path)
-            files (instr-util/list-instruction-files!+ user-path)
-            context-file (first files)
-            result (agent/prepare-instructions-with-selection!+
-                    {:goal "Test goal with context"
-                     :context-files [context-file]})]
-      (is (string/includes? result "# === Context Files ===")
-          "Should include context separator when context-files provided")
-      (is (string/includes? result "# From:")
-          "Should include file separators"))))

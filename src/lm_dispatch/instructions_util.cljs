@@ -1,6 +1,6 @@
-; AGENTS, please:
-; - remember interactive programming
-; - prefer your structural editing tools
+;; AGENTS, please read this preamble before working with the namespace:
+;; - Use interactive programming
+;; - Always prefer your structural editing tools
 
 (ns lm-dispatch.instructions-util
   "Utilities for working with instruction files"
@@ -13,10 +13,10 @@
 
 (defn user-data-instructions-path
   "Get path to global user data instructions directory.
-  
+
   Args:
     relative-path - Optional relative path to append
-    
+
   Returns: Absolute path string"
   ([] (user-data-instructions-path nil))
   ([relative-path]
@@ -30,10 +30,10 @@
 
 (defn workspace-instructions-path
   "Get path to workspace instructions directory.
-  
+
   Args:
     relative-path - Optional relative path to append
-    
+
   Returns: Absolute path string or throws if no workspace"
   ([] (workspace-instructions-path nil))
   ([relative-path]
@@ -49,19 +49,19 @@
 
 (defn extract-domain-from-filename
   "Extract domain from instruction filename.
-  
+
   Pattern: {domain}-{suffix}.instructions.md or {domain}.instructions.md
   Takes everything before the last component before .instructions.md
-  
+
   Examples:
     'clojure-memory.instructions.md' → 'clojure'
     'shadow-cljs-memory.instructions.md' → 'shadow-cljs'
     'joyride.instructions.md' → 'joyride'
     'memory.instructions.md' → nil (reserved word)
-    
+
   Args:
     filename - Filename string
-    
+
   Returns: Domain string or nil"
   [filename]
   (when-let [[_ domain-part] (re-find #"^(.+?)(?:-[^-]+)?\.instructions\.md$" filename)]
@@ -88,10 +88,10 @@
 
 (defn read-file-content!+
   "Read file content from disk.
-  
+
   Args:
     file-path - Absolute path to file
-    
+
   Returns: Promise of file content string, or nil if file doesn't exist"
   [file-path]
   (p/catch
@@ -136,24 +136,24 @@
 
 (comment
   (require '[promesa.core :as p])
-  
+
   ;; Test path utilities
   (user-data-instructions-path)
   (workspace-instructions-path)
-  
+
   ;; Test domain extraction
   (extract-domain-from-filename "clojure-memory.instructions.md")
   (extract-domain-from-filename "joyride.instructions.md")
   (extract-domain-from-filename "memory.instructions.md")
-  
+
   ;; Test file listing
   (p/let [files (list-instruction-files!+ (user-data-instructions-path))]
     (def user-files files)
     (println "User files:" files))
-  
+
   ;; Test building descriptions map
   (p/let [descriptions (build-file-descriptions-map!+ (user-data-instructions-path))]
     (def user-descriptions descriptions)
     (cljs.pprint/pprint descriptions))
-  
+
   :rcf)

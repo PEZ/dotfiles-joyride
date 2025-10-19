@@ -1,7 +1,7 @@
-; AGENTS, please:
-; - remember interactive programming
-; - consider TDD in the repl
-; - prefer your structural editing tools
+;; AGENTS, please read this preamble before working with the namespace:
+;; - Use interactive programming
+;; - Work using TDD in the repl
+;; - Always prefer your structural editing tools
 
 (ns test.lm-dispatch.agent-test
   (:require
@@ -10,7 +10,7 @@
    [promesa.core :as p]
    [lm-dispatch.agent :as agent]))
 
-; To run all tests:
+;; To run all tests:
 #_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 (deftest agent-indicates-completion?-test
@@ -164,18 +164,17 @@
       (is (every? #(contains? % :filename) descriptions)
           "Each description should have :filename key"))))
 
-(deftest prepare-instructions-with-selection-test
-  (testing "Prepares instructions without context files"
-    (p/let [result (agent/prepare-instructions-with-selection!+
-                    {:goal "Test task"
-                     :context-files []})]
-      (is (string? result)
-          "Should return a string")))
+(deftest prepare-instructions-from-selected-paths-test
+  (testing "Returns empty string for empty inputs"
+    (p/let [result (agent/prepare-instructions-from-selected-paths!+
+                    {:agent.conversation/selected-paths []
+                     :agent.conversation/context-files []})]
+      (is (= "" result)
+          "Empty paths should return empty string")))
 
-  (testing "Includes context separator when context-files provided"
-    (p/let [result (agent/prepare-instructions-with-selection!+
-                    {:goal "Test with context"
-                     :context-files []})]
-      ;; With empty context-files, shouldn't have separator
-      (is (not (string/includes? result "# === Context Files ==="))
-          "Should not include separator for empty context-files"))))
+  (testing "Handles nil inputs gracefully"
+    (p/let [result (agent/prepare-instructions-from-selected-paths!+
+                    {:agent.conversation/selected-paths nil
+                     :agent.conversation/context-files nil})]
+      (is (= "" result)
+          "Nil paths should return empty string"))))

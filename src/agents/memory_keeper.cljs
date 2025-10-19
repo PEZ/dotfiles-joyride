@@ -1,7 +1,7 @@
-; AGENTS, please:
-; - remember interactive programming
-; - consider TDD in the repl, existing tests: src/test/agents/memory_keeper_test.cljs
-; - prefer your structural editing tools
+;; AGENTS, please read this preamble before working with the namespace:
+;; - Use interactive programming
+;; - Work using TDD in the repl, existing tests: src/test/agents/memory_keeper_test.cljs
+;; - Always prefer your structural editing tools
 
 (ns agents.memory-keeper
   "Autonomous memory recording agent using the LM agent dispatch system"

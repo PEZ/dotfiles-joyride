@@ -1,6 +1,7 @@
-; AGENTS, please:
-; - remember interactive programming
-; - prefer your structural editing tools
+;; AGENTS, please read this preamble before working with the namespace:
+;; - Use interactive programming
+;; - Work using TDD in the repl, existing tests: src/test/lm_dispatch/instructions_selector_test.cljs
+;; - Always prefer your structural editing tools
 
 (ns agents.instructions-selector
   "Agent for selecting relevant instruction files based on task goals"
