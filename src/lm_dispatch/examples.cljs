@@ -77,16 +77,15 @@
   ;; Let the system automatically select relevant instructions
   (p/let [result (orchestrator/autonomous-conversation!+
                   "Review the agent-core namespace and suggest one improvement"
-                  {:model-id "gpt-4o-mini"
+                  {:model-id "grok-code-fast-1"
                    :max-turns 5
                    :tool-ids ["copilot_readFile" "copilot_findFiles"]
                    :caller "example-5-with-selection"
                    :title "Review agent-core"
+                   :context-file-paths ["/Users/pez/.config/joyride/src/lm_dispatch/agent_orchestrator.cljs"]
                    :use-instruction-selection? true})]
-    (def selection-result result)
+    (def review-result result)
     result)
-
-  selection-result
 
   ;; Example 6: Using context-file-paths for specific instructions
   ;; Manually provide instruction files as context
@@ -106,7 +105,5 @@
                    :context-file-paths clojure-files})]
     (def context-result result)
     result)
-
-  context-result
 
   :rcf)

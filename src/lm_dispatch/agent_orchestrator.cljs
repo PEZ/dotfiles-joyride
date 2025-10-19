@@ -40,48 +40,31 @@
    (autonomous-conversation!+ goal {}))
 
   ([goal {:keys [model-id max-turns tool-ids progress-callback allow-unsafe-tools? caller title
-                 instructions use-instruction-selection? context-file-paths]
+                 use-instruction-selection? context-file-paths]
           :or {model-id "gpt-4o-mini"
                tool-ids []
                max-turns 10
                allow-unsafe-tools? false
-               instructions "Go, go, go!"
                use-instruction-selection? false}}]
 
-   (p/let [;; Step 1: Optionally select and prepare instructions
-           final-instructions (if use-instruction-selection?
-                                (p/let [;; Collect available instruction descriptions
-                                        descriptions (instr-util/collect-all-instruction-descriptions!+)
-
-                                        ;; Select relevant instructions
-                                        selected-paths (selector/select-instructions!+
-                                                        {:goal goal
-                                                         :file-descriptions descriptions
-                                                         :context-content nil
-                                                         :caller (or title caller "Instruction Selector")})
-
-                                        ;; Prepare instructions from selected paths + context files
-                                        prepared (instr-util/prepare-instructions-from-selected-paths!+
-                                                  {:agent.conversation/selected-paths selected-paths
-                                                   :agent.conversation/context-files context-file-paths})]
-                                  prepared)
-                                ;; Otherwise use provided instructions or default
-                                (if (seq context-file-paths)
-                                  (p/let [context-content (instr-util/concatenate-instruction-files!+ context-file-paths)]
-                                    (if (seq instructions)
-                                      (str instructions "\n\n# === Context Files ===\n\n" context-content)
-                                      context-content))
-                                  instructions))
-
-           ;; Step 2: Start monitoring the conversation
-           conv-id (monitor/start-monitoring-conversation!+
+   (p/let [conv-id (monitor/start-monitoring-conversation!+
                     (cond-> {:agent.conversation/goal goal
                              :agent.conversation/model-id model-id
                              :agent.conversation/max-turns max-turns
                              :agent.conversation/caller caller
                              :agent.conversation/title title}))
-
-           ;; Step 3: Run the core agent conversation
+           context-content (instr-util/concatenate-instruction-files!+ context-file-paths)
+           selected-instructions-paths (if use-instruction-selection?
+                                         (p/let [descriptions (instr-util/collect-all-instruction-descriptions!+)]
+                                           (selector/select-instructions!+
+                                            {:goal goal
+                                             :file-descriptions descriptions
+                                             :context-content context-content
+                                             :caller (or title caller "Instruction Selector")}))
+                                         [])
+           final-instructions (instr-util/prepare-instructions-from-selected-paths!+
+                               {:agent.conversation/instructions-paths selected-instructions-paths
+                                :agent.conversation/context-files context-file-paths})
            progress-callback (or progress-callback #())
            result (agent-core/agentic-conversation!+
                    {:model-id model-id

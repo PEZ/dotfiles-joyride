@@ -168,14 +168,14 @@
 (deftest prepare-instructions-from-selected-paths-test
   (testing "Returns empty string for empty inputs"
     (p/let [result (instr-util/prepare-instructions-from-selected-paths!+
-                    {:agent.conversation/selected-paths []
+                    {:agent.conversation/instructions-paths []
                      :agent.conversation/context-files []})]
       (is (= "" result)
           "Empty paths should return empty string")))
 
   (testing "Handles nil inputs gracefully"
     (p/let [result (instr-util/prepare-instructions-from-selected-paths!+
-                    {:agent.conversation/selected-paths nil
+                    {:agent.conversation/instructions-paths nil
                      :agent.conversation/context-files nil})]
       (is (= "" result)
           "Nil paths should return empty string"))))

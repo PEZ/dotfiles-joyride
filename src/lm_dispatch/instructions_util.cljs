@@ -185,9 +185,9 @@
       :agent.conversation/context-files - Vector of context file paths
 
   Returns: Promise of concatenated instructions string"
-  [{:agent.conversation/keys [selected-paths context-files]}]
+  [{:agent.conversation/keys [instructions-paths context-files]}]
   (p/let [;; Slurp selected instruction files
-          selected-content (concatenate-instruction-files!+ (or selected-paths []))
+          selected-content (concatenate-instruction-files!+ (or instructions-paths []))
 
           ;; Slurp context files
           context-content (concatenate-instruction-files!+ (or context-files []))
