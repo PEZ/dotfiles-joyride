@@ -1,6 +1,7 @@
 ;; AGENTS, please read this preamble before working with the namespace:
 ;; - Use interactive programming
 ;; - Work using TDD in the repl, existing tests: src/test/lm_dispatch/instructions_selector_test.cljs
+#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 ;; - Always prefer your structural editing tools
 
 (ns agents.instructions-selector
@@ -30,9 +31,10 @@
     goal - The task goal to match instructions against
     file-descriptions - Vector of {:file :filename :description :domain} maps
     context-content - Optional string with slurped context-files content
+    tool-ids - Optional vector of tool IDs available for the task
 
   Returns: Prompt string"
-  [{:keys [goal file-descriptions context-content]}]
+  [{:keys [goal file-descriptions context-content tool-ids]}]
   (str
    "# Instruction File Selection Task\n\n"
    "You are an expert at analyzing task requirements and selecting the most relevant instruction files.\n\n"
@@ -40,6 +42,12 @@
    "## Your Goal\n\n"
    "Select and prioritize instruction files that will help accomplish this task:\n\n"
    "<TASK-GOAL>\n" goal "\n</TASK-GOAL>\n\n"
+
+   (when (seq tool-ids)
+     (str "## Available Tools\n\n"
+          "The following tools will be available for this task:\n"
+          "- " (string/join "\n- " tool-ids) "\n\n"
+          "Consider whether the instructions you select will be relevant given these capabilities.\n\n"))
 
    (when context-content
      (str "## Additional Context\n\n"
@@ -106,14 +114,16 @@
   Args:
     goal - The task goal to match instructions against
     context-content - Optional string with slurped context-files content
+    tool-ids - Optional vector of tool IDs available for the task
     caller - Optional caller identification
 
   Returns: Promise of vector of selected file paths (absolute), sorted with most important last"
-  [{:keys [goal context-content caller]}]
+  [{:keys [goal context-content tool-ids caller]}]
   (p/let [file-descriptions (instr-util/collect-all-instruction-descriptions!+)
           selection-goal (build-selection-prompt {:goal goal
                                                   :file-descriptions file-descriptions
-                                                  :context-content context-content})
+                                                  :context-content context-content
+                                                  :tool-ids tool-ids})
           ;; Register conversation manually since we're using core directly
           conv-id (monitor/start-monitoring-conversation!+
                    {:agent.conversation/goal selection-goal
@@ -139,6 +149,7 @@
   (p/let [selected (select-instructions!+
                     {:goal "Add a new Clojure function using TDD, minding the rules of this project"
                      :context-content nil
+                     :tool-ids ["copilot_readFile" "copilot_writeFile" "copilot_replaceInFile"]
                      :caller "rcf-test"})]
     (def test-selection selected)
     selected)
@@ -149,7 +160,8 @@
   (p/let [context "Working on a Joyride script for VS Code automation"
           selected (select-instructions!+
                     {:goal "Create a new Joyride command"
-                     :context-content context})]
+                     :context-content context
+                     :tool-ids ["copilot_readFile" "copilot_findFiles"]})]
     (def joyride-selection selected)
     selected)
 

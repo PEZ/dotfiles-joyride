@@ -58,6 +58,7 @@
                                          (selector/select-instructions!+
                                           {:goal goal
                                            :context-content context-content
+                                           :tool-ids tool-ids
                                            :caller (or title caller "Instruction Selector")})
                                          [])
            final-instructions (instr-util/prepare-instructions-from-selected-paths!+
