@@ -55,12 +55,10 @@
                              :agent.conversation/title title}))
            context-content (instr-util/concatenate-instruction-files!+ context-file-paths)
            selected-instructions-paths (if use-instruction-selection?
-                                         (p/let [descriptions (instr-util/collect-all-instruction-descriptions!+)]
-                                           (selector/select-instructions!+
-                                            {:goal goal
-                                             :file-descriptions descriptions
-                                             :context-content context-content
-                                             :caller (or title caller "Instruction Selector")}))
+                                         (selector/select-instructions!+
+                                          {:goal goal
+                                           :context-content context-content
+                                           :caller (or title caller "Instruction Selector")})
                                          [])
            final-instructions (instr-util/prepare-instructions-from-selected-paths!+
                                {:agent.conversation/instructions-paths selected-instructions-paths

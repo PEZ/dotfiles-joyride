@@ -104,13 +104,13 @@
 
   Args:
     goal - The task goal to match instructions against
-    file-descriptions - Vector of {:file :filename :description :domain} maps
     context-content - Optional string with slurped context-files content
     caller - Optional caller identification
 
   Returns: Promise of vector of selected file paths (absolute), sorted with most important last"
-  [{:keys [goal file-descriptions context-content caller]}]
-  (p/let [selection-goal (build-selection-prompt {:goal goal
+  [{:keys [goal context-content caller]}]
+  (p/let [file-descriptions (instr-util/collect-all-instruction-descriptions!+)
+          selection-goal (build-selection-prompt {:goal goal
                                                   :file-descriptions file-descriptions
                                                   :context-content context-content})
           ;; Register conversation manually since we're using core directly
@@ -135,10 +135,8 @@
 
 (comment
   ;; Example 1: Test instruction selection for a Clojure TDD task
-  (p/let [descriptions (instr-util/collect-all-instruction-descriptions!+)
-          selected (select-instructions!+
+  (p/let [selected (select-instructions!+
                     {:goal "Add a new Clojure function using TDD"
-                     :file-descriptions descriptions
                      :context-content nil
                      :caller "rcf-test"})]
     (def test-selection selected)
@@ -149,11 +147,9 @@
   (count test-selection)
 
   ;; Example 2: Test with context content
-  (p/let [descriptions (instr-util/collect-all-instruction-descriptions!+)
-          context "Working on a Joyride script for VS Code automation"
+  (p/let [context "Working on a Joyride script for VS Code automation"
           selected (select-instructions!+
                     {:goal "Create a new Joyride command"
-                     :file-descriptions descriptions
                      :context-content context})]
     (def joyride-selection selected)
     selected)

@@ -14,21 +14,30 @@
 
 ## Architecture
 
-The system follows a clean separation of concerns with five main namespaces:
+The system follows a clean separation of concerns with six main namespaces:
 
-### 1. lm-dispatch.agent - Core Agent Logic
+### 1. lm-dispatch.agent-core - Pure Conversation Engine
 
-**Purpose**: Implements the autonomous conversation engine
+**Purpose**: Implements the core autonomous conversation engine without dependencies on instruction selection
 
 **Key Concepts**:
 - **Agentic Behavior**: AI agents drive conversations autonomously toward goals
 - **Goal Separation**: Goals are kept separate from history and injected on each turn
 - **Turn-based Flow**: Conversations proceed in turns with tool execution between turns
 - **Completion Detection**: Agents signal completion via markers or natural language
+- **Pure Implementation**: No instruction selection dependencies
+
+**Main Function**: `agentic-conversation!+`
+
+Internal function used by orchestrator for the conversation loop with options for model selection, tool configuration, turn limits, and progress tracking.
+
+### 2. lm-dispatch.agent-orchestrator - Orchestration Layer
+
+**Purpose**: Main entry point that optionally adds instruction file selection before delegating to core
 
 **Main Function**: `autonomous-conversation!+`
 
-The primary entry point for creating autonomous AI conversations with options for model selection, tool configuration, turn limits, and progress tracking.
+The primary public API for creating autonomous AI conversations with optional instruction file selection.
 
 **Options:**
 - `:model-id` - LM model ID (default: "gpt-4o-mini")
@@ -38,20 +47,23 @@ The primary entry point for creating autonomous AI conversations with options fo
 - `:allow-unsafe-tools?` - Allow file write operations (default: false)
 - `:caller` - String identifying who started the conversation
 - `:title` - Display title for the conversation
+- `:use-instruction-selection?` - Enable automatic instruction file selection (default: false)
+- `:context-file-paths` - Vector of additional file paths to include as context
 
 **Agentic System Prompt**:
 The system prompt defines agent behavior to break goals into steps, use tools proactively, adapt when tools fail, never stop to ask questions, and signal completion with markers.
 
 **Key Functions**:
-- `autonomous-conversation!+` - Main entry point
-- `build-agentic-messages` - Message construction (args: history, instructions, goal)
-- `continue-conversation-loop` - Main recursive loop
-- `execute-conversation-turn` - Single turn execution
-- `execute-tools-if-present!+` - Tool execution
-- `determine-conversation-outcome` - Flow control
-- `agent-indicates-completion?` - Completion detection
+- `autonomous-conversation!+` (orchestrator) - Main public API entry point
+- `agentic-conversation!+` (core) - Internal conversation engine
+- `build-agentic-messages` (core) - Message construction (args: history, instructions, goal)
+- `continue-conversation-loop` (core) - Main recursive loop
+- `execute-conversation-turn` (core) - Single turn execution
+- `execute-tools-if-present!+` (core) - Tool execution
+- `determine-conversation-outcome` (core) - Flow control
+- `agent-indicates-completion?` (core) - Completion detection
 
-### 2. lm-dispatch.state - Pure State Management
+### 3. lm-dispatch.state - Pure State Management
 
 **Purpose**: Single source of truth for conversation state
 
@@ -59,12 +71,10 @@ The state atom stores all conversations, next ID counter, output channel, and si
 
 **State Structure:**
 ```clojure
-{:agent/conversations {}      ; Map of conversation-id -> conversation-data
- :agent/next-id 1             ; Auto-incrementing ID counter
- :agent/output-channel nil    ; VS Code output channel
- :agent/sidebar-slot nil      ; Flare sidebar slot (:sidebar-1 through :sidebar-5)
- :debug-mode? false           ; Optional debug logging mode
- :debug-logs []}              ; Optional in-memory debug logs
+{:conversations {}           ; Map of conversation-id -> conversation-data
+ :next-id 1                  ; Auto-incrementing ID counter
+ :output-channel nil         ; VS Code output channel
+ :sidebar-slot nil}          ; Sidebar flare slot identifier
 ```
 
 **Status Values**:
@@ -85,19 +95,26 @@ The state atom stores all conversations, next ID counter, output channel, and si
 - `get-conversation` - Query by ID
 - `get-all-conversations` - Query all
 
-### 3. lm-dispatch.monitor - UI & Monitoring
-
-**Purpose**: Render conversations in sidebar and handle user interactions
-
-Uses Joyride Flare to render live HTML in VS Code sidebar with conversation lists, status icons, real-time progress updates, cancel buttons, token usage tracking, and error display.
-
 ### 4. lm-dispatch.util - VS Code LM API Utilities
 
 **Purpose**: Low-level interaction with VS Code Language Model APIs
 
 Provides functions for model management, tool management, message handling, request handling, tool execution, and token counting.
 
-### 5. lm-dispatch.logging - Logging Infrastructure
+**Tool Safety**: By default, filters out dangerous write operations (can be overridden with `:allow-unsafe-tools? true`)
+
+**Tool Execution:**
+- 30-second timeout per tool
+- Errors returned as part of results (not thrown)
+- Agent can adapt based on error messages
+
+### 5. lm-dispatch.monitor - UI & Monitoring
+
+**Purpose**: Render conversations in sidebar and handle user interactions
+
+Uses Joyride Flare to render live HTML in VS Code sidebar with conversation lists, status icons, real-time progress updates, cancel buttons, token usage tracking, and error display.
+
+### 6. lm-dispatch.logging - Logging Infrastructure
 
 **Purpose**: Manage output channel and debug logs
 
@@ -137,20 +154,29 @@ lm_dispatch provides a robust, testable, and user-friendly system for autonomous
 
 ### System Components
 
-#### 1. Agent Engine (`lm-dispatch.agent`)
+#### 1. Agent Core Engine (`lm-dispatch.agent-core`)
 
-The agent engine is the heart of the system, implementing autonomous conversation loops:
+The core engine implements pure autonomous conversation loops without instruction selection dependencies:
 
 **Conversation Flow:**
+1. Build messages (goal + history + instructions)
+2. Send request to language model
+3. Collect streaming response with tools
+4. Execute any tool calls
+5. Add results to history
+6. Check completion criteria
+7. Either continue to next turn or finish
+
+#### 2. Agent Orchestrator (`lm-dispatch.agent-orchestrator`)
+
+The orchestration layer adds instruction selection and monitoring on top of the core engine:
+
+**Orchestration Flow:**
 1. Register conversation with monitoring
-2. Initialize turn counter and history
-3. Build messages (goal + history)
-4. Send request to language model
-5. Collect streaming response with tools
-6. Execute any tool calls
-7. Add results to history
-8. Check completion criteria
-9. Either continue to next turn or finish
+2. Optionally select relevant instruction files (if `:use-instruction-selection?` is true)
+3. Prepare final instructions (selected + context files)
+4. Delegate to core engine (`agentic-conversation!+`)
+5. Log final summary
 
 **Key Implementation Details:**
 
@@ -165,7 +191,7 @@ The agent engine is the heart of the system, implementing autonomous conversatio
 
 - **Token Counting**: Tracks tokens per turn and cumulative total for cost awareness.
 
-#### 2. State Management (`lm-dispatch.state`)
+#### 3. State Management (`lm-dispatch.state`)
 
 Pure state management with a single atom containing all conversation data.
 
@@ -180,7 +206,7 @@ Pure state management with a single atom containing all conversation data.
 - Get all conversations
 - Access output channel and sidebar slot
 
-#### 3. Monitor & UI (`lm-dispatch.monitor`)
+#### 4. Monitor & UI (`lm-dispatch.monitor`)
 
 Real-time HTML UI rendered in VS Code sidebar using Joyride Flare.
 
@@ -201,7 +227,7 @@ Real-time HTML UI rendered in VS Code sidebar using Joyride Flare.
 5. State updated
 6. UI re-rendered
 
-#### 4. Utilities (`lm-dispatch.util`)
+#### 5. Utilities (`lm-dispatch.util`)
 
 Low-level VS Code API wrappers.
 
@@ -228,7 +254,7 @@ All async operations accept cancellation tokens and check them periodically.
 - Errors returned as part of results (not thrown)
 - Agent can adapt based on error messages
 
-#### 5. Logging (`lm-dispatch.logging`)
+#### 6. Logging (`lm-dispatch.logging`)
 
 **Output Channel:**
 Creates "Agent Dispatch" output channel with timestamped, conversation-prefixed logs.
@@ -243,10 +269,10 @@ Optional in-memory log collection for inspection and testing.
 ### Example 1: Simple File Counter
 
 ```clojure
-(require '[lm-dispatch.agent :as agent])
+(require '[lm-dispatch.agent-orchestrator :as orchestrator])
 (require '[promesa.core :as p])
 
-(p/let [result (agent/autonomous-conversation!+
+(p/let [result (orchestrator/autonomous-conversation!+
                  "Count all .cljs files in this workspace and show the total"
                  {:tool-ids ["copilot_findFiles"
                              "joyride_evaluate_code"]
@@ -258,7 +284,7 @@ Optional in-memory log collection for inspection and testing.
 ### Example 2: Code Analysis
 
 ```clojure
-(agent/autonomous-conversation!+
+(orchestrator/autonomous-conversation!+
   "Analyze the lm_dispatch system and create a summary of its key components"
   {:model-id "claude-sonnet-4"
    :tool-ids ["copilot_readFile"
@@ -274,7 +300,7 @@ Optional in-memory log collection for inspection and testing.
 ### Example 3: REPL Fibonacci Generator
 
 ```clojure
-(agent/autonomous-conversation!+
+(orchestrator/autonomous-conversation!+
   "Generate the first 10 fibonacci numbers using REPL evaluation"
   {:model-id "gpt-4o-mini"
    :tool-ids ["joyride_evaluate_code"]
@@ -282,21 +308,15 @@ Optional in-memory log collection for inspection and testing.
    :caller "fibonacci-gen"})
 ```
 
-### Example 4: Interactive Tool Selection
+### Example 4: With Instruction Selection
 
 ```clojure
-(require '[lm-dispatch.ui :as ui])
-
-;; Show tool picker with pre-selected tools
-(p/let [selected-tools (ui/tools-picker+
-                         #{"joyride_evaluate_code"
-                           "copilot_readFile"
-                           "copilot_findFiles"})]
-  (agent/autonomous-conversation!+
-    "Your custom goal here"
-    {:tool-ids selected-tools
-     :max-turns 15
-     :title "Custom Task"}))
+(orchestrator/autonomous-conversation!+
+  "Create a new Clojure namespace with TDD approach"
+  {:use-instruction-selection? true  ; Auto-select relevant instruction files
+   :tool-ids ["copilot_createFile" "copilot_readFile" "joyride_evaluate_code"]
+   :allow-unsafe-tools? true
+   :max-turns 15})
 ```
 
 ### Example 5: Monitor Management
