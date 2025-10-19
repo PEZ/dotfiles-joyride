@@ -553,6 +553,7 @@
       (println goal))
   )
 
+#_{:clj-kondo/ignore [:clojure-lsp/unused-public-var]}
 (comment
   ;; Example 1: Basic usage - global memory with domain hint
   (p/let [result (record-memory!+
@@ -561,15 +562,11 @@
     (def basic-result result)
     result)
 
-  basic-result
-
   ;; Example 2: Without domain hint (agent determines domain automatically)
   (p/let [result (record-memory!+
                   {:summary "Always verify API responses before assuming success"})]
     (def no-domain-result result)
     result)
-
-  no-domain-result
 
   ;; Example 3: Workspace-scoped memory
   (p/let [result (record-memory!+
@@ -579,8 +576,6 @@
                    :scope :workspace})]
     (def workspace-result result)
     result)
-
-  workspace-result
 
   ;; Example 4: With instruction selection enabled
   ;; This will automatically select relevant instruction files based on the summary
@@ -592,8 +587,6 @@
     (def instruction-selection-result result)
     result)
 
-  instruction-selection-result
-
   ;; Example 5: With specific context files
   ;; Provide specific instruction files as context
   (p/let [context-paths [(user-data-instructions-path "clojure.instructions.md")
@@ -603,25 +596,19 @@
                    :domain "clojure"
                    :context-file-paths context-paths
                    :caller "rcf-context-test"})]
-    (def context-result result)
+    (def context-result2 result)
     result)
 
-  context-result
-
-  ;; Example 6: With custom model and progress callback
+  ;; Example 6: With context paths 2
   (p/let [result (record-memory!+
                   {:title "Autostash FTW"
                    :summary "Use --autostash flag with git rebase"
-                   :domain "git-workflow"
-                   :model-id "claude-sonnet-4"
+                   :domain "foobartesting"
+                   :model-id "claude-haiku-4.5"
                    :max-turns 15
-                   :use-instruction-selection? true
-                   :progress-callback (fn [turn max-turns _msg]
-                                        (js/console.log (str "Turn " turn "/" max-turns)))})]
-    (def custom-result result)
+                   :context-file-paths ["/Users/pez/.config/joyride/scripts/philosophers_race.cljs"]})]
+    (def context-result2 result)
     result)
-
-  custom-result
 
   ;; Example 7: Inspect result structure
   (p/let [result (record-memory!+ {:summary "Test result inspection"
