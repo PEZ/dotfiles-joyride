@@ -8,7 +8,6 @@
   (:require
    ["path" :as path]
    ["vscode" :as vscode]
-   [agents.instructions-selector :as selector]
    [clojure.string :as string]
    [lm-dispatch.instructions-util :as instr-util]
    [lm-dispatch.state :as state]
@@ -347,42 +346,37 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
     ;; Combine both, workspace first
     (vec (concat workspace-descriptions user-descriptions))))
 
-(defn prepare-instructions-with-selection!+
-  "Prepare instructions by selecting relevant files and concatenating with context files.
+(defn prepare-instructions-from-selected-paths!+
+  "Concatenate selected instruction files with context files.
+
+  This function assumes instruction selection has already happened upstream.
+  Designed to be called after select-instructions!+ or when paths are known.
 
   Args:
-    goal - The task goal to match instructions against
-    context-files - Vector of file paths to include as additional context
+    conversation-data - Map with namespaced keys:
+      :agent.conversation/selected-paths - Vector of selected instruction file paths
+      :agent.conversation/context-files - Vector of context file paths
 
   Returns: Promise of concatenated instructions string"
-  [{:keys [goal context-files]}]
-  (p/let [;; Step 1: Collect all available instruction descriptions
-          all-descriptions (collect-all-instruction-descriptions!+)
+  [{:agent.conversation/keys [selected-paths context-files]}]
+  (p/let [;; Slurp selected instruction files
+          selected-content (concatenate-instruction-files!+ (or selected-paths []))
 
-          ;; Step 2: Slurp context files if provided (for selector prompt)
-          context-content (when (seq context-files)
-                            (concatenate-instruction-files!+ context-files))
+          ;; Slurp context files
+          context-content (concatenate-instruction-files!+ (or context-files []))
 
-          ;; Step 3: Dispatch selector to choose relevant instructions
-          selected-paths (selector/select-instructions!+
-                          {:goal goal
-                           :file-descriptions all-descriptions
-                           :context-content context-content})
-
-          ;; Step 4: Slurp selected instruction files
-          selected-content (concatenate-instruction-files!+ selected-paths)
-
-          ;; Step 5: Slurp context files again (to append after selected)
-          final-context-content (if (seq context-files)
-                                  (concatenate-instruction-files!+ context-files)
-                                  "")
-
-          ;; Step 6: Concatenate with separator
-          final-instructions (if (seq final-context-content)
+          ;; Concatenate with separator if both exist
+          final-instructions (cond
+                               (and (seq selected-content) (seq context-content))
                                (str selected-content
-                                    (when (seq selected-content) "\n\n")
+                                    "\n\n"
                                     "# === Context Files ===\n\n"
-                                    final-context-content)
+                                    context-content)
+
+                               (seq context-content)
+                               context-content
+
+                               :else
                                selected-content)]
     final-instructions))
 
@@ -397,20 +391,24 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
     :allow-unsafe-tools? - Allow file write operations (default: false)
     :caller - String identifying who started the conversation
     :title - Display title for the conversation
-    :use-instruction-selection? - Enable automatic instruction file selection (default: false)
-    :context-files - Vector of file paths to include as additional context (default: [])"
+    :instructions - Instructions string to prepend to goal (default: 'Go, go, go!')
+
+  For instruction selection, callers should:
+    1. Call collect-all-instruction-descriptions!+ to get available instructions
+    2. Call selector/select-instructions!+ to choose relevant ones
+    3. Call prepare-instructions-from-selected-paths!+ to prepare instructions
+    4. Pass the result as :instructions parameter"
   ([goal]
    (autonomous-conversation!+ goal
                               {}))
 
   ([goal {:keys [model-id max-turns tool-ids progress-callback allow-unsafe-tools? caller title
-                 use-instruction-selection? context-files]
+                 instructions]
           :or {model-id "gpt-4o-mini"
                tool-ids []
                max-turns 10
                allow-unsafe-tools? false
-               use-instruction-selection? false
-               context-files []}}]
+               instructions "Go, go, go!"}}]
 
    (p/let [conv-id (monitor/start-monitoring-conversation!+
                     (cond-> {:agent.conversation/goal goal
@@ -420,15 +418,6 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                              :agent.conversation/title title}))
            progress-callback (or progress-callback
                                  #())
-           ;; Prepare instructions based on selection setting
-           instructions (if use-instruction-selection?
-                          (prepare-instructions-with-selection!+ {:goal goal
-                                                                  :context-files context-files})
-                          ;; Default simple instructions, with context-files if provided
-                          (if (seq context-files)
-                            (p/let [context-content (concatenate-instruction-files!+ context-files)]
-                              (str "Go, go, go!\n\n# === Context Files ===\n\n" context-content))
-                            (p/resolved "Go, go, go!")))
            result (agentic-conversation!+
                    {:model-id model-id
                     :goal goal
