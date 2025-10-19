@@ -5,6 +5,7 @@
 
 (ns test.agents.instructions-selector-test
   (:require
+   [agents.instructions-selector :as selector]
    [cljs.test :refer [deftest is testing]]
    [clojure.string :as string]
    [lm-dispatch.instructions-util :as instr-util]
@@ -72,3 +73,79 @@
           "Each description should have :domain key"))))
 
 
+
+(deftest build-selection-prompt-test
+  (testing "Includes tool section when tool-ids provided"
+    (let [prompt (selector/build-selection-prompt
+                  {:goal "Test goal"
+                   :file-descriptions [{:file "/test.md" :description "Test"}]
+                   :tool-ids ["copilot_readFile" "copilot_writeFile"]})]
+      (is (string/includes? prompt "## Available Tools")
+          "Should include Available Tools section")
+      (is (string/includes? prompt "copilot_readFile")
+          "Should list first tool")
+      (is (string/includes? prompt "copilot_writeFile")
+          "Should list second tool")))
+
+  (testing "Omits tool section when no tool-ids"
+    (let [prompt (selector/build-selection-prompt
+                  {:goal "Test goal"
+                   :file-descriptions [{:file "/test.md" :description "Test"}]})]
+      (is (not (string/includes? prompt "## Available Tools"))
+          "Should not include Available Tools section")))
+
+  (testing "Includes context section when provided"
+    (let [prompt (selector/build-selection-prompt
+                  {:goal "Test goal"
+                   :file-descriptions [{:file "/test.md" :description "Test"}]
+                   :context-content "Some context"})]
+      (is (string/includes? prompt "## Additional Context")
+          "Should include Additional Context section")
+      (is (string/includes? prompt "Some context")
+          "Should include context content")))
+
+  (testing "Always includes core sections"
+    (let [prompt (selector/build-selection-prompt
+                  {:goal "Test goal"
+                   :file-descriptions [{:file "/test.md" :description "Test"}]})]
+      (is (string/includes? prompt "TASK-GOAL")
+          "Should include task goal marker")
+      (is (string/includes? prompt "Test goal")
+          "Should include actual goal text")
+      (is (string/includes? prompt "Available Instruction Files")
+          "Should include file descriptions section")
+      (is (string/includes? prompt "GOAL-ACHIEVED")
+          "Should include completion marker"))))
+
+(deftest parse-selection-result-test
+  (testing "Parses valid file paths"
+    (let [response {:text "/path/to/file1.instructions.md\n/path/to/file2.instructions.md"}
+          result (selector/parse-selection-result response)]
+      (is (= 2 (count result))
+          "Should parse two paths")
+      (is (= "/path/to/file1.instructions.md" (first result))
+          "Should preserve first path")
+      (is (= "/path/to/file2.instructions.md" (second result))
+          "Should preserve second path")))
+
+  (testing "Filters out non-instruction paths"
+    (let [response {:text "/path/to/file1.instructions.md\n/path/to/other.md\n/path/to/file2.instructions.md"}
+          result (selector/parse-selection-result response)]
+      (is (= 2 (count result))
+          "Should only include .instructions.md files")
+      (is (every? #(string/ends-with? % ".instructions.md") result)
+          "All results should end with .instructions.md")))
+
+  (testing "Handles empty response"
+    (is (empty? (selector/parse-selection-result {:text ""}))
+        "Should return empty vector for empty text")
+    (is (empty? (selector/parse-selection-result nil))
+        "Should return empty vector for nil"))
+
+  (testing "Filters relative paths"
+    (let [response {:text "relative/path.instructions.md\n/absolute/path.instructions.md"}
+          result (selector/parse-selection-result response)]
+      (is (= 1 (count result))
+          "Should only include absolute paths")
+      (is (string/starts-with? (first result) "/")
+          "Result should be absolute path"))))
