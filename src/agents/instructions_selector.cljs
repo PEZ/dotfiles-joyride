@@ -11,6 +11,7 @@
    [clojure.string :as string]
    [lm-dispatch.agent-core :as agent-core]
    [lm-dispatch.instructions-util :as instr-util]
+   [lm-dispatch.logging :as logging]
    [lm-dispatch.monitor :as monitor]
    [promesa.core :as p]))
 
@@ -79,14 +80,17 @@
    "- An empty selection is valid if no instructions match\n"
    "- DO NOT read instruction files during selection (rely on descriptions + tools)\n\n"
    "## Output Format\n\n"
-   "Return ONLY the selected file paths, one per line, in priority order (most important LAST):\n\n"
+   "Your deliverable is the absolute paths of the selected files, one per line, in prioroty order - most important LAST.\n\n"
+   "The list should be wrapped in `---BEGIN RESULTS---`/`---END RESULTS---` markers:\n\n"
+
    "```\n"
+   "---BEGIN RESULTS---"
    "/absolute/path/to/first-file.instructions.md\n"
    "/absolute/path/to/second-file.instructions.md\n"
    "/absolute/path/to/most-important-file.instructions.md\n"
+   "---END RESULTS---"
    "```\n\n"
-   "If no files are relevant, return an empty response.\n\n"
-   "~~~GOAL-ACHIEVED~~~ when you've completed your selection."))
+   "Inlcude ~~~GOAL-ACHIEVED~~~ in your response containing the results."))
 
 (defn parse-selection-result
   "Parse agent's final response to extract selected file paths.
@@ -131,6 +135,10 @@
                     :agent.conversation/max-turns selector-max-turns
                     :agent.conversation/caller (or caller "Instruction Selector")
                     :agent.conversation/title "Selecting Instructions"})
+          _ (logging/log-to-channel! conv-id "🔍 Starting instruction file selection")
+          _ (when (seq tool-ids)
+              (logging/log-to-channel! conv-id (str "📋 Task tools: " (string/join ", " tool-ids))))
+          _ (logging/log-to-channel! conv-id (str "📚 Analyzing " (count file-descriptions) " available instruction files"))
           result (agent-core/agentic-conversation!+
                   {:model-id selector-model-id
                    :goal selection-goal
@@ -139,7 +147,10 @@
                    :tool-ids selector-tool-ids
                    :conv-id conv-id
                    :progress-callback #()})
-          selected-paths (parse-selection-result (:final-response result))]
+          selected-paths (parse-selection-result (:final-response result))
+          _ (if (seq selected-paths)
+              (logging/log-to-channel! conv-id (str "✅ Selected " (count selected-paths) " instruction file(s)"))
+              (logging/log-to-channel! conv-id "ℹ️ No instruction files selected"))]
     selected-paths))
 
 

@@ -1,6 +1,7 @@
 ;; AGENTS, please read this preamble before working with the namespace:
 ;; - Use interactive programming
 ;; - Work using TDD in the repl
+#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 ;; - Always prefer your structural editing tools
 
 (ns lm-dispatch.agent-orchestrator
@@ -13,9 +14,6 @@
    [lm-dispatch.monitor :as monitor]
    [lm-dispatch.state :as state]
    [promesa.core :as p]))
-
-;; To run all tests:
-#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 (defn autonomous-conversation!+
   "Start an autonomous AI conversation toward a goal with flexible configuration.
@@ -54,6 +52,8 @@
                              :agent.conversation/caller caller
                              :agent.conversation/title title}))
            context-content (instr-util/concatenate-instruction-files!+ context-file-paths)
+           _ (when use-instruction-selection?
+               (logging/log-to-channel! conv-id "🔍 Instruction selection enabled for this conversation"))
            selected-instructions-paths (if use-instruction-selection?
                                          (selector/select-instructions!+
                                           {:goal goal
@@ -61,6 +61,11 @@
                                            :tool-ids tool-ids
                                            :caller (or title caller "Instruction Selector")})
                                          [])
+           _ (when (and use-instruction-selection? (seq selected-instructions-paths))
+               (logging/log-to-channel! conv-id
+                                       (str "📝 Using " (count selected-instructions-paths)
+                                            " selected instruction file(s) plus "
+                                            (count context-file-paths) " context file(s)")))
            final-instructions (instr-util/prepare-instructions-from-selected-paths!+
                                {:agent.conversation/instructions-paths selected-instructions-paths
                                 :agent.conversation/context-files context-file-paths})
