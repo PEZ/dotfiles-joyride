@@ -518,4 +518,65 @@ Generate the nine first numbers in the fibonacci sequence without writing a func
                                   :name "joyride_evaluate_code"
                                   :input {:code "(vscode/window.showInformationMessage \"hello\")"}})
 
+  ;; === Using Instruction Selection (External Composition Pattern) ===
+  ;;
+  ;; The instruction selector allows intelligent selection of relevant instruction files
+  ;; based on task goals. This demonstrates the external composition pattern where
+  ;; callers orchestrate: collect → select → prepare → execute.
+
+  (require '[agents.instructions-selector :as selector])
+
+  ;; Example: Custom autonomous task with instruction selection
+  (p/let [;; 1. Collect available instruction descriptions
+          descriptions (collect-all-instruction-descriptions!+)
+
+          ;; 2. Select relevant instructions for your task
+          selected-paths (selector/select-instructions!+
+                          {:goal "Create a new Clojure namespace with TDD approach"
+                           :file-descriptions descriptions})
+
+          ;; 3. Prepare instructions from selected paths
+          instructions (prepare-instructions-from-selected-paths!+
+                        {:agent.conversation/selected-paths selected-paths})
+
+          ;; 4. Run autonomous conversation with the prepared instructions
+          result (autonomous-conversation!+
+                  "Create a new namespace 'my.new.feature' with tests"
+                  {:instructions instructions
+                   :model-id "grok-code-fast-1"
+                   :max-turns 10
+                   :tool-ids ["joyride_evaluate_code"
+                              "copilot_readFile"
+                              "copilot_createFile"]
+                   :caller "custom-task-example"})]
+    (def task-result result)
+    (println "Task result:" (:reason result)))
+
+  ;; Example: With context files
+  (p/let [descriptions (collect-all-instruction-descriptions!+)
+
+          ;; Define context files relevant to your task
+          context-files ["/Users/pez/.config/joyride/src/my_lib.cljs"]
+
+          ;; Select instructions with context
+          selected-paths (selector/select-instructions!+
+                          {:goal "Refactor my-lib to use protocols"
+                           :file-descriptions descriptions
+                           :context-content (concatenate-instruction-files!+ context-files)})
+
+          ;; Prepare instructions including context
+          instructions (prepare-instructions-from-selected-paths!+
+                        {:agent.conversation/selected-paths selected-paths
+                         :agent.conversation/context-files context-files})
+
+          result (autonomous-conversation!+
+                  "Refactor my-lib to use protocols for better extensibility"
+                  {:instructions instructions
+                   :max-turns 20
+                   :tool-ids ["joyride_evaluate_code"
+                              "copilot_readFile"
+                              "copilot_insertEdit"]
+                   :caller "refactoring-task"})]
+    (println "Refactoring complete:" (:reason result)))
+
   :rcf)

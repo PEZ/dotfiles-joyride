@@ -105,7 +105,7 @@
     context-content - Optional string with slurped context-files content
 
   Returns: Promise of vector of selected file paths (absolute), sorted with most important last"
-  [{:keys [goal file-descriptions context-content]}]
+  [{:keys [goal file-descriptions context-content caller]}]
   (p/let [selection-goal (build-selection-prompt {:goal goal
                                                   :file-descriptions file-descriptions
                                                   :context-content context-content})
