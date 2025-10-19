@@ -204,3 +204,7 @@ Joyride Flares provide a convenient way to create WebView panels and sidebar vie
 ## Editing files
 
 Develop using the REPL. Yet, sometimes you need to edit file. And when you do, prefer structural editing tools.
+
+## Read File Preambles First
+
+When editing any file, particularly in Clojure projects, begin by reading the first 10 lines to review the preamble. This section often outlines critical requirements. Always start with the preamble to maintain the file's contract and avoid workflow mismatches.
