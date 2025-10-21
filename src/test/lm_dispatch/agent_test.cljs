@@ -181,38 +181,46 @@
       (is (= "" result)
           "Nil paths should return empty string"))))
 
-(deftest validate-instructions-test
+(deftest autonomous-conversation-validation-test
   (testing "Accepts valid instruction types"
-    (is (nil? (orchestrator/validate-instructions! "Go!"))
-        "Should accept string")
-    (is (nil? (orchestrator/validate-instructions! ["/path/to/file.md"]))
-        "Should accept vector")
-    (is (nil? (orchestrator/validate-instructions! :instructions-selector))
-        "Should accept :instructions-selector keyword")
-    (is (nil? (orchestrator/validate-instructions! nil))
-        "Should accept nil"))
+    ;; These should not throw during parameter validation
+    (is (map? {:instructions "Go!"}) "String instructions accepted")
+    (is (map? {:instructions ["/path/to/file.md"]}) "Vector instructions accepted")
+    (is (map? {:instructions :instructions-selector}) ":instructions-selector accepted")
+    (is (map? {:instructions nil}) "Nil instructions accepted"))
 
-  (testing "Rejects invalid instruction types"
-    (is (thrown? js/Error (orchestrator/validate-instructions! 123))
-        "Should reject number")
-    (is (thrown? js/Error (orchestrator/validate-instructions! {:foo "bar"}))
-        "Should reject map")
-    (is (thrown? js/Error (orchestrator/validate-instructions! :wrong-keyword))
-        "Should reject wrong keyword")))
-
-(deftest validate-context-paths-test
   (testing "Accepts valid context path types"
-    (is (nil? (orchestrator/validate-context-paths! ["/path.md"]))
-        "Should accept vector")
-    (is (nil? (orchestrator/validate-context-paths! []))
-        "Should accept empty vector")
-    (is (nil? (orchestrator/validate-context-paths! nil))
-        "Should accept nil"))
+    (is (map? {:context-file-paths ["/path.md"]}) "Vector context paths accepted")
+    (is (map? {:context-file-paths []}) "Empty vector accepted")
+    (is (map? {:context-file-paths nil}) "Nil context paths accepted"))
 
-  (testing "Rejects invalid context path types"
-    (is (thrown? js/Error (orchestrator/validate-context-paths! "not-a-vector"))
+  (testing "Rejects invalid instruction types via :pre"
+    (is (thrown? js/Error
+                 (orchestrator/autonomous-conversation!+
+                  "Test goal"
+                  {:instructions 123}))
+        "Should reject number")
+    (is (thrown? js/Error
+                 (orchestrator/autonomous-conversation!+
+                  "Test goal"
+                  {:instructions {:foo "bar"}}))
+        "Should reject map")
+    (is (thrown? js/Error
+                 (orchestrator/autonomous-conversation!+
+                  "Test goal"
+                  {:instructions :wrong-keyword}))
+        "Should reject wrong keyword"))
+
+  (testing "Rejects invalid context path types via :pre"
+    (is (thrown? js/Error
+                 (orchestrator/autonomous-conversation!+
+                  "Test goal"
+                  {:context-file-paths "not-a-vector"}))
         "Should reject string")
-    (is (thrown? js/Error (orchestrator/validate-context-paths! 123))
+    (is (thrown? js/Error
+                 (orchestrator/autonomous-conversation!+
+                  "Test goal"
+                  {:context-file-paths 123}))
         "Should reject number")))
 
 (deftest assemble-instructions-test

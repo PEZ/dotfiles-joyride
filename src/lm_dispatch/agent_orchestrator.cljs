@@ -15,32 +15,6 @@
    [lm-dispatch.state :as state]
    [promesa.core :as p]))
 
-(defn validate-instructions!
-  "Validate instructions parameter type.
-
-  Args:
-    instructions - Can be string, vector of paths, or :instructions-selector keyword
-
-  Throws: Error if invalid type"
-  [instructions]
-  (when (and instructions
-             (not (string? instructions))
-             (not (vector? instructions))
-             (not (= :instructions-selector instructions)))
-    (throw (js/Error. (str "Invalid instructions type. Expected string, vector, or :instructions-selector, got: " (type instructions))))))
-
-(defn validate-context-paths!
-  "Validate context-file-paths parameter type.
-
-  Args:
-    context-file-paths - Must be nil or a vector
-
-  Throws: Error if invalid type"
-  [context-file-paths]
-  (when (and context-file-paths
-             (not (vector? context-file-paths)))
-    (throw (js/Error. (str "Invalid context-file-paths type. Expected vector or nil, got: " (type context-file-paths))))))
-
 (defn autonomous-conversation!+
   "Start an autonomous AI conversation toward a goal with flexible configuration.
 
@@ -69,10 +43,12 @@
                max-turns 10
                allow-unsafe-tools? false
                instructions "Go, go, go!"}}]
-
-   ;; Validate inputs
-   (validate-instructions! instructions)
-   (validate-context-paths! context-file-paths)
+   {:pre [(or (nil? instructions)
+              (string? instructions)
+              (vector? instructions)
+              (= :instructions-selector instructions))
+          (or (nil? context-file-paths)
+              (vector? context-file-paths))]}
 
    (p/let [conv-id (monitor/start-monitoring-conversation!+
                     (cond-> {:agent.conversation/goal goal

@@ -539,7 +539,7 @@
                          (user-data-instructions-path))
 
             ;; Step 1b: Build description listing for available files
-            _ (def normalize-scope normalize-scope)
+            _ (def normalized-scope normalized-scope)
             _ (def search-dir search-dir)
             file-descriptions (build-file-descriptions-map!+ search-dir)
             _ (def file-descriptions file-descriptions)
