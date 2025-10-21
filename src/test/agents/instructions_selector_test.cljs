@@ -12,7 +12,7 @@
    [promesa.core :as p]))
 
 ;; To run all tests:
-#_(do (require 'run-all-tests :reload-all) (run-all-tests/run!+))
+#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 (deftest extract-domain-from-filename-test
   (testing "Extracts domain from hyphenated filenames"

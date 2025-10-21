@@ -1,13 +1,28 @@
 ;; AGENTS, please read this preamble before working with the namespace:
 ;; - Use interactive programming
 ;; - Work using TDD in the repl
-#_(do (require 'run-all-tests :reload-all) (run-all-tests/run!+))
+#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 ;; - Always prefer your structural editing tools
+
 (ns run-all-tests
-  (:require [joyride.core :as joyride]
-            [promesa.core :as p]
+  (:require [clojure.string :as string]
             [cljs.test]
+            [promesa.core :as p]
             ["vscode" :as vscode]))
+
+(defn- uri->ns-symbol [uri]
+  (-> uri
+      (vscode/workspace.asRelativePath)
+      (string/split "/")
+      (->> (drop 1)
+           (string/join "."))
+      (string/replace "_" "-")
+      (string/replace #"\.clj[cs]$" "")
+      symbol))
+
+(defn- glob->ns-symbols [glob]
+  (p/let [uris (vscode/workspace.findFiles glob)]
+    (map uri->ns-symbol uris)))
 
 (defn run!+
   "Find, load, and run all test files matching *_test.cljs pattern.
@@ -22,45 +37,11 @@
   Example:
     (run!+)"
   []
-  (p/let [;; Find all test files
-          test-uris (vscode/workspace.findFiles "src/test/**/*_test.cljs")
-          test-paths (mapv #(.-fsPath %) test-uris)
-
-          _ (println "\n🧪 Found" (count test-paths) "test files")
-
-          ;; Load each test file, capturing errors
-          load-results (p/all
-                        (for [path test-paths]
-                          (p/catch
-                           (p/let [_ (joyride/load-file path)]
-                             {:success true :path path})
-                           (fn [error]
-                             {:success false
-                              :path path
-                              :error (.-message error)}))))
-
-          successful (filter :success load-results)
-          failed (remove :success load-results)]
-
-    ;; All side effects in body, executed after promises resolve
-    (when (seq failed)
-      (println "\n⚠️  Failed to load" (count failed) "test file(s):")
-      (doseq [{:keys [path error]} failed]
-        (println "  -" path ":" error)))
-
-    (println "\n✅ Loaded" (count successful) "test file(s)")
-    (println "\n🏃 Running all tests...\n")
-
-    (cljs.test/run-all-tests #"test\..*")
-
-    (println "\n✨ Test run complete!")))
+  (p/let [test-nss (glob->ns-symbols "src/test/**/*_test.cljs")]
+    (doseq [test-ns test-nss]
+      (require test-ns :reload))
+    (apply cljs.test/run-tests test-nss)))
 
 (comment
-  ;; Run all tests
   (run!+)
-
-  ;; Test file finding
-  (p/let [test-uris (vscode/workspace.findFiles "src/test/**/*_test.cljs")]
-    (mapv #(.-fsPath %) test-uris))
-
   :rcf)
