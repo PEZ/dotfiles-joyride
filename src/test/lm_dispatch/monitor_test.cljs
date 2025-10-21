@@ -1,15 +1,13 @@
 ;; AGENTS, please read this preamble before working with the namespace:
 ;; - Use interactive programming
 ;; - Work using TDD in the repl
+#_(do (require 'run-all-tests :reload-all) (run-all-tests/run!+))
 ;; - Always prefer your structural editing tools
 
 (ns test.lm-dispatch.monitor-test
   (:require
    [lm-dispatch.monitor :as monitor]
    [cljs.test :refer [deftest is testing]]))
-
-;; To run all tests:
-#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 (deftest status-icons
   (testing "Status icon returns correct codicon classes"

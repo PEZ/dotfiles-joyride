@@ -1,6 +1,7 @@
 ;; AGENTS, please read this preamble before working with the namespace:
 ;; - Use interactive programming
 ;; - Work using TDD in the repl, existing tests: src/test/agents/memory_keeper_test.cljs
+#_(do (require 'run-all-tests :reload-all) (run-all-tests/run!+))
 ;; - Always prefer your structural editing tools
 
 (ns agents.memory-keeper
@@ -14,9 +15,6 @@
    [clojure.string :as string]
    [joyride.core :as joy]
    [promesa.core :as p]))
-
-;; To run all tests:
-#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 (def agent-model "grok-code-fast-1")
 (def default-max-turns 15)

@@ -1,15 +1,13 @@
 ;; AGENTS, please read this preamble before working with the namespace:
 ;; - Use interactive programming
 ;; - Work using TDD in the repl
+#_(do (require 'run-all-tests :reload-all) (run-all-tests/run!+))
 ;; - Always prefer your structural editing tools
 
 (ns test.lm-dispatch.state-test
   (:require
    [lm-dispatch.state :as state]
    [cljs.test :refer [deftest is testing]]))
-
-;; To run all tests:
-#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 (deftest conversation-registration
   (testing "Register conversation creates unique IDs"

@@ -1,15 +1,13 @@
 ;; AGENTS, please read this preamble before working with the namespace:
 ;; - Use interactive programming
 ;; - Work using TDD in the repl
+#_(do (require 'run-all-tests :reload-all) (run-all-tests/run!+))
 ;; - Always prefer your structural editing tools
 
 (ns test.lm-dispatch.util-test
   (:require
    [lm-dispatch.util :as util]
    [cljs.test :refer [deftest is testing]]))
-
-;; To run all tests:
-#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 (deftest create-chat-message-test
   (testing "Creates proper JS message objects with correct role strings"

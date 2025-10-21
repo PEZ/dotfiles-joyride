@@ -1,6 +1,7 @@
 ;; AGENTS, please read this preamble before working with the namespace:
 ;; - Use interactive programming
 ;; - Work using TDD in the repl, existing tests: src/test/lm_dispatch/monitor_test.cljs
+#_(do (require 'run-all-tests :reload-all) (run-all-tests/run!+))
 ;; - Always prefer your structural editing tools
 
 (ns lm-dispatch.monitor
@@ -13,9 +14,6 @@
    [clojure.string :as string]
    [joyride.flare :as flare]
    [promesa.core :as p]))
-
-;; To run all tests:
-#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 ;; UI Interaction Handlers
 

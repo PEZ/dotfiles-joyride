@@ -1,6 +1,7 @@
 ;; AGENTS, please read this preamble before working with the namespace:
 ;; - Use interactive programming
 ;; - Work using TDD in the repl
+#_(do (require 'run-all-tests :reload-all) (run-all-tests/run!+))
 ;; - Always prefer your structural editing tools
 
 (ns lm-dispatch.ui
@@ -9,9 +10,6 @@
    [lm-dispatch.util :as util]
    [clojure.string :as string]
    [promesa.core :as p]))
-
-;; To run all tests:
-#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 (defn pick-model!+ []
   (p/let [models-map (util/get-available-models+)

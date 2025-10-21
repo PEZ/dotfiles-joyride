@@ -143,7 +143,7 @@ Debug mode stores logs in-memory for testing and detailed inspection without clu
 
 Tests located in src/test/lm_dispatch/ with agent_test.cljs, state_test.cljs, util_test.cljs, and monitor_test.cljs.
 
-Run all tests: (require 'run-all-tests :reload) (run-all-tests/run!+)
+Run all tests: (require 'run-all-tests :reload-all) (run-all-tests/run!+)
 
 ## Conclusion
 
@@ -456,7 +456,7 @@ Located in `src/test/lm_dispatch/`:
 
 ```clojure
 ;; Run all tests
-(require 'run-all-tests :reload)
+(require 'run-all-tests :reload-all)
 (run-all-tests/run!+)
 
 ;; Run specific namespace tests

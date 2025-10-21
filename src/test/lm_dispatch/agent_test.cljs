@@ -13,7 +13,7 @@
    [lm-dispatch.instructions-util :as instr-util]))
 
 ;; To run all tests:
-#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
+#_(do (require 'run-all-tests :reload-all) (run-all-tests/run!+))
 
 (deftest agent-indicates-completion?-test
   (testing "Detects completion markers"

@@ -1,6 +1,7 @@
 ;; AGENTS, please read this preamble before working with the namespace:
 ;; - Use interactive programming
 ;; - Work using TDD in the repl
+#_(do (require 'run-all-tests :reload-all) (run-all-tests/run!+))
 ;; - Always prefer your structural editing tools
 
 (ns test.agents.memory-keeper-test
@@ -8,9 +9,6 @@
    [cljs.test :refer [deftest is testing run-tests]]
    [clojure.string :as string]
    [agents.memory-keeper :as mk]))
-
-;; To run all tests:
-#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 (deftest append-memory-section-test
   (testing "Appends new section to existing content"

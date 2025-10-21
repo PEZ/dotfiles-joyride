@@ -1,15 +1,13 @@
 ;; AGENTS, please read this preamble before working with the namespace:
 ;; - Use interactive programming
 ;; - Work using TDD in the repl, existing tests: src/test/lm_dispatch/util_test.cljs
+#_(do (require 'run-all-tests :reload-all) (run-all-tests/run!+))
 ;; - Always prefer your structural editing tools
 
 (ns lm-dispatch.util
   (:require
    ["vscode" :as vscode]
    [promesa.core :as p]))
-
-;; To run all tests:
-#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 (defn create-chat-message
   "Create a VS Code Language Model chat message as a plain JS object."

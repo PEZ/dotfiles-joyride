@@ -1,3 +1,9 @@
+;; AGENTS, please read this preamble before working with the namespace:
+;; - Use interactive programming
+;; - Work using TDD in the repl
+#_(do (require 'run-all-tests :reload-all) (run-all-tests/run!+))
+;; - Always prefer your structural editing tools
+
 (ns lm-dispatch.logging
   "Logging infrastructure for agent dispatch system.
 
@@ -5,9 +11,6 @@
   (:require
    ["vscode" :as vscode]
    [lm-dispatch.state :as state]))
-
-;; To run all tests:
-#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 ;; Output Channel Management
 
