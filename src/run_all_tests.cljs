@@ -26,16 +26,7 @@
 
 (defn run!+
   "Find, load, and run all test files matching *_test.cljs pattern.
-
-  Returns a promise that resolves when all tests are complete.
-
-  Process:
-  1. Finds all test files in src/test/**/*_test.cljs
-  2. Loads each test file (reports errors for files that fail to load)
-  3. Runs all loaded tests using cljs.test/run-all-tests
-
-  Example:
-    (run!+)"
+  Returns a promise that resolves when all tests are complete."
   []
   (p/let [test-nss (glob->ns-symbols "src/test/**/*_test.cljs")]
     (doseq [test-ns test-nss]
