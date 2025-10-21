@@ -5,3 +5,7 @@
 - [ ] UI for toggling verbose logging per conversation
 - [ ] UI for logging specific data about a conversation
 - [ ] Render results in dispatch monitor, together with button for logging it
+
+- [ ] A general agent
+- [ ] A brave search agent
+- [ ] A brave AI agent
