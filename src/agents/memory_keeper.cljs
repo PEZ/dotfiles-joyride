@@ -476,7 +476,7 @@
                          :caller caller
                          :title title
                          :progress-callback progress-callback
-                         :use-instruction-selection? use-instruction-selection?
+                         :instructions (if use-instruction-selection? :instructions-selector "Go, go, go!")
                          :context-file-paths context-file-paths})
 
           ;; Step 6: Search agent messages backwards for EDN structure
@@ -551,7 +551,7 @@
                                      :ma/search-dir (.toString search-dir)
                                      :ma/description-listing description-listing})]
       (println goal))
-  )
+  :rcf)
 
 #_{:clj-kondo/ignore [:clojure-lsp/unused-public-var]}
 (comment
@@ -606,6 +606,7 @@
                    :domain "foobartesting"
                    :model-id "claude-haiku-4.5"
                    :max-turns 15
+                   :use-instruction-selection? true
                    :context-file-paths ["/Users/pez/.config/joyride/scripts/philosophers_race.cljs"]})]
     (def context-result2 result)
     result)

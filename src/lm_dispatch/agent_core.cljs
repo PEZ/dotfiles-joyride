@@ -12,6 +12,7 @@
    [lm-dispatch.logging :as logging]
    [lm-dispatch.monitor :as monitor]
    [lm-dispatch.util :as util]
+   [lm-dispatch.instructions-util :as instr-util]
    [promesa.core :as p]))
 
 ;; To run all tests:
@@ -274,7 +275,8 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
     conversation-data - Map with keys:
       :model-id - LM model ID
       :goal - String describing the task
-      :instructions - String with additional instructions
+      :instructions - String or vector of file paths with additional instructions
+      :context-file-paths - Optional vector of context file paths
       :max-turns - Maximum conversation turns
       :progress-callback - Function called with progress updates
       :tool-ids - Vector of tool IDs to enable
@@ -282,8 +284,10 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
       :conv-id - Conversation ID for state tracking
 
   Returns: Promise of result map with :history, :reason, :final-response"
-  [{:keys [model-id tool-ids allow-unsafe-tools? conv-id] :as conversation-data}]
-  (p/let [tools-args (util/enable-specific-tools tool-ids allow-unsafe-tools?)
+  [{:keys [model-id instructions context-file-paths tool-ids allow-unsafe-tools? conv-id] :as conversation-data}]
+  (p/let [;; Assemble instructions from string or vector, always appending context after
+          final-instructions (instr-util/assemble-instructions!+ instructions context-file-paths)
+          tools-args (util/enable-specific-tools tool-ids allow-unsafe-tools?)
           model-info (util/get-model-by-id!+ model-id)]
     (if-not model-info
       {:history []
@@ -296,7 +300,8 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
               _ (state/update-conversation! conv-id {:agent.conversation/cancellation-token-source cancellation-token-source})
               result (continue-conversation-loop
                       (merge conversation-data
-                             {:tools-args (assoc tools-args :cancellationToken (.-token cancellation-token-source))})
+                             {:instructions final-instructions
+                              :tools-args (assoc tools-args :cancellationToken (.-token cancellation-token-source))})
                       [] ; empty initial history
                       1  ; start at turn 1
                       nil)
@@ -320,3 +325,38 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
         ;; Dispose the token source
         (.dispose cancellation-token-source)
         result))))
+
+(comment
+  ;; Example 1: Core usage with string instructions
+  (p/let [conv-id (lm-dispatch.monitor/start-monitoring-conversation!+
+                   {:agent.conversation/goal "Test goal"
+                    :agent.conversation/model-id "gpt-4o-mini"
+                    :agent.conversation/max-turns 5})
+          result (agentic-conversation!+
+                  {:model-id "gpt-4o-mini"
+                   :goal "Count files"
+                   :instructions "Go, go, go!"
+                   :context-file-paths nil
+                   :max-turns 5
+                   :tool-ids ["copilot_findFiles"]
+                   :conv-id conv-id
+                   :progress-callback #()})]
+    result)
+
+  ;; Example 2: Core usage with vector of instruction paths
+  (p/let [conv-id (lm-dispatch.monitor/start-monitoring-conversation!+
+                   {:agent.conversation/goal "Test goal"
+                    :agent.conversation/model-id "gpt-4o-mini"
+                    :agent.conversation/max-turns 5})
+          result (agentic-conversation!+
+                  {:model-id "gpt-4o-mini"
+                   :goal "Create function"
+                   :instructions [(instr-util/user-data-instructions-path "clojure.instructions.md")]
+                   :context-file-paths [(instr-util/user-data-instructions-path "clojure-memory.instructions.md")]
+                   :max-turns 10
+                   :tool-ids ["copilot_readFile"]
+                   :conv-id conv-id
+                   :progress-callback #()})]
+    result)
+
+  :rcf)

@@ -9,6 +9,7 @@
    [clojure.string :as string]
    [promesa.core :as p]
    [lm-dispatch.agent-core :as agent]
+   [lm-dispatch.agent-orchestrator :as orchestrator]
    [lm-dispatch.instructions-util :as instr-util]))
 
 ;; To run all tests:
@@ -179,3 +180,58 @@
                      :agent.conversation/context-files nil})]
       (is (= "" result)
           "Nil paths should return empty string"))))
+
+(deftest validate-instructions-test
+  (testing "Accepts valid instruction types"
+    (is (nil? (orchestrator/validate-instructions! "Go!"))
+        "Should accept string")
+    (is (nil? (orchestrator/validate-instructions! ["/path/to/file.md"]))
+        "Should accept vector")
+    (is (nil? (orchestrator/validate-instructions! :instructions-selector))
+        "Should accept :instructions-selector keyword")
+    (is (nil? (orchestrator/validate-instructions! nil))
+        "Should accept nil"))
+
+  (testing "Rejects invalid instruction types"
+    (is (thrown? js/Error (orchestrator/validate-instructions! 123))
+        "Should reject number")
+    (is (thrown? js/Error (orchestrator/validate-instructions! {:foo "bar"}))
+        "Should reject map")
+    (is (thrown? js/Error (orchestrator/validate-instructions! :wrong-keyword))
+        "Should reject wrong keyword")))
+
+(deftest validate-context-paths-test
+  (testing "Accepts valid context path types"
+    (is (nil? (orchestrator/validate-context-paths! ["/path.md"]))
+        "Should accept vector")
+    (is (nil? (orchestrator/validate-context-paths! []))
+        "Should accept empty vector")
+    (is (nil? (orchestrator/validate-context-paths! nil))
+        "Should accept nil"))
+
+  (testing "Rejects invalid context path types"
+    (is (thrown? js/Error (orchestrator/validate-context-paths! "not-a-vector"))
+        "Should reject string")
+    (is (thrown? js/Error (orchestrator/validate-context-paths! 123))
+        "Should reject number")))
+
+(deftest assemble-instructions-test
+  (testing "Handles string instructions"
+    (p/let [result (instr-util/assemble-instructions!+ "Go, go, go!" nil)]
+      (is (= "Go, go, go!" result)
+          "Should return string as-is")))
+
+  (testing "Handles empty vector instructions"
+    (p/let [result (instr-util/assemble-instructions!+ [] nil)]
+      (is (= "" result)
+          "Should return empty string for empty vector")))
+
+  (testing "Handles nil instructions"
+    (p/let [result (instr-util/assemble-instructions!+ nil nil)]
+      (is (= "" result)
+          "Should return empty string for nil")))
+
+  (testing "Appends context files after instructions"
+    (p/let [result (instr-util/assemble-instructions!+ "Instructions here" [])]
+      (is (= "Instructions here" result)
+          "Should handle empty context"))))

@@ -238,4 +238,63 @@
 
   all-descriptions
 
+  ;; Test assembling instructions - string input
+  (p/let [result (assemble-instructions!+ "Go, go, go!" nil)]
+    result)
+
+  ;; Test assembling instructions - vector input
+  (p/let [files [(user-data-instructions-path "clojure.instructions.md")]
+          result (assemble-instructions!+ files nil)]
+    result)
+
+  ;; Test assembling with context files
+  (p/let [instructions "Custom instructions"
+          context-files [(user-data-instructions-path "memory.instructions.md")]
+          result (assemble-instructions!+ instructions context-files)]
+    result)
+
+  ;; Test assembling vector + context
+  (p/let [instructions [(user-data-instructions-path "clojure.instructions.md")]
+          context-files [(user-data-instructions-path "clojure-memory.instructions.md")]
+          result (assemble-instructions!+ instructions context-files)]
+    result)
+
   :rcf)
+
+(defn assemble-instructions!+
+  "Assemble instructions from string or vector, always appending context files after.
+
+  Args:
+    instructions - Either a string or vector of file paths
+    context-file-paths - Optional vector of context file paths
+
+  Returns: Promise of assembled instructions string"
+  [instructions context-file-paths]
+  (p/let [;; Handle instructions based on type
+          instructions-content (cond
+                                 (string? instructions)
+                                 (p/resolved instructions)
+
+                                 (vector? instructions)
+                                 (concatenate-instruction-files!+ instructions)
+
+                                 :else
+                                 (p/resolved ""))
+
+          ;; Always process context files
+          context-content (concatenate-instruction-files!+ (or context-file-paths []))
+
+          ;; Concatenate with separator if both exist
+          final-instructions (cond
+                               (and (seq instructions-content) (seq context-content))
+                               (str instructions-content
+                                    "\n\n"
+                                    "# === Context Files ===\n\n"
+                                    context-content)
+
+                               (seq context-content)
+                               context-content
+
+                               :else
+                               instructions-content)]
+    final-instructions))
