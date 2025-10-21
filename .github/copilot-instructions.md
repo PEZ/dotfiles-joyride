@@ -48,9 +48,7 @@ Always verify API usage in the REPL before updating files.
 
 ## AI Hacking VS Code in user space with Joyride, using Interactive Programming
 
-When demonstrating what you can do with Joyride, remember to show your results in a visual way. E.g. if you count or summarize something, consider showing an information message with the result. Or consider creating a markdown file and show it in preview mode. Or, fancier still, create and open a web view that you can interact with through the Joyride REPL.
-
-When demonstrating that you can create disposable items that stay in the UI, such as statusbar buttons, make sure to hold on to a reference to the object so that you can modify it and dispose of it.
+When creating disposable items that stay in the UI, such as statusbar buttons, make sure to hold on to a reference to the object so that you can modify it and dispose of it.
 
 Use the VS Code API via the correct interop syntax: vscode/api.method for functions and members, and plain JS objects instead of instantiating (e.g., `#js {:role "user" :content "..."}`).
 
@@ -206,3 +204,16 @@ Develop using the REPL. Yet, sometimes you need to edit file. And when you do, p
 ## Read File Preambles First
 
 When editing any file, particularly in Clojure projects, begin by reading the first 10 lines to review the preamble. This section often outlines critical requirements. Always start with the preamble to maintain the file's contract and avoid workflow mismatches.
+
+## Important workflow
+
+- Use interactive programming
+- Work using TDD in the repl
+  - Develop `cljs.test` tests in the repl
+  - Tests reside in `src/test/` which also means that their namespaces all start with `test.`, e.g. `test.agents.memory-keeper-test`
+
+  To run all tests:
+  ```clojure
+  (do (require 'run-all-tests :reload) (run-all-tests/run!+))
+  ```
+- When committing repl verified code to the repl, always prefer your structural editing tools
