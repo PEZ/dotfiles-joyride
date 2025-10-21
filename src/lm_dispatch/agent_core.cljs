@@ -337,15 +337,20 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
         ;; Update final status
         (state/update-conversation!
          conv-id
-         {:agent.conversation/status (case final-reason
-                                       :task-complete :task-complete
-                                       :max-turns-reached :max-turns-reached
-                                       :agent-finished :agent-finished
-                                       :cancelled :cancelled
-                                       :error :error
-                                       :done)
-          :agent.conversation/error-message (when (= final-reason :error)
-                                              (:error-message result))})
+         (cond-> {:agent.conversation/status (case final-reason
+                                               :task-complete :task-complete
+                                               :max-turns-reached :max-turns-reached
+                                               :agent-finished :agent-finished
+                                               :cancelled :cancelled
+                                               :error :error
+                                               :done)}
+           ;; Set error message for error cases
+           (= final-reason :error)
+           (assoc :agent.conversation/error-message (:error-message result))
+
+           ;; Set results from final AI response for successful completions
+           (#{:task-complete :agent-finished} final-reason)
+           (assoc :agent.conversation/results (get-in result [:final-response :text]))))
         (monitor/update-agent-monitor-flare!+)
         ;; Dispose the token source
         (.dispose cancellation-token-source)
@@ -355,10 +360,10 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
   ;; Example 1: Core usage with string instructions
   (p/let [conv-id (lm-dispatch.monitor/start-monitoring-conversation!+
                    {:agent.conversation/goal "Test goal"
-                    :agent.conversation/model-id "gpt-4o-mini"
+                    :agent.conversation/model-id "grok-code-fast-1"
                     :agent.conversation/max-turns 5})
           result (agentic-conversation!+
-                  {:model-id "gpt-4o-mini"
+                  {:model-id "grok-code-fast-1"
                    :goal "Count files"
                    :instructions "Go, go, go!"
                    :context-file-paths nil
@@ -371,10 +376,10 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
   ;; Example 2: Core usage with vector of instruction paths
   (p/let [conv-id (lm-dispatch.monitor/start-monitoring-conversation!+
                    {:agent.conversation/goal "Test goal"
-                    :agent.conversation/model-id "gpt-4o-mini"
+                    :agent.conversation/model-id "grok-code-fast-1"
                     :agent.conversation/max-turns 5})
           result (agentic-conversation!+
-                  {:model-id "gpt-4o-mini"
+                  {:model-id "grok-code-fast-1"
                    :goal "Create function"
                    :instructions [(instr-util/user-data-instructions-path "clojure.instructions.md")]
                    :context-file-paths [(instr-util/user-data-instructions-path "clojure-memory.instructions.md")]

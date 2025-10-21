@@ -13,7 +13,8 @@
    [lm-dispatch.logging :as logging]
    [clojure.string :as string]
    [joyride.flare :as flare]
-   [promesa.core :as p]))
+   [promesa.core :as p]
+   ["vscode" :as vscode]))
 
 ;; UI Interaction Handlers
 
@@ -25,6 +26,24 @@
     (when-let [token-source (:agent.conversation/cancellation-token-source conv)]
       (.cancel token-source))
     (state/mark-conversation-cancelled! conv-id)))
+
+(defn truncate-summary
+  "Truncate text to max-length with ellipsis if needed"
+  [text max-length]
+  (when text
+    (if (> (count text) max-length)
+      (str (subs text 0 max-length) "...")
+      text)))
+
+(defn open-results-document!+
+  "Open conversation results in a new untitled document"
+  [conv-id]
+  (when-let [conv (state/get-conversation conv-id)]
+    (when-let [results (:agent.conversation/results conv)]
+      (p/let [doc (vscode/workspace.openTextDocument
+                    #js {:content results
+                         :language "text"})]
+        (vscode/window.showTextDocument doc)))))
 
 ;; UI Rendering
 
@@ -53,6 +72,31 @@
       (str (pad hours) ":" (pad minutes)))
     "--:--"))
 
+(defn render-results-section
+  "Render results section similar to error-message section"
+  [conv-id results]
+  (when results
+    (let [summary (truncate-summary results 100)]
+      [:div {:style {:color "var(--vscode-charts-green)"
+                     :font-size "0.85em"
+                     :margin-top "4px"
+                     :display :flex
+                     :justify-content :space-between
+                     :align-items :center
+                     :gap "8px"}}
+       [:span {:style {:flex "1" :min-width "0"}}
+        "Results: " summary]
+       [:button {:onclick (str "vscode.postMessage({command: 'showResults', id: " conv-id "})")
+                 :style {:padding "2px 6px"
+                         :background "var(--vscode-button-background)"
+                         :color "var(--vscode-button-foreground)"
+                         :border :none
+                         :border-radius "2px"
+                         :cursor :pointer
+                         :font-size "0.8em"
+                         :flex-shrink "0"}}
+        "View Full"]])))
+
 (defn conversation-html
   "Generate HTML for a single conversation entry"
   [conv]
@@ -60,7 +104,7 @@
                                    caller title
                                    current-turn max-turns
                                    started-at error-message
-                                   total-tokens]} conv
+                                   results total-tokens]} conv
         icon-class (status-icon status)
         icon-color (case status
                      :task-complete "var(--vscode-charts-green)"
@@ -136,7 +180,8 @@
        [:div {:style {:color "var(--vscode-errorForeground)"
                       :font-size "0.85em"
                       :margin-top "4px"}}
-        "Error: " error-message])]))
+        "Error: " error-message])
+     (render-results-section id results)]))
 
 (defn agent-monitor-html
   "Generate complete monitor HTML"
@@ -198,6 +243,8 @@
                            "cancel" (when-let [id (.-id msg)]
                                      (cancel-conversation! id)
                                      (update-agent-monitor-flare!+))
+                           "showResults" (when-let [id (.-id msg)]
+                                          (open-results-document!+ id))
                            nil))})))
 
 ;; Public API for Integration
