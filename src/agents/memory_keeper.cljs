@@ -428,7 +428,7 @@
       :max-turns - Optional turn limit override (default: 10)
       :caller - Optional, but encouraged, who's recording the memory
       :progress-callback - Optional progress function
-      :use-instruction-selection? - Enable automatic instruction file selection (default: false)
+      :instructions - Instructions as string, vector of paths, or :instructions-selector
       :context-file-paths - Vector of additional instruction file paths to include as context
 
   Returns:
@@ -440,7 +440,7 @@
       - :file-not-found - Tried to append to non-existent file
       - :parse-failed - Could not parse agent response"
   [{:keys [summary domain caller title scope model-id max-turns progress-callback
-           use-instruction-selection? context-file-paths]
+           instructions context-file-paths]
     :or {scope :global
          model-id agent-model
          max-turns default-max-turns}}]
@@ -476,7 +476,7 @@
                          :caller caller
                          :title title
                          :progress-callback progress-callback
-                         :instructions (if use-instruction-selection? :instructions-selector "Go, go, go!")
+                         :instructions instructions
                          :context-file-paths context-file-paths})
 
           ;; Step 6: Search agent messages backwards for EDN structure
@@ -558,7 +558,7 @@
   ;; Example 1: Basic usage - global memory with domain hint
   (p/let [result (record-memory!+
                   {:summary "Use REPL evaluation of subexpressions instead of println for debugging"
-                   :domain "clojure"})]
+                   :domain "foobartesting"})]
     (def basic-result result)
     result)
 
@@ -572,46 +572,57 @@
   (p/let [result (record-memory!+
                   {:title "Thread it"
                    :summary "Threading macros improve readability in data pipelines"
-                   :domain "clojure"
+                   :domain "foobar"
                    :scope :workspace})]
     (def workspace-result result)
     result)
 
-  ;; Example 4: With instruction selection enabled
-  ;; This will automatically select relevant instruction files based on the summary
+  ;; Example 4: With instruction selector
+  ;; Let the agent automatically select relevant instruction files
   (p/let [result (record-memory!+
                   {:summary "Prefer structural editing tools over string replacement when editing Clojure files"
-                   :domain "clojure"
-                   :use-instruction-selection? true
+                   :domain "foobartesting"
+                   :instructions :instructions-selector
                    :caller "rcf-test"})]
     (def instruction-selection-result result)
     result)
 
-  ;; Example 5: With specific context files
-  ;; Provide specific instruction files as context
-  (p/let [context-paths [(user-data-instructions-path "clojure.instructions.md")
-                         (user-data-instructions-path "clojure-memory.instructions.md")]
+  ;; Example 5: With specific instruction file vector
+  ;; Provide explicit paths to instruction files
+  (p/let [instruction-paths [(user-data-instructions-path "clojure.instructions.md")
+                             (user-data-instructions-path "clojure-memory.instructions.md")]
           result (record-memory!+
                   {:summary "Use inline def for REPL debugging instead of println"
                    :domain "clojure"
-                   :context-file-paths context-paths
-                   :caller "rcf-context-test"})]
-    (def context-result2 result)
+                   :instructions instruction-paths
+                   :caller "rcf-vector-test"})]
+    (def vector-result result)
     result)
 
-  ;; Example 6: With context paths 2
+  ;; Example 6: With specific context files
+  ;; Context files are always appended after instructions
+  (p/let [context-paths [(user-data-instructions-path "memory.instructions.md")]
+          result (record-memory!+
+                  {:summary "Use inline def for REPL debugging instead of println"
+                   :domain "foobartesting"
+                   :context-file-paths context-paths
+                   :caller "rcf-context-test"})]
+    (def context-result result)
+    result)
+
+  ;; Example 7: Combined instructions and context
   (p/let [result (record-memory!+
                   {:title "Autostash FTW"
                    :summary "Use --autostash flag with git rebase"
                    :domain "foobartesting"
                    :model-id "claude-haiku-4.5"
                    :max-turns 15
-                   :use-instruction-selection? true
+                   :instructions :instructions-selector
                    :context-file-paths ["/Users/pez/.config/joyride/scripts/philosophers_race.cljs"]})]
-    (def context-result2 result)
+    (def combined-result result)
     result)
 
-  ;; Example 7: Inspect result structure
+  ;; Example 8: Inspect result structure
   (p/let [result (record-memory!+ {:summary "Test result inspection"
                                    :domain "testing"})]
     {:success? (:success result)
