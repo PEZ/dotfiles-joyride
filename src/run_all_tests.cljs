@@ -1,7 +1,7 @@
 ;; AGENTS, please read this preamble before working with the namespace:
 ;; - Use interactive programming
 ;; - Work using TDD in the repl
-#_(do (require 'run-all-tests :reload-all-all) (run-all-tests/run!+))
+#_(do (require 'run-all-tests :reload-all) (run-all-tests/run!+))
 ;; - Always prefer your structural editing tools
 (ns run-all-tests
   (:require [joyride.core :as joyride]
@@ -40,17 +40,18 @@
                               :error (.-message error)}))))
 
           successful (filter :success load-results)
-          failed (remove :success load-results)
+          failed (remove :success load-results)]
 
-          _ (when (seq failed)
-              (println "\n⚠️  Failed to load" (count failed) "test file(s):")
-              (doseq [{:keys [path error]} failed]
-                (println "  -" path ":" error)))
+    ;; All side effects in body, executed after promises resolve
+    (when (seq failed)
+      (println "\n⚠️  Failed to load" (count failed) "test file(s):")
+      (doseq [{:keys [path error]} failed]
+        (println "  -" path ":" error)))
 
-          _ (println "\n✅ Loaded" (count successful) "test file(s)")
-          _ (println "\n🏃 Running all tests...\n")
+    (println "\n✅ Loaded" (count successful) "test file(s)")
+    (println "\n🏃 Running all tests...\n")
 
-          _ (cljs.test/run-all-tests #"test\..*")]
+    (cljs.test/run-all-tests #"test\..*")
 
     (println "\n✨ Test run complete!")))
 
