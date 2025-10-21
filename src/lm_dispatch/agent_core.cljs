@@ -157,6 +157,33 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
    :reason reason
    :final-response final-response})
 
+(defn generate-completion-results
+  "Generate appropriate results text based on completion reason and context"
+  [final-reason result max-turns]
+  (let [final-ai-text (get-in result [:final-response :text])
+        turn-count (get-in result [:final-response :turn])]
+    (case final-reason
+      ;; Success cases - show final AI response as-is
+      (:task-complete :agent-finished) final-ai-text
+
+      ;; Partial completion cases - augment with context
+      :max-turns-reached
+      (str "Agent reached maximum turns (" turn-count "/" max-turns ") without completion.\n\n"
+           "Final response:\n" (or final-ai-text "No final response available."))
+
+      :cancelled
+      (str "Conversation was cancelled by user"
+           (when turn-count (str " after " turn-count " turn(s)")) ".\n\n"
+           "Progress before cancellation:\n" (or final-ai-text "No response available."))
+
+      ;; For errors, include final response if available (error-message is handled separately)
+      :error
+      (when final-ai-text
+        (str "Last agent response before error:\n" final-ai-text))
+
+      ;; Default fallback
+      final-ai-text)))
+
 (defn execute-conversation-turn
   "Execute a single conversation turn - handles request/response cycle"
   [{:keys [model-id goal instructions history turn-count tools-args]}]
@@ -335,22 +362,23 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                              :cancelled
                              (:reason result))]
         ;; Update final status
-        (state/update-conversation!
-         conv-id
-         (cond-> {:agent.conversation/status (case final-reason
-                                               :task-complete :task-complete
-                                               :max-turns-reached :max-turns-reached
-                                               :agent-finished :agent-finished
-                                               :cancelled :cancelled
-                                               :error :error
-                                               :done)}
-           ;; Set error message for error cases
-           (= final-reason :error)
-           (assoc :agent.conversation/error-message (:error-message result))
+        (let [completion-results (generate-completion-results final-reason result max-turns)]
+          (state/update-conversation!
+           conv-id
+           (cond-> {:agent.conversation/status (case final-reason
+                                                 :task-complete :task-complete
+                                                 :max-turns-reached :max-turns-reached
+                                                 :agent-finished :agent-finished
+                                                 :cancelled :cancelled
+                                                 :error :error
+                                                 :done)}
+             ;; Set error message for error cases
+             (= final-reason :error)
+             (assoc :agent.conversation/error-message (:error-message result))
 
-           ;; Set results from final AI response for successful completions
-           (#{:task-complete :agent-finished} final-reason)
-           (assoc :agent.conversation/results (get-in result [:final-response :text]))))
+             ;; Set results for all completion cases that have meaningful content
+             completion-results
+             (assoc :agent.conversation/results completion-results))))
         (monitor/update-agent-monitor-flare!+)
         ;; Dispose the token source
         (.dispose cancellation-token-source)

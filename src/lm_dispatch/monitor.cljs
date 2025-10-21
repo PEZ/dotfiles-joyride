@@ -74,10 +74,11 @@
 
 (defn render-results-section
   "Render results section similar to error-message section"
-  [conv-id results]
+  [conv-id results icon-color]
   (when results
-    (let [summary (truncate-summary results 100)]
-      [:div {:style {:color "var(--vscode-charts-green)"
+    (let [summary (truncate-summary results 100)
+          result-color (or icon-color "var(--vscode-charts-green)")]
+      [:div {:style {:color result-color
                      :font-size "0.85em"
                      :margin-top "4px"
                      :display :flex
@@ -181,7 +182,7 @@
                       :font-size "0.85em"
                       :margin-top "4px"}}
         "Error: " error-message])
-     (render-results-section id results)]))
+     (render-results-section id results icon-color)]))
 
 (defn agent-monitor-html
   "Generate complete monitor HTML"
