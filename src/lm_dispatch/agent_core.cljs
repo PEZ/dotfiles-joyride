@@ -1,6 +1,7 @@
 ;; AGENTS, please read this preamble before working with the namespace:
 ;; - Use interactive programming
 ;; - Work using TDD in the repl, existing tests: src/test/lm_dispatch/agent_test.cljs
+#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 ;; - Always prefer your structural editing tools
 
 (ns lm-dispatch.agent-core
@@ -15,8 +16,14 @@
    [lm-dispatch.instructions-util :as instr-util]
    [promesa.core :as p]))
 
-;; To run all tests:
-#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
+(def default-conversation-data
+  {:model-id "grok-code-fast-1"
+   :max-turns 10
+   :progress-callback #()
+   :title "Untitled"
+   :caller "Unknown"
+   :tool-ids []
+   :allow-unsafe-tools? false})
 
 (def agentic-system-prompt
   "You are an autonomous AI agent with the ability to take initiative and drive conversations toward goals.
@@ -186,7 +193,8 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
   The goal parameter is passed separately through all turns and combined with history
   by build-agentic-messages. This keeps the immutable goal separate from the growing
   conversation history."
-  [{:keys [model-id goal instructions max-turns progress-callback tools-args conv-id] :as conversation-data}
+  [{:keys [model-id goal instructions max-turns progress-callback tools-args conv-id]
+    :as conversation-data}
    history turn-count last-response]
   (progress-callback (str "Turn " turn-count "/" max-turns))
   (p/let [;; Count tokens for this turn's messages
@@ -284,7 +292,17 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
       :conv-id - Conversation ID for state tracking
 
   Returns: Promise of result map with :history, :reason, :final-response"
-  [{:keys [model-id instructions context-file-paths tool-ids allow-unsafe-tools? conv-id] :as conversation-data}]
+  [{:keys [goal
+           model-id instructions max-turns title caller
+           tool-ids progress-callback
+           conv-id allow-unsafe-tools? context-file-paths]
+    :or {model-id (:model-id default-conversation-data)
+         max-turns (:max-turns default-conversation-data)
+         progress-callback (:progress-callback default-conversation-data)
+         title (:title default-conversation-data)
+         caller (:caller default-conversation-data)
+         tool-ids (:tool-ids default-conversation-data)
+         allow-unsafe-tools? (:allow-unsafe-tools? default-conversation-data)}}]
   (p/let [;; Assemble instructions from string or vector, always appending context after
           final-instructions (instr-util/assemble-instructions!+ instructions context-file-paths)
           tools-args (util/enable-specific-tools tool-ids allow-unsafe-tools?)
@@ -297,11 +315,18 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
        :final-response nil}
       (p/let [;; Create cancellation token and store it in conversation
               cancellation-token-source (vscode/CancellationTokenSource.)
-              _ (state/update-conversation! conv-id {:agent.conversation/cancellation-token-source cancellation-token-source})
+              _ (state/update-conversation! conv-id {:agent.conversation/cancellation-token-source
+                                                     cancellation-token-source})
               result (continue-conversation-loop
-                      (merge conversation-data
-                             {:instructions final-instructions
-                              :tools-args (assoc tools-args :cancellationToken (.-token cancellation-token-source))})
+                      {:conv-id conv-id
+                       :goal goal
+                       :model-id model-id
+                       :max-turns max-turns
+                       :progress-callback progress-callback
+                       :title title
+                       :caller caller
+                       :instructions final-instructions
+                       :tools-args (assoc tools-args :cancellationToken (.-token cancellation-token-source))}
                       [] ; empty initial history
                       1  ; start at turn 1
                       nil)

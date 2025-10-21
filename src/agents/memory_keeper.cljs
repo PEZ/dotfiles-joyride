@@ -20,6 +20,9 @@
 
 (def agent-model "grok-code-fast-1")
 (def default-max-turns 15)
+(def agent-tool-ids ["copilot_findFiles"
+                     "copilot_readFile"
+                     "copilot_findTextInFiles"])
 
 (defn user-data-instructions-path
   ([] (user-data-instructions-path nil))
@@ -439,11 +442,13 @@
       - :write-failed - File write operation failed
       - :file-not-found - Tried to append to non-existent file
       - :parse-failed - Could not parse agent response"
-  [{:keys [summary domain caller title scope model-id max-turns progress-callback
-           instructions context-file-paths]
+  [{:keys [summary domain scope model-id max-turns tool-ids title]
     :or {scope :global
          model-id agent-model
-         max-turns default-max-turns}}]
+         tool-ids agent-tool-ids
+         max-turns default-max-turns
+         title "Keeping a memory"}
+    :as conversation-data}]
   (p/let [;; Step 1: Normalize scope to handle both strings and keywords
           normalized-scope (normalize-scope scope)
           ;; Step 2: Determine search directory from normalized scope
@@ -462,22 +467,14 @@
                                    :ma/search-dir search-dir
                                    :ma/description-listing description-listing})
 
-          ;; Step 4: Define read-only tools for analysis
-          tool-ids ["copilot_findFiles"
-                    "copilot_readFile"
-                    "copilot_findTextInFiles"]
-
           ;; Step 5: Call agent for analysis and content creation
           agent-result (agent-orchestrator/autonomous-conversation!+
                         goal
-                        {:model-id model-id
-                         :max-turns max-turns
-                         :tool-ids tool-ids
-                         :caller caller
-                         :title title
-                         :progress-callback progress-callback
-                         :instructions instructions
-                         :context-file-paths context-file-paths})
+                        (merge conversation-data
+                               {:model-id model-id
+                                :tool-ids tool-ids
+                                :max-turns max-turns
+                                :title title}))
 
           ;; Step 6: Search agent messages backwards for EDN structure
           ;; Agent may include EDN in any message, not just the last one
@@ -530,27 +527,27 @@
        :error-type :parse-failed})))
 
 (comment
-    (p/let [;; Step 1: Normalize scope to handle both strings and keywords
-            normalized-scope (normalize-scope "global")
-            ;; Step 2: Determine search directory from normalized scope
-            search-dir (case normalized-scope
-                         :global (user-data-instructions-path)
-                         :workspace (workspace-instructions-path)
-                         (user-data-instructions-path))
+  (p/let [;; Step 1: Normalize scope to handle both strings and keywords
+          normalized-scope (normalize-scope "global")
+          ;; Step 2: Determine search directory from normalized scope
+          search-dir (case normalized-scope
+                       :global (user-data-instructions-path)
+                       :workspace (workspace-instructions-path)
+                       (user-data-instructions-path))
 
-            ;; Step 1b: Build description listing for available files
-            _ (def normalized-scope normalized-scope)
-            _ (def search-dir search-dir)
-            file-descriptions (build-file-descriptions-map!+ search-dir)
-            _ (def file-descriptions file-descriptions)
-            description-listing (format-description-listing file-descriptions)
+          ;; Step 1b: Build description listing for available files
+          _ (def normalized-scope normalized-scope)
+          _ (def search-dir search-dir)
+          file-descriptions (build-file-descriptions-map!+ search-dir)
+          _ (def file-descriptions file-descriptions)
+          description-listing (format-description-listing file-descriptions)
 
-            ;; Steps 2-3: Build complete goal prompt with description listing
-            goal (build-goal-prompt {:ma/summary "Use REPL for debugging"
+          ;; Steps 2-3: Build complete goal prompt with description listing
+          goal (build-goal-prompt {:ma/summary "Use REPL for debugging"
                                      ;:ma/domain "clojure"
-                                     :ma/search-dir (.toString search-dir)
-                                     :ma/description-listing description-listing})]
-      (println goal))
+                                   :ma/search-dir (.toString search-dir)
+                                   :ma/description-listing description-listing})]
+    (println goal))
   :rcf)
 
 #_{:clj-kondo/ignore [:clojure-lsp/unused-public-var]}
@@ -558,6 +555,7 @@
   ;; Example 1: Basic usage - global memory with domain hint
   (p/let [result (record-memory!+
                   {:summary "Use REPL evaluation of subexpressions instead of println for debugging"
+                   :title "Remembering..."
                    :domain "foobartesting"})]
     (def basic-result result)
     result)

@@ -122,7 +122,11 @@
     caller - Optional caller identification
 
   Returns: Promise of vector of selected file paths (absolute), sorted with most important last"
-  [{:keys [goal context-content tool-ids caller]}]
+  [{:keys [goal context-content model-id max-turns tool-ids caller]
+    :or {model-id selector-model-id
+         max-turns selector-max-turns
+         tool-ids selector-tool-ids}
+    :as conversation-data}]
   (p/let [file-descriptions (instr-util/collect-all-instruction-descriptions!+)
           selection-goal (build-selection-prompt {:goal goal
                                                   :file-descriptions file-descriptions
@@ -131,22 +135,18 @@
           ;; Register conversation manually since we're using core directly
           conv-id (monitor/start-monitoring-conversation!+
                    {:agent.conversation/goal selection-goal
-                    :agent.conversation/model-id selector-model-id
-                    :agent.conversation/max-turns selector-max-turns
-                    :agent.conversation/caller (or caller "Instruction Selector")
+                    :agent.conversation/model-id model-id
+                    :agent.conversation/max-turns max-turns
+                    :agent.conversation/caller (or caller (:caller agent-core/default-conversation-data))
                     :agent.conversation/title "Selecting Instructions"})
           _ (logging/log-to-channel! conv-id "🔍 Starting instruction file selection")
           _ (when (seq tool-ids)
               (logging/log-to-channel! conv-id (str "📋 Task tools: " (string/join ", " tool-ids))))
           _ (logging/log-to-channel! conv-id (str "📚 Analyzing " (count file-descriptions) " available instruction files"))
           result (agent-core/agentic-conversation!+
-                  {:model-id selector-model-id
-                   :goal selection-goal
-                   :instructions "Go, go, go!"
-                   :max-turns selector-max-turns
-                   :tool-ids selector-tool-ids
-                   :conv-id conv-id
-                   :progress-callback #()})
+                  (merge conversation-data
+                         {:goal selection-goal
+                          :conv-id conv-id}))
           selected-paths (parse-selection-result (:final-response result))
           _ (if (seq selected-paths)
               (do

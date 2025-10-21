@@ -36,13 +36,15 @@
   ([goal]
    (autonomous-conversation!+ goal {}))
 
-  ([goal {:keys [model-id max-turns tool-ids progress-callback allow-unsafe-tools? caller title
-                 instructions context-file-paths]
-          :or {model-id "gpt-4o-mini"
-               tool-ids []
-               max-turns 10
-               allow-unsafe-tools? false
-               instructions "Go, go, go!"}}]
+  ([goal {:keys [model-id max-turns tool-ids progress-callback caller title instructions
+                 context-file-paths allow-unsafe-tools?]
+          :or {model-id (:model-id agent-core/default-conversation-data)
+               max-turns (:max-turns agent-core/default-conversation-data)
+               progress-callback (:progress-callback agent-core/default-conversation-data)
+               title (:title agent-core/default-conversation-data)
+               caller (:caller agent-core/default-conversation-data)
+               tool-ids (:tool-ids agent-core/default-conversation-data)
+               allow-unsafe-tools? (:allow-unsafe-tools? agent-core/default-conversation-data)}}]
    {:pre [(or (nil? instructions)
               (string? instructions)
               (vector? instructions)
@@ -74,19 +76,17 @@
                                     selected-paths))
                                 ;; Otherwise pass through as-is (string or vector)
                                 instructions)
-
-           progress-callback (or progress-callback #())
            result (agent-core/agentic-conversation!+
                    {:model-id model-id
                     :goal goal
                     :instructions final-instructions
-                    :context-file-paths context-file-paths
                     :max-turns max-turns
                     :tool-ids tool-ids
                     :allow-unsafe-tools? allow-unsafe-tools?
                     :caller caller
+                    :progress-callback progress-callback
                     :conv-id conv-id
-                    :progress-callback progress-callback})]
+                    :context-file-paths context-file-paths})]
 
      ;; Log final summary
      (if (:error? result)

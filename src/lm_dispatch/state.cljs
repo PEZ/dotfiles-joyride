@@ -1,6 +1,7 @@
 ;; AGENTS, please read this preamble before working with the namespace:
 ;; - Use interactive programming
 ;; - Work using TDD in the repl, existing tests: src/test/lm_dispatch/state_test.cljs
+#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 ;; - Always prefer your structural editing tools
 
 (ns lm-dispatch.state
@@ -8,9 +9,6 @@
 
   This namespace provides the single source of truth for conversation data
   with pure functions operating on a centralized atom. No side effects.")
-
-;; To run all tests:
-#_(do (require 'run-all-tests :reload) (run-all-tests/run!+))
 
 ;; State Atom
 
