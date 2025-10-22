@@ -30,6 +30,7 @@
     :caller - String identifying who started the conversation
     :title - Display title for the conversation
     :instructions - Instructions as string, vector of paths, or :instructions-selector (default: 'Go, go, go!')
+    :editor-context - Optional map with current editor state (see format-editor-context)
     :context-file-paths - Vector of additional file paths to include as context
 
   Returns: Promise of result map with :history, :reason, :final-response"
@@ -37,7 +38,7 @@
    (autonomous-conversation!+ goal {}))
 
   ([goal {:keys [model-id max-turns tool-ids progress-callback caller title instructions
-                 context-file-paths allow-unsafe-tools?]
+                 editor-context context-file-paths allow-unsafe-tools?]
           :or {model-id (:model-id agent-core/default-conversation-data)
                max-turns (:max-turns agent-core/default-conversation-data)
                progress-callback (:progress-callback agent-core/default-conversation-data)
@@ -80,6 +81,7 @@
                    {:model-id model-id
                     :goal goal
                     :instructions final-instructions
+                    :editor-context editor-context
                     :max-turns max-turns
                     :tool-ids tool-ids
                     :allow-unsafe-tools? allow-unsafe-tools?

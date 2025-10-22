@@ -330,6 +330,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
       :model-id - LM model ID
       :goal - String describing the task
       :instructions - String or vector of file paths with additional instructions
+      :editor-context - Optional map with current editor state (see format-editor-context)
       :context-file-paths - Optional vector of context file paths
       :max-turns - Maximum conversation turns
       :progress-callback - Function called with progress updates
@@ -341,7 +342,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
   [{:keys [goal
            model-id instructions max-turns title caller
            tool-ids progress-callback
-           conv-id allow-unsafe-tools? context-file-paths]
+           conv-id allow-unsafe-tools? context-file-paths editor-context]
     :or {model-id (:model-id default-conversation-data)
          max-turns (:max-turns default-conversation-data)
          progress-callback (:progress-callback default-conversation-data)
@@ -349,8 +350,8 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
          caller (:caller default-conversation-data)
          tool-ids (:tool-ids default-conversation-data)
          allow-unsafe-tools? (:allow-unsafe-tools? default-conversation-data)}}]
-  (p/let [;; Assemble instructions from string or vector, always appending context after
-          final-instructions (instr-util/assemble-instructions!+ instructions context-file-paths)
+  (p/let [;; Assemble instructions from string or vector, with editor context, and context files
+          final-instructions (instr-util/assemble-instructions!+ instructions editor-context context-file-paths)
           tools-args (util/enable-specific-tools tool-ids allow-unsafe-tools?)
           model-info (util/get-model-by-id!+ model-id)]
     (if-not model-info

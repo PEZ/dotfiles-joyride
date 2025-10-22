@@ -225,21 +225,21 @@
 
 (deftest assemble-instructions-test
   (testing "Handles string instructions"
-    (p/let [result (instr-util/assemble-instructions!+ "Go, go, go!" nil)]
+    (p/let [result (instr-util/assemble-instructions!+ "Go, go, go!" nil nil)]
       (is (= "Go, go, go!" result)
           "Should return string as-is")))
 
   (testing "Handles empty vector instructions"
-    (p/let [result (instr-util/assemble-instructions!+ [] nil)]
+    (p/let [result (instr-util/assemble-instructions!+ [] nil nil)]
       (is (= "" result)
           "Should return empty string for empty vector")))
 
   (testing "Handles nil instructions"
-    (p/let [result (instr-util/assemble-instructions!+ nil nil)]
+    (p/let [result (instr-util/assemble-instructions!+ nil nil nil)]
       (is (= "" result)
           "Should return empty string for nil")))
 
   (testing "Appends context files after instructions"
-    (p/let [result (instr-util/assemble-instructions!+ "Instructions here" [])]
+    (p/let [result (instr-util/assemble-instructions!+ "Instructions here" nil [])]
       (is (= "Instructions here" result)
           "Should handle empty context"))))
