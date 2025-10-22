@@ -408,7 +408,9 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
 
              ;; Set results for all completion cases that have meaningful content
              completion-results
-             (assoc :agent.conversation/results completion-results))))
+             (assoc :agent.conversation/results completion-results)))
+          ;; Update monitor to reflect completion
+          (monitor/update-agent-monitor-flare!+))
         ;; Dispose the cancellation token
         (.dispose cancellation-token-source)
         (assoc result :reason final-reason)))))
