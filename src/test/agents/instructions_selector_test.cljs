@@ -79,8 +79,6 @@
                "Each description should have :domain key")
            (done))))
 
-
-
 (deftest build-selection-prompt-test
   (testing "Includes tool section when tool-ids provided"
     (let [prompt (selector/build-selection-prompt
