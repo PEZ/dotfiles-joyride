@@ -315,10 +315,10 @@
 (defn assemble-instructions!+
   "Assemble instructions from string or vector, with optional editor context and context files.
 
-  The assembly order is:
+  The assembly order matches Copilot's pattern:
   1. Instructions (string or concatenated file paths)
-  2. Editor context (if provided)
-  3. Context files (if provided)
+  2. Context files (if provided)
+  3. Editor context (if provided) - comes last, like in Copilot requests
 
   Args:
     instructions - Either a string or vector of file paths
@@ -338,21 +338,21 @@
                                  :else
                                  (p/resolved ""))
 
-          ;; Format editor context if provided
-          editor-context-content (or (format-editor-context editor-context) "")
-
-          ;; Always process context files
+          ;; Always process context files first
           context-content (concatenate-instruction-files!+ (or context-file-paths []))
+
+          ;; Format editor context if provided - comes last like Copilot
+          editor-context-content (or (format-editor-context editor-context) "")
 
           ;; Concatenate all parts with separators
           final-instructions (str
                               instructions-content
-                              (when (seq editor-context-content)
-                                (str "\n\n"
-                                     "# === Editor Context ===\n\n"
-                                     editor-context-content))
                               (when (seq context-content)
                                 (str "\n\n"
                                      "# === Context Files ===\n\n"
-                                     context-content)))]
+                                     context-content))
+                              (when (seq editor-context-content)
+                                (str "\n\n"
+                                     "# === Editor Context ===\n\n"
+                                     editor-context-content)))]
     final-instructions))
