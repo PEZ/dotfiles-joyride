@@ -2,6 +2,7 @@
 
 - [x] Push full goal assembly down to `build-agentic-messages`. It should receive: instructions-paths, context-paths, and current-selection
 - [ ] Log paths, not full instructions.
+- [ ] Log short excerpt of goal
 - [ ] UI for toggling verbose logging per conversation
 - [ ] UI for logging specific data about a conversation
 - [x] Render results in dispatch monitor, together with button for logging it

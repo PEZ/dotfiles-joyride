@@ -124,7 +124,7 @@
      "### 2. Deliver results\n"
      "### 3. Deliver results\n")
 
-      "Your deliverable is an EDN structure, wrapped in `---BEGIN RESULTS---`/`---END RESULTS---` markers:\n\n"
+   "Your deliverable is an EDN structure, wrapped in `---BEGIN RESULTS---`/`---END RESULTS---` markers:\n\n"
 
    "- IF a memory file already exist:\n"
    "  - Provide a new memory section to be appended to the file:\n"
@@ -137,6 +137,7 @@
    "     :applyTo [glob-patterns ...]             ; vector of strings, OPTIONAL - only if frontmatter needs updating\n"
    "     }\n"
    "    ---END RESULTS---\n"
+   "    ~~~GOAL-ACHIEVED~~~\n"
    "    ```\n"
    "  - Your task is complete!\n"
    "- ELSE IF no existing memory file:\n"
@@ -153,8 +154,23 @@
    "     :content memory-content-markdown         ; string, the memorization of the `SESSION-LESSON`, without any headings\n"
    "     }\n"
    "    ---END RESULTS---\n"
+   "    ~~~GOAL-ACHIEVED~~~\n"
    "    ```\n"
-   "  - Your task is complete!\n"))
+   "  - Your task is complete!\n"
+   "- IF you find that the memory is already covered:\n"
+   "  - Provide the data for an entirely new memory file:\n\n"
+   "    ```clojure\n"
+   "    ---BEGIN RESULTS---\n"
+   "    {:memory-exists? true                     ; boolean\n"
+   "     :message                                 ; string, say something about the coverage\n"
+   "     :domain                                  ; string\n"
+   "     :file-path path                          ; string, absolute path to the memory file where the memory already exists\n"
+   "     }\n"
+   "    ---END RESULTS---\n"
+   "    ~~~GOAL-ACHIEVED~~~\n"
+   "    ```\n"
+
+   ))
 
 (comment
   (remember-prompt {:ma/domain nil})
@@ -486,28 +502,24 @@
           file-uri-string (file-path->uri-string file-path)]
 
     (if parsed
-      ;; Step 8: Check if file exists first (handles agent misidentifying new vs existing)
-      (p/let [existing-content (read-existing-file!+ file-path)]
-        (if existing-content
-          ;; File exists - always append (even if agent said :new-file true)
-          ;; Don't trust agent's applyTo when appending to existing unread file
-          (p/let [updated-content (append-memory-section
-                                   {:existing-content existing-content
-                                    :heading (:heading parsed)
-                                    :content (:content parsed)
-                                    :applyTo nil}) ; Ignore applyTo - agent hasn't read existing frontmatter
-                  write-result (write-memory-file!+ file-path updated-content)]
-            (if (:success write-result)
-              {:success true
-               :file-uri file-uri-string}
-              {:success false
-               :error (:error write-result)
-               :error-type :write-failed
-               :file-uri file-uri-string}))
-          ;; File doesn't exist - create new file
-          (if (:new-file parsed)
-            (p/let [complete-content (build-new-file-content parsed)
-                    write-result (write-memory-file!+ file-path complete-content)]
+      ;; Step 8:
+      (if (:memory-exists? parsed)
+        {:success true
+         :memory-already-existed? true
+         :message (:message parsed)
+         :domain (:domaain parsed)
+         :file-uri file-uri-string}
+        ;; Check if file exists first (handles agent misidentifying new vs existing)
+        (p/let [existing-content (read-existing-file!+ file-path)]
+          (if existing-content
+            ;; File exists - always append (even if agent said :new-file true)
+            ;; Don't trust agent's applyTo when appending to existing unread file
+            (p/let [updated-content (append-memory-section
+                                     {:existing-content existing-content
+                                      :heading (:heading parsed)
+                                      :content (:content parsed)
+                                      :applyTo nil}) ; Ignore applyTo - agent hasn't read existing frontmatter
+                    write-result (write-memory-file!+ file-path updated-content)]
               (if (:success write-result)
                 {:success true
                  :file-uri file-uri-string}
@@ -515,10 +527,21 @@
                  :error (:error write-result)
                  :error-type :write-failed
                  :file-uri file-uri-string}))
-            {:success false
-             :error "File does not exist but agent didn't provide new-file structure"
-             :error-type :file-not-found
-             :file-uri file-uri-string})))
+            ;; File doesn't exist - create new file
+            (if (:new-file parsed)
+              (p/let [complete-content (build-new-file-content parsed)
+                      write-result (write-memory-file!+ file-path complete-content)]
+                (if (:success write-result)
+                  {:success true
+                   :file-uri file-uri-string}
+                  {:success false
+                   :error (:error write-result)
+                   :error-type :write-failed
+                   :file-uri file-uri-string}))
+              {:success false
+               :error "File does not exist but agent didn't provide new-file structure"
+               :error-type :file-not-found
+               :file-uri file-uri-string}))))
       ;; Parsing failed
       {:success false
        :error "Failed to parse agent response. Agent did not return expected format."

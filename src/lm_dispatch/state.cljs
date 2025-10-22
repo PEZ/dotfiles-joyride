@@ -69,6 +69,13 @@
   []
   (vals (:agent/conversations @!agent-state)))
 
+(defn delete-conversation!
+  "Delete conversation by ID"
+  [conv-id]
+  (swap! !agent-state
+         (fn [state]
+           (update state :agent/conversations dissoc conv-id))))
+
 (defn get-sidebar-slot
   "Get the sidebar slot for the monitor"
   []

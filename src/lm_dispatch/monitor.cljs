@@ -27,6 +27,11 @@
       (.cancel token-source))
     (state/mark-conversation-cancelled! conv-id)))
 
+(defn delete-conversation!
+  "Handle delete button click - removes conversation from state"
+  [conv-id]
+  (state/delete-conversation! conv-id))
+
 (defn truncate-summary
   "Truncate text to max-length with ellipsis if needed"
   [text max-length]
@@ -160,7 +165,18 @@
                :style {:color "var(--vscode-errorForeground)"
                        :font-size "14px"}}]])
        [:span {:style {:font-size "0.9em" :opacity "0.7" :flex-shrink "0"}}
-        time-str]]]
+        time-str]
+       (when (#{:task-complete :max-turns-reached :agent-finished :cancelled :error :done} status)
+         [:button {:onclick (str "vscode.postMessage({command: 'delete', id: " id "})")
+                   :style {:padding "2px 4px"
+                           :background "transparent"
+                           :border "none"
+                           :cursor :pointer
+                           :opacity "0.6"
+                           :flex-shrink "0"}}
+          [:i {:class "codicon codicon-close"
+               :style {:color "var(--vscode-foreground)"
+                       :font-size "12px"}}]])]]
      [:div {:style {:font-size "0.9em" :margin-bottom "4px"}}
       current-turn "/" max-turns " | "
       [:strong "Tks: "] total-tokens " | "
@@ -246,6 +262,9 @@
                                      (update-agent-monitor-flare!+))
                            "showResults" (when-let [id (.-id msg)]
                                           (open-results-document!+ id))
+                           "delete" (when-let [id (.-id msg)]
+                                     (delete-conversation! id)
+                                     (update-agent-monitor-flare!+))
                            nil))})))
 
 ;; Public API for Integration
