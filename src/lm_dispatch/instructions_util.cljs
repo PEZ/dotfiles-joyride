@@ -115,6 +115,51 @@
   (when content
     (second (re-find #"description:\s*'([^']*)'" content))))
 
+(defn format-instruction-file
+  "Format a single instruction file with XML-ish <attachment> markup.
+
+  Args:
+    file-path - Absolute path to the file
+    content - File content string (including frontmatter)
+
+  Returns: Formatted string with <attachment> wrapper"
+  [file-path content]
+  (str "<attachment filePath=\"" file-path "\">\n"
+       content "\n"
+       "</attachment>"))
+
+(defn enrich-editor-context!+
+  "Enrich lightweight editor context with file content from VS Code.
+
+  Takes flat editor-context keys and returns a promise of enriched map with actual content.
+
+  Args:
+    editor-context - Map with flat keys:
+      :editor-context/file-path - Absolute file path (required)
+      :editor-context/selection-start-line - 0-indexed start line (optional)
+      :editor-context/selection-end-line - 0-indexed end line (optional)
+
+  Returns: Promise of enriched map with all keys including content, or nil if no file-path"
+  [editor-context]
+  (when-let [file-path (:editor-context/file-path editor-context)]
+    (p/let [uri (vscode/Uri.file file-path)
+            doc (vscode/workspace.openTextDocument uri)
+            full-content (.getText doc)
+            selection-start (:editor-context/selection-start-line editor-context)
+            selection-end (:editor-context/selection-end-line editor-context)
+            selected-text (when (and selection-start selection-end)
+                            (let [start-pos (vscode/Position. selection-start 0)
+                                  end-line selection-end
+                                  end-char (.-length (.lineAt doc end-line))
+                                  end-pos (vscode/Position. end-line end-char)
+                                  range (vscode/Range. start-pos end-pos)]
+                              (.getText doc range)))]
+      {:editor-context/file-path file-path
+       :editor-context/selection-start-line selection-start
+       :editor-context/selection-end-line selection-end
+       :editor-context/selected-text selected-text
+       :editor-context/full-file-content full-content})))
+
 (defn build-file-descriptions-map!+
   "Build a map of file descriptions from instruction files with domain info.
 
@@ -137,24 +182,20 @@
     (vec file-data)))
 
 (defn concatenate-instruction-files!+
-  "Slurp instruction files and concatenate with separators.
+  "Read instruction files and wrap each in <attachment> tags.
 
   Args:
     file-paths - Vector of absolute file paths
 
-  Returns: Promise of concatenated string with '# From: filename' separators"
+  Returns: Promise of concatenated string with <attachment> XML-ish wrappers"
   [file-paths]
   (if (empty? file-paths)
     (p/resolved "")
-    (p/let [contents (p/all (for [file-path file-paths]
-                              (p/let [content (read-file-content!+ file-path)
-                                      filename (path/basename file-path)]
-                                {:filename filename
-                                 :content (or content "")})))]
-      (string/join
-       "\n\n"
-       (for [{:keys [filename content]} contents]
-         (str "# From: " filename "\n\n" content))))))
+    (p/let [attachments (p/all (for [file-path file-paths]
+                                 (p/let [content (read-file-content!+ file-path)]
+                                   (when content
+                                     (format-instruction-file file-path content)))))]
+      (string/join "\n" (filter some? attachments)))))
 
 (defn collect-all-instruction-descriptions!+
   "Collect instruction file descriptions from both workspace and global areas.
@@ -183,27 +224,112 @@
       :agent.conversation/selected-paths - Vector of selected instruction file paths
       :agent.conversation/context-files - Vector of context file paths
 
-  Returns: Promise of concatenated instructions string"
+  Returns: Promise of concatenated instructions string with <attachment> wrappers"
   [{:agent.conversation/keys [instructions-paths context-files]}]
-  (p/let [;; Slurp selected instruction files
+  (p/let [;; Slurp selected instruction files (wrapped in <attachment> tags)
           selected-content (concatenate-instruction-files!+ (or instructions-paths []))
 
-          ;; Slurp context files
+          ;; Slurp context files (wrapped in <attachment> tags)
           context-content (concatenate-instruction-files!+ (or context-files []))
 
-          ;; Concatenate with separator if both exist
+          ;; Concatenate all <attachment> blocks
           final-instructions (cond
                                (and (seq selected-content) (seq context-content))
-                               (str selected-content
-                                    "\n\n"
-                                    "# === Context Files ===\n\n"
-                                    context-content)
+                               (str selected-content "\n" context-content)
 
                                (seq context-content)
                                context-content
 
                                :else
                                selected-content)]
+    final-instructions))
+
+(defn format-editor-context
+  "Format editor context into XML-ish markup matching Copilot's pattern.
+
+  Args:
+    editor-context - Map with keys:
+      :editor-context/file-path - Absolute path to file
+      :editor-context/selection-start-line - 0-indexed start line
+      :editor-context/selection-end-line - 0-indexed end line
+      :editor-context/selected-text - The selected text (if any)
+      :editor-context/full-file-content - Complete file content
+
+  Returns: Formatted string with XML-ish markup, or empty string if no context"
+  [{:editor-context/keys [file-path selection-start-line selection-end-line
+                          selected-text full-file-content]}]
+  (when (and file-path full-file-content)
+    (let [filename (path/basename file-path)
+          has-selection? (and selected-text
+                              (not (string/blank? selected-text))
+                              selection-start-line
+                              selection-end-line)]
+      (str
+       "<editorContext>\n"
+       "The user's current file is " file-path ". "
+       (when has-selection?
+         (str "The current selection is from line " selection-start-line
+              " to line " selection-end-line "."))
+       "\n</editorContext>\n\n"
+
+       (when has-selection?
+         (str "<attachment id=\"file:" filename "\">\n"
+              "User's active selection:\n"
+              "Excerpt from " filename ", lines " selection-start-line
+              " to " selection-end-line ":\n"
+              "```clojure\n"
+              selected-text "\n"
+              "```\n"
+              "</attachment>\n\n"))
+
+       "<attachment filePath=\"" file-path "\">\n"
+       "User's active file for additional context:\n"
+       full-file-content "\n"
+       "</attachment>"))))
+
+(defn assemble-instructions!+
+  "Assemble instructions from string or vector, with optional editor context and context files.
+
+  The assembly order matches Copilot's pattern:
+  1. Instructions (string or <attachment> wrapped file paths)
+  2. Context files (if provided) - each wrapped in <attachment>
+  3. Editor context (if provided) - comes last, like in Copilot requests
+
+  All instruction and context files are wrapped in <attachment filePath=...> XML-ish markup.
+  Editor context is enriched internally by reading file content from VS Code.
+
+  Args:
+    instructions - Either a string or vector of file paths
+    editor-context - Optional map with lightweight flat keys:
+      :editor-context/file-path - File path (will trigger enrichment)
+      :editor-context/selection-start-line - Selection start (optional)
+      :editor-context/selection-end-line - Selection end (optional)
+    context-file-paths - Optional vector of context file paths
+
+  Returns: Promise of assembled instructions string"
+  [instructions editor-context context-file-paths]
+  (p/let [;; Handle instructions based on type
+          instructions-content (cond
+                                 (string? instructions)
+                                 (p/resolved instructions)
+
+                                 (vector? instructions)
+                                 (concatenate-instruction-files!+ instructions)
+
+                                 :else
+                                 (p/resolved ""))
+
+          ;; Process context files - each wrapped in <attachment>
+          context-content (concatenate-instruction-files!+ (or context-file-paths []))
+
+          ;; Enrich and format editor context if provided - comes last like Copilot
+          enriched-editor-context (when (:editor-context/file-path editor-context)
+                                    (enrich-editor-context!+ editor-context))
+          editor-context-content (or (format-editor-context enriched-editor-context) "")
+
+          ;; Concatenate all parts - simple newline separation between <attachment> blocks
+          parts (filter seq [instructions-content context-content editor-context-content])
+          final-instructions (string/join "\n" parts)]
     final-instructions))
 
 (comment
@@ -267,92 +393,21 @@
           result (assemble-instructions!+ "Custom goal" editor-ctx nil)]
     result)
 
+  ;; Test complete assembly with all pieces - see the full output format
+  (p/let [instructions [(user-data-instructions-path "clojure.instructions.md")]
+          context-files [(user-data-instructions-path "memory.instructions.md")]
+          editor-ctx {:editor-context/file-path "/Users/pez/.config/joyride/src/lm_dispatch/instructions_util.cljs"
+                      :editor-context/selection-start-line 315
+                      :editor-context/selection-end-line 358
+                      :editor-context/selected-text "(defn assemble-instructions!+\n  \"Assemble instructions from string or vector...\"\n  [instructions editor-context context-file-paths]\n  ;; implementation\n  )"
+                      :editor-context/full-file-content "(ns lm-dispatch.instructions-util)\n\n;; Full file content here..."}
+          result (assemble-instructions!+ instructions editor-ctx context-files)]
+    (def assembled-output result)
+    (println "\n=== ASSEMBLED OUTPUT ===\n")
+    (println result)
+    result)
+
+  ;; Inspect the assembled output
+  assembled-output
+
   :rcf)
-
-(defn format-editor-context
-  "Format editor context into XML-ish markup matching Copilot's pattern.
-
-  Args:
-    editor-context - Map with keys:
-      :editor-context/file-path - Absolute path to file
-      :editor-context/selection-start-line - 0-indexed start line
-      :editor-context/selection-end-line - 0-indexed end line
-      :editor-context/selected-text - The selected text (if any)
-      :editor-context/full-file-content - Complete file content
-
-  Returns: Formatted string with XML-ish markup, or empty string if no context"
-  [{:editor-context/keys [file-path selection-start-line selection-end-line
-                          selected-text full-file-content]}]
-  (when (and file-path full-file-content)
-    (let [filename (path/basename file-path)
-          has-selection? (and selected-text
-                              (not (string/blank? selected-text))
-                              selection-start-line
-                              selection-end-line)]
-      (str
-       "<editorContext>\n"
-       "The user's current file is " file-path ". "
-       (when has-selection?
-         (str "The current selection is from line " selection-start-line
-              " to line " selection-end-line "."))
-       "\n</editorContext>\n\n"
-
-       (when has-selection?
-         (str "<attachment id=\"file:" filename "\">\n"
-              "User's active selection:\n"
-              "Excerpt from " filename ", lines " selection-start-line
-              " to " selection-end-line ":\n"
-              "```clojure\n"
-              selected-text "\n"
-              "```\n"
-              "</attachment>\n\n"))
-
-       "<attachment filePath=\"" file-path "\">\n"
-       "User's active file for additional context:\n"
-       full-file-content "\n"
-       "</attachment>"))))
-
-(defn assemble-instructions!+
-  "Assemble instructions from string or vector, with optional editor context and context files.
-
-  The assembly order matches Copilot's pattern:
-  1. Instructions (string or concatenated file paths)
-  2. Context files (if provided)
-  3. Editor context (if provided) - comes last, like in Copilot requests
-
-  Args:
-    instructions - Either a string or vector of file paths
-    editor-context - Optional map with editor state (see format-editor-context for structure)
-    context-file-paths - Optional vector of context file paths
-
-  Returns: Promise of assembled instructions string"
-  [instructions editor-context context-file-paths]
-  (p/let [;; Handle instructions based on type
-          instructions-content (cond
-                                 (string? instructions)
-                                 (p/resolved instructions)
-
-                                 (vector? instructions)
-                                 (concatenate-instruction-files!+ instructions)
-
-                                 :else
-                                 (p/resolved ""))
-
-          ;; Always process context files first
-          context-content (concatenate-instruction-files!+ (or context-file-paths []))
-
-          ;; Format editor context if provided - comes last like Copilot
-          editor-context-content (or (format-editor-context editor-context) "")
-
-          ;; Concatenate all parts with separators
-          final-instructions (str
-                              instructions-content
-                              (when (seq context-content)
-                                (str "\n\n"
-                                     "# === Context Files ===\n\n"
-                                     context-content))
-                              (when (seq editor-context-content)
-                                (str "\n\n"
-                                     "# === Editor Context ===\n\n"
-                                     editor-context-content)))]
-    final-instructions))

@@ -203,35 +203,6 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
       ;; Default fallback
       final-ai-text)))
 
-(defn enrich-editor-context!+
-  "Enrich lightweight editor context with file content from VS Code.
-
-  Takes flat editor-context keys and returns a promise of enriched map with actual content.
-
-  Args:
-    file-path - Absolute file path (required for enrichment)
-    selection-start-line - 0-indexed start line (optional)
-    selection-end-line - 0-indexed end line (optional)
-
-  Returns: Promise of enriched map with all keys including content, or nil if no file-path"
-  [file-path selection-start-line selection-end-line]
-  (when file-path
-    (p/let [uri (vscode/Uri.file file-path)
-            doc (vscode/workspace.openTextDocument uri)
-            full-content (.getText doc)
-            selected-text (when (and selection-start-line selection-end-line)
-                            (let [start-pos (vscode/Position. selection-start-line 0)
-                                  end-line selection-end-line
-                                  end-char (.-length (.lineAt doc end-line))
-                                  end-pos (vscode/Position. end-line end-char)
-                                  range (vscode/Range. start-pos end-pos)]
-                              (.getText doc range)))]
-      {:editor-context/file-path file-path
-       :editor-context/selection-start-line selection-start-line
-       :editor-context/selection-end-line selection-end-line
-       :editor-context/selected-text selected-text
-       :editor-context/full-file-content full-content})))
-
 (defn execute-conversation-turn
   "Execute a single conversation turn - handles request/response cycle"
   [{:keys [model-id goal instructions history turn-count tools-args]}]
@@ -384,9 +355,11 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
          caller (:caller default-conversation-data)
          tool-ids (:tool-ids default-conversation-data)
          allow-unsafe-tools? (:allow-unsafe-tools? default-conversation-data)}}]
-  (p/let [;; Enrich editor context if provided
+  (p/let [;; Build lightweight editor context map (enrichment happens in assemble-instructions!+)
           editor-context (when editor-file-path
-                           (enrich-editor-context!+ editor-file-path selection-start selection-end))
+                           {:editor-context/file-path editor-file-path
+                            :editor-context/selection-start-line selection-start
+                            :editor-context/selection-end-line selection-end})
           ;; Assemble instructions from string or vector, with editor context, and context files
           final-instructions (instr-util/assemble-instructions!+ instructions editor-context context-file-paths)
           tools-args (util/enable-specific-tools tool-ids allow-unsafe-tools?)
@@ -476,40 +449,10 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
   :rcf)
 
 (comment
-  ;; Editor Context Enrichment Tests
+  ;; Editor Context End-to-End Tests
 
-  ;; Test 1: Enrich with valid file and selection
-  (p/let [result (enrich-editor-context!+
-                  "/Users/pez/.config/joyride/src/agents/memory_keeper.cljs"
-                  10
-                  12)]
-    (def test-enrichment-basic result)
-    {:test "Basic enrichment"
-     :has-file-path? (some? (:editor-context/file-path result))
-     :has-content? (some? (:editor-context/full-file-content result))
-     :has-selection? (some? (:editor-context/selected-text result))
-     :file-path (:editor-context/file-path result)
-     :selection-start (:editor-context/selection-start-line result)
-     :selection-end (:editor-context/selection-end-line result)})
-
-  ;; Test 2: Nil file-path returns nil
-  (p/let [result (enrich-editor-context!+ nil 10 12)]
-    {:test "Nil file-path"
-     :result result
-     :is-nil? (nil? result)})
-
-  ;; Test 3: No selection - full content only
-  (p/let [result (enrich-editor-context!+
-                  "/Users/pez/.config/joyride/src/agents/memory_keeper.cljs"
-                  nil
-                  nil)]
-    {:test "No selection"
-     :has-content? (some? (:editor-context/full-file-content result))
-     :has-selection? (some? (:editor-context/selected-text result))
-     :selection-is-nil? (nil? (:editor-context/selected-text result))})
-
-  ;; Test 4: End-to-end through agentic-conversation!+
-  ;; Verify flat keys are enriched and passed to assemble-instructions!+
+  ;; Test: End-to-end through agentic-conversation!+
+  ;; Verify flat keys are passed to assemble-instructions!+ which enriches internally
   (p/let [conv-id (lm-dispatch.monitor/start-monitoring-conversation!+
                    {:agent.conversation/goal "Test editor context"
                     :agent.conversation/model-id "grok-code-fast-1"

@@ -5,7 +5,7 @@
 
 (ns test.lm-dispatch.agent-test
   (:require
-   [cljs.test :refer [deftest is testing]]
+   [cljs.test :refer [deftest is testing async]]
    [clojure.string :as string]
    [promesa.core :as p]
    [lm-dispatch.agent-core :as agent]
@@ -148,14 +148,15 @@
           "Should contain tool result content"))))
 
 (deftest concatenate-instruction-files-test
-  (testing "Concatenates empty file list to empty string"
-    (p/let [result (instr-util/concatenate-instruction-files!+ [])]
-      (is (= "" result)
-          "Empty list should return empty string"))))
+  (async done
+         (p/let [result (instr-util/concatenate-instruction-files!+ [])]
+           (is (= "" result)
+               "Empty list should return empty string")
+           (done))))
 
 
 (deftest collect-all-instruction-descriptions-test
-  (testing "Collects instruction descriptions"
+  (async done
     (p/let [descriptions (instr-util/collect-all-instruction-descriptions!+)]
       (is (vector? descriptions)
           "Should return a vector")
@@ -164,22 +165,26 @@
       (is (every? #(contains? % :file) descriptions)
           "Each description should have :file key")
       (is (every? #(contains? % :filename) descriptions)
-          "Each description should have :filename key"))))
+          "Each description should have :filename key")
+      (done))))
 
-(deftest prepare-instructions-from-selected-paths-test
-  (testing "Returns empty string for empty inputs"
+(deftest prepare-instructions-from-selected-paths-empty-test
+  (async done
     (p/let [result (instr-util/prepare-instructions-from-selected-paths!+
                     {:agent.conversation/instructions-paths []
                      :agent.conversation/context-files []})]
       (is (= "" result)
-          "Empty paths should return empty string")))
+          "Empty paths should return empty string")
+      (done))))
 
-  (testing "Handles nil inputs gracefully"
+(deftest prepare-instructions-from-selected-paths-nil-test
+  (async done
     (p/let [result (instr-util/prepare-instructions-from-selected-paths!+
                     {:agent.conversation/instructions-paths nil
                      :agent.conversation/context-files nil})]
       (is (= "" result)
-          "Nil paths should return empty string"))))
+          "Nil paths should return empty string")
+      (done))))
 
 (deftest autonomous-conversation-validation-test
   (testing "Accepts valid instruction types"
@@ -223,33 +228,40 @@
                   {:context-file-paths 123}))
         "Should reject number")))
 
-(deftest assemble-instructions-test
-  (testing "Handles string instructions"
+(deftest assemble-instructions-string-test
+  (async done
     (p/let [result (instr-util/assemble-instructions!+ "Go, go, go!" nil nil)]
       (is (= "Go, go, go!" result)
-          "Should return string as-is")))
+          "Should return string as-is")
+      (done))))
 
-  (testing "Handles empty vector instructions"
+(deftest assemble-instructions-empty-vector-test
+  (async done
     (p/let [result (instr-util/assemble-instructions!+ [] nil nil)]
       (is (= "" result)
-          "Should return empty string for empty vector")))
+          "Should return empty string for empty vector")
+      (done))))
 
-  (testing "Handles nil instructions"
+(deftest assemble-instructions-nil-test
+  (async done
     (p/let [result (instr-util/assemble-instructions!+ nil nil nil)]
       (is (= "" result)
-          "Should return empty string for nil")))
+          "Should return empty string for nil")
+      (done))))
 
-  (testing "Appends context files after instructions"
+(deftest assemble-instructions-with-context-test
+  (async done
     (p/let [result (instr-util/assemble-instructions!+ "Instructions here" nil [])]
       (is (= "Instructions here" result)
-          "Should handle empty context"))))
+          "Should handle empty context")
+      (done))))
 
-(deftest enrich-editor-context-test
-  (testing "Enriches editor context with file content and selection"
-    (p/let [result (agent/enrich-editor-context!+
-                    "/Users/pez/.config/joyride/src/agents/memory_keeper.cljs"
-                    10
-                    12)]
+(deftest enrich-editor-context-full-test
+  (async done
+    (p/let [result (instr-util/enrich-editor-context!+
+                    {:editor-context/file-path "/Users/pez/.config/joyride/src/agents/memory_keeper.cljs"
+                     :editor-context/selection-start-line 10
+                     :editor-context/selection-end-line 12})]
       (is (some? result)
           "Should return enriched map")
       (is (= "/Users/pez/.config/joyride/src/agents/memory_keeper.cljs"
@@ -264,31 +276,35 @@
       (is (some? (:editor-context/selected-text result))
           "Should have selected text")
       (is (string/includes? (:editor-context/selected-text result) "vscode")
-          "Selection should contain expected content from lines 10-12")))
+          "Selection should contain expected content from lines 10-12")
+      (done))))
 
-  (testing "Returns nil for nil file-path"
-    (p/let [result (agent/enrich-editor-context!+ nil 10 12)]
+(deftest enrich-editor-context-nil-path-test
+  (async done
+    (p/let [result (instr-util/enrich-editor-context!+ nil)]
       (is (nil? result)
-          "Should return nil when no file-path")))
+          "Should return nil when no file-path")
+      (done))))
 
-  (testing "Handles missing selection gracefully"
-    (p/let [result (agent/enrich-editor-context!+
-                    "/Users/pez/.config/joyride/src/agents/memory_keeper.cljs"
-                    nil
-                    nil)]
+(deftest enrich-editor-context-no-selection-test
+  (async done
+    (p/let [result (instr-util/enrich-editor-context!+
+                    {:editor-context/file-path "/Users/pez/.config/joyride/src/agents/memory_keeper.cljs"})]
       (is (some? result)
           "Should return map even without selection")
       (is (some? (:editor-context/full-file-content result))
           "Should have full file content")
       (is (nil? (:editor-context/selected-text result))
-          "Should have nil selection when no range provided")))
+          "Should have nil selection when no range provided")
+      (done))))
 
-  (testing "Handles partial selection range"
-    (p/let [result (agent/enrich-editor-context!+
-                    "/Users/pez/.config/joyride/src/agents/memory_keeper.cljs"
-                    10
-                    nil)]
+(deftest enrich-editor-context-partial-range-test
+  (async done
+    (p/let [result (instr-util/enrich-editor-context!+
+                    {:editor-context/file-path "/Users/pez/.config/joyride/src/agents/memory_keeper.cljs"
+                     :editor-context/selection-start-line 10})]
       (is (some? result)
           "Should return map with partial range")
       (is (nil? (:editor-context/selected-text result))
-          "Should have nil selection when range incomplete"))))
+          "Should have nil selection when range incomplete")
+      (done))))

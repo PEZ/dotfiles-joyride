@@ -6,7 +6,7 @@
 (ns test.agents.instructions-selector-test
   (:require
    [agents.instructions-selector :as selector]
-   [cljs.test :refer [deftest is testing]]
+   [cljs.test :refer [deftest is testing async]]
    [clojure.string :as string]
    [lm-dispatch.instructions-util :as instr-util]
    [promesa.core :as p]))
@@ -37,40 +37,47 @@
     (is (nil? (instr-util/extract-domain-from-filename "readme.md"))
         "Should return nil for regular markdown")))
 
-(deftest concatenate-instruction-files-test
-  (testing "Returns empty string for empty file list"
+(deftest concatenate-instruction-files-empty-test
+  (async done
     (p/let [result (instr-util/concatenate-instruction-files!+ [])]
       (is (= "" result)
-          "Should return empty string for empty list")))
+          "Should return empty string for empty list")
+      (done))))
 
-  (testing "Concatenates files with proper separators"
-    (p/let [;; Get some actual instruction files
-            user-path (instr-util/user-data-instructions-path)
-            files (instr-util/list-instruction-files!+ user-path)
-            test-files (take 2 files)
-            result (instr-util/concatenate-instruction-files!+ test-files)]
-      (is (string? result)
-          "Should return a string")
-      (is (string/includes? result "# From:")
-          "Should include separator")
-      (is (> (count result) 0)
-          "Should have content"))))
+(deftest concatenate-instruction-files-with-wrappers-test
+  (async done
+         (p/let [;; Get some actual instruction files
+                 user-path (instr-util/user-data-instructions-path)
+                 files (instr-util/list-instruction-files!+ user-path)
+                 ;; Build full file paths - force realization with vec
+                 test-file-paths (vec (take 2 (map #(str user-path "/" %) files)))
+                 result (instr-util/concatenate-instruction-files!+ test-file-paths)]
+           (is (string? result)
+               "Should return a string")
+           (is (string/includes? result "<attachment filePath=")
+               "Should include <attachment> XML-ish wrapper")
+           (is (string/includes? result "</attachment>")
+               "Should include closing </attachment> tag")
+           (is (> (count result) 0)
+               "Should have content")
+           (done))))
 
 (deftest collect-all-instruction-descriptions-test
-  (testing "Collects descriptions from workspace and global areas"
-    (p/let [descriptions (instr-util/collect-all-instruction-descriptions!+)]
-      (is (vector? descriptions)
-          "Should return a vector")
-      (is (> (count descriptions) 0)
-          "Should find at least some instruction files")
-      (is (every? #(contains? % :file) descriptions)
-          "Each description should have :file key")
-      (is (every? #(contains? % :filename) descriptions)
-          "Each description should have :filename key")
-      (is (every? #(contains? % :description) descriptions)
-          "Each description should have :description key")
-      (is (every? #(contains? % :domain) descriptions)
-          "Each description should have :domain key"))))
+  (async done
+         (p/let [descriptions (instr-util/collect-all-instruction-descriptions!+)]
+           (is (vector? descriptions)
+               "Should return a vector")
+           (is (> (count descriptions) 0)
+               "Should find at least some instruction files")
+           (is (every? #(contains? % :file) descriptions)
+               "Each description should have :file key")
+           (is (every? #(contains? % :filename) descriptions)
+               "Each description should have :filename key")
+           (is (every? #(contains? % :description) descriptions)
+               "Each description should have :description key")
+           (is (every? #(contains? % :domain) descriptions)
+               "Each description should have :domain key")
+           (done))))
 
 
 
