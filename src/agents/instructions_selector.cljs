@@ -120,6 +120,9 @@
     context-content - Optional string with slurped context-files content
     tool-ids - Optional vector of tool IDs available for the task
     caller - Optional caller identification
+    :editor-context/file-path - Optional: Current editor file path
+    :editor-context/selection-start-line - Optional: Selection start line (0-based)
+    :editor-context/selection-end-line - Optional: Selection end line (0-based)
 
   Returns: Promise of vector of selected file paths (absolute), sorted with most important last"
   [{:keys [goal context-content model-id max-turns tool-ids caller]

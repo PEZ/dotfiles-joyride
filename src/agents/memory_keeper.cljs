@@ -436,6 +436,9 @@
       :progress-callback - Optional progress function
       :instructions - Instructions as string, vector of paths, or :instructions-selector
       :context-file-paths - Vector of additional instruction file paths to include as context
+      :editor-context/file-path - Optional: Current editor file path
+      :editor-context/selection-start-line - Optional: Selection start line (0-based)
+      :editor-context/selection-end-line - Optional: Selection end line (0-based)
 
   Returns:
     Promise of result map:

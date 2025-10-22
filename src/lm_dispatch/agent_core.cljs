@@ -203,6 +203,35 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
       ;; Default fallback
       final-ai-text)))
 
+(defn enrich-editor-context!+
+  "Enrich lightweight editor context with file content from VS Code.
+
+  Takes flat editor-context keys and returns a promise of enriched map with actual content.
+
+  Args:
+    file-path - Absolute file path (required for enrichment)
+    selection-start-line - 0-indexed start line (optional)
+    selection-end-line - 0-indexed end line (optional)
+
+  Returns: Promise of enriched map with all keys including content, or nil if no file-path"
+  [file-path selection-start-line selection-end-line]
+  (when file-path
+    (p/let [uri (vscode/Uri.file file-path)
+            doc (vscode/workspace.openTextDocument uri)
+            full-content (.getText doc)
+            selected-text (when (and selection-start-line selection-end-line)
+                            (let [start-pos (vscode/Position. selection-start-line 0)
+                                  end-line selection-end-line
+                                  end-char (.-length (.lineAt doc end-line))
+                                  end-pos (vscode/Position. end-line end-char)
+                                  range (vscode/Range. start-pos end-pos)]
+                              (.getText doc range)))]
+      {:editor-context/file-path file-path
+       :editor-context/selection-start-line selection-start-line
+       :editor-context/selection-end-line selection-end-line
+       :editor-context/selected-text selected-text
+       :editor-context/full-file-content full-content})))
+
 (defn execute-conversation-turn
   "Execute a single conversation turn - handles request/response cycle"
   [{:keys [model-id goal instructions history turn-count tools-args]}]
@@ -330,7 +359,9 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
       :model-id - LM model ID
       :goal - String describing the task
       :instructions - String or vector of file paths with additional instructions
-      :editor-context - Optional map with current editor state (see format-editor-context)
+      :editor-context/file-path - Optional: Current editor file path
+      :editor-context/selection-start-line - Optional: Selection start line (0-based)
+      :editor-context/selection-end-line - Optional: Selection end line (0-based)
       :context-file-paths - Optional vector of context file paths
       :max-turns - Maximum conversation turns
       :progress-callback - Function called with progress updates
@@ -342,7 +373,10 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
   [{:keys [goal
            model-id instructions max-turns title caller
            tool-ids progress-callback
-           conv-id allow-unsafe-tools? context-file-paths editor-context]
+           conv-id allow-unsafe-tools? context-file-paths]
+    editor-file-path :editor-context/file-path
+    selection-start :editor-context/selection-start-line
+    selection-end :editor-context/selection-end-line
     :or {model-id (:model-id default-conversation-data)
          max-turns (:max-turns default-conversation-data)
          progress-callback (:progress-callback default-conversation-data)
@@ -350,7 +384,10 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
          caller (:caller default-conversation-data)
          tool-ids (:tool-ids default-conversation-data)
          allow-unsafe-tools? (:allow-unsafe-tools? default-conversation-data)}}]
-  (p/let [;; Assemble instructions from string or vector, with editor context, and context files
+  (p/let [;; Enrich editor context if provided
+          editor-context (when editor-file-path
+                           (enrich-editor-context!+ editor-file-path selection-start selection-end))
+          ;; Assemble instructions from string or vector, with editor context, and context files
           final-instructions (instr-util/assemble-instructions!+ instructions editor-context context-file-paths)
           tools-args (util/enable-specific-tools tool-ids allow-unsafe-tools?)
           model-info (util/get-model-by-id!+ model-id)]
@@ -399,10 +436,9 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
              ;; Set results for all completion cases that have meaningful content
              completion-results
              (assoc :agent.conversation/results completion-results))))
-        (monitor/update-agent-monitor-flare!+)
-        ;; Dispose the token source
+        ;; Dispose the cancellation token
         (.dispose cancellation-token-source)
-        result))))
+        (assoc result :reason final-reason)))))
 
 (comment
   ;; Example 1: Core usage with string instructions
