@@ -304,27 +304,27 @@
                     :agent.conversation/model-id "gpt-4o-mini"
                     :agent.conversation/max-turns 5
                     :agent.conversation/caller "repl-test"
-                    :agent.conversation/title "Monior test"})]
+                    :agent.conversation/title "Monitor test"})]
     (def test-conv-id conv-id)
     (println "Started conversation" conv-id))
 
   ;; Update progress
   (p/let [_ (log-and-update!+ test-conv-id
-                              "Turn 1/5"
                               {:agent.conversation/status :working
-                               :agent.conversation/current-turn 1})]
+                               :agent.conversation/current-turn 1}
+                              "Turn 1/5")]
     (println "Updated to working"))
 
   ;; Add more activity
-  (p/let [_ (log-and-update!+ test-conv-id "🤖 AI Agent says: Analyzing..." nil)
-          _ (log-and-update!+ test-conv-id "🔧 Executing tools..." nil)]
+  (p/let [_ (log-and-update!+ test-conv-id nil "🤖 AI Agent says: Analyzing...")
+          _ (log-and-update!+ test-conv-id nil "🔧 Executing tools...")]
     (println "Logged activity"))
 
   ;; Complete conversation
   (p/let [_ (log-and-update!+ test-conv-id
-                              "✅ Task completed!"
                               {:agent.conversation/status :done
-                               :agent.conversation/current-turn 5})]
+                               :agent.conversation/current-turn 5}
+                              "✅ Task completed!")]
     (println "Conversation completed"))
 
   ;; Create error conversation
@@ -334,10 +334,10 @@
                     :agent.conversation/max-turns 10
                     :agent.conversation/caller "error-test"})
           _ (log-and-update!+ conv-id
-                              "❌ Error: Model not found"
                               {:agent.conversation/status :error
                                :agent.conversation/current-turn 3
-                               :agent.conversation/error-message "Model not found"})]
+                               :agent.conversation/error-message "Model not found"}
+                              "❌ Error: Model not found")]
     (println "Error conversation created"))
 
   ;; Check state

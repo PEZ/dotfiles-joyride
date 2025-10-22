@@ -347,21 +347,15 @@
     (def user-files files)
     (count files))
 
-  user-files
-
   ;; Test building descriptions map
   (p/let [descriptions (build-file-descriptions-map!+ (user-data-instructions-path))]
     (def user-descriptions descriptions)
     (count descriptions))
 
-  user-descriptions
-
   ;; Test collecting all descriptions
   (p/let [descriptions (collect-all-instruction-descriptions!+)]
     (def all-descriptions descriptions)
     (count descriptions))
-
-  all-descriptions
 
   ;; Test assembling instructions - string input
   (p/let [result (assemble-instructions!+ "Go, go, go!" nil nil)]
