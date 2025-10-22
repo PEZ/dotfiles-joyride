@@ -308,3 +308,25 @@
       (is (nil? (:editor-context/selected-text result))
           "Should have nil selection when range incomplete")
       (done))))
+
+(deftest assemble-instructions-filters-editor-context-file-test
+  (async done
+    (p/let [editor-file "/Users/pez/.config/joyride/src/lm_dispatch/util.cljs"
+            context-files ["/Users/pez/.config/joyride/src/lm_dispatch/state.cljs"
+                           editor-file  ; This should be filtered out
+                           "/Users/pez/.config/joyride/src/lm_dispatch/monitor.cljs"]
+            result (instr-util/assemble-instructions!+
+                    "Test instructions"
+                    {:editor-context/file-path editor-file}
+                    context-files)
+            ;; Count how many times util appears as an attachment
+            util-attachment-count (count (re-seq #"<attachment filePath=\"[^\"]*util\.cljs\">" result))
+            state-in-result (> (.indexOf result "state.cljs") -1)
+            monitor-in-result (> (.indexOf result "monitor.cljs") -1)]
+      (is state-in-result
+          "Context file state.cljs should appear in result")
+      (is monitor-in-result
+          "Context file monitor.cljs should appear in result")
+      (is (= 1 util-attachment-count)
+          "Editor context file should appear exactly once (filtered from context-file-paths)")
+      (done))))

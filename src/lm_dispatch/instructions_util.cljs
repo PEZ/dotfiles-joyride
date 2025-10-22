@@ -308,7 +308,11 @@
 
   Returns: Promise of assembled instructions string"
   [instructions editor-context context-file-paths]
-  (p/let [;; Handle instructions based on type
+  (p/let [;; Filter out editor context file from context-file-paths to avoid duplication
+          editor-file-path (:editor-context/file-path editor-context)
+          filtered-context-paths (vec (remove #(= % editor-file-path) (or context-file-paths [])))
+
+          ;; Handle instructions based on type
           instructions-content (cond
                                  (string? instructions)
                                  (p/resolved instructions)
@@ -320,10 +324,10 @@
                                  (p/resolved ""))
 
           ;; Process context files - each wrapped in <attachment>
-          context-content (concatenate-instruction-files!+ (or context-file-paths []))
+          context-content (concatenate-instruction-files!+ filtered-context-paths)
 
           ;; Enrich and format editor context if provided - comes last like Copilot
-          enriched-editor-context (when (:editor-context/file-path editor-context)
+          enriched-editor-context (when editor-file-path
                                     (enrich-editor-context!+ editor-context))
           editor-context-content (or (format-editor-context enriched-editor-context) "")
 
