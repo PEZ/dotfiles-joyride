@@ -474,3 +474,61 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
     result)
 
   :rcf)
+
+(comment
+  ;; Editor Context Enrichment Tests
+
+  ;; Test 1: Enrich with valid file and selection
+  (p/let [result (enrich-editor-context!+
+                  "/Users/pez/.config/joyride/src/agents/memory_keeper.cljs"
+                  10
+                  12)]
+    (def test-enrichment-basic result)
+    {:test "Basic enrichment"
+     :has-file-path? (some? (:editor-context/file-path result))
+     :has-content? (some? (:editor-context/full-file-content result))
+     :has-selection? (some? (:editor-context/selected-text result))
+     :file-path (:editor-context/file-path result)
+     :selection-start (:editor-context/selection-start-line result)
+     :selection-end (:editor-context/selection-end-line result)})
+
+  ;; Test 2: Nil file-path returns nil
+  (p/let [result (enrich-editor-context!+ nil 10 12)]
+    {:test "Nil file-path"
+     :result result
+     :is-nil? (nil? result)})
+
+  ;; Test 3: No selection - full content only
+  (p/let [result (enrich-editor-context!+
+                  "/Users/pez/.config/joyride/src/agents/memory_keeper.cljs"
+                  nil
+                  nil)]
+    {:test "No selection"
+     :has-content? (some? (:editor-context/full-file-content result))
+     :has-selection? (some? (:editor-context/selected-text result))
+     :selection-is-nil? (nil? (:editor-context/selected-text result))})
+
+  ;; Test 4: End-to-end through agentic-conversation!+
+  ;; Verify flat keys are enriched and passed to assemble-instructions!+
+  (p/let [conv-id (lm-dispatch.monitor/start-monitoring-conversation!+
+                   {:agent.conversation/goal "Test editor context"
+                    :agent.conversation/model-id "grok-code-fast-1"
+                    :agent.conversation/max-turns 1})
+          ;; Call with flat editor-context keys
+          result (agentic-conversation!+
+                  {:model-id "grok-code-fast-1"
+                   :goal "Count the lines in the current file"
+                   :instructions "You are testing editor context enrichment."
+                   :max-turns 1
+                   :tool-ids ["copilot_readFile"]
+                   :conv-id conv-id
+                   ;; Flat editor-context keys at API boundary
+                   :editor-context/file-path "/Users/pez/.config/joyride/src/agents/memory_keeper.cljs"
+                   :editor-context/selection-start-line 10
+                   :editor-context/selection-end-line 12})]
+    (def test-end-to-end result)
+    {:test "End-to-end enrichment"
+     :reason (:reason result)
+     :history-count (count (:history result))})
+
+  :rcf)

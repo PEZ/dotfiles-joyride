@@ -243,3 +243,52 @@
     (p/let [result (instr-util/assemble-instructions!+ "Instructions here" nil [])]
       (is (= "Instructions here" result)
           "Should handle empty context"))))
+
+(deftest enrich-editor-context-test
+  (testing "Enriches editor context with file content and selection"
+    (p/let [result (agent/enrich-editor-context!+
+                    "/Users/pez/.config/joyride/src/agents/memory_keeper.cljs"
+                    10
+                    12)]
+      (is (some? result)
+          "Should return enriched map")
+      (is (= "/Users/pez/.config/joyride/src/agents/memory_keeper.cljs"
+             (:editor-context/file-path result))
+          "Should preserve file path")
+      (is (= 10 (:editor-context/selection-start-line result))
+          "Should preserve start line")
+      (is (= 12 (:editor-context/selection-end-line result))
+          "Should preserve end line")
+      (is (some? (:editor-context/full-file-content result))
+          "Should have full file content")
+      (is (some? (:editor-context/selected-text result))
+          "Should have selected text")
+      (is (string/includes? (:editor-context/selected-text result) "vscode")
+          "Selection should contain expected content from lines 10-12")))
+
+  (testing "Returns nil for nil file-path"
+    (p/let [result (agent/enrich-editor-context!+ nil 10 12)]
+      (is (nil? result)
+          "Should return nil when no file-path")))
+
+  (testing "Handles missing selection gracefully"
+    (p/let [result (agent/enrich-editor-context!+
+                    "/Users/pez/.config/joyride/src/agents/memory_keeper.cljs"
+                    nil
+                    nil)]
+      (is (some? result)
+          "Should return map even without selection")
+      (is (some? (:editor-context/full-file-content result))
+          "Should have full file content")
+      (is (nil? (:editor-context/selected-text result))
+          "Should have nil selection when no range provided")))
+
+  (testing "Handles partial selection range"
+    (p/let [result (agent/enrich-editor-context!+
+                    "/Users/pez/.config/joyride/src/agents/memory_keeper.cljs"
+                    10
+                    nil)]
+      (is (some? result)
+          "Should return map with partial range")
+      (is (nil? (:editor-context/selected-text result))
+          "Should have nil selection when range incomplete"))))
