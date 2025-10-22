@@ -18,9 +18,7 @@
 
 (def agent-model "grok-code-fast-1")
 (def default-max-turns 15)
-(def agent-tool-ids ["copilot_findFiles"
-                     "copilot_readFile"
-                     "copilot_findTextInFiles"])
+(def agent-tool-ids ["copilot_readFile"])
 
 (defn user-data-instructions-path
   ([] (user-data-instructions-path nil))
@@ -65,28 +63,27 @@
    "add to or create new memory files as needed.\n\n"
 
    (when domain
-     (str "<DOMAIN>" domain "</DOMAIN>"))
+     (str "<DOMAIN>" domain "</DOMAIN>\n\n"))
 
    "## Session Lesson\n\n<SESSION-LESSON>\n{LESSON}\n</SESSION-LESSON>\n\n"
 
    "## Your Mission\n\n"
    "Transform the `SESSION-LESSON` into **domain-targeted, succinct, reusable knowledge**, "
-   "that helps the AI agent to effectively find the best patterns and avoid common mistakes."
+   "that helps the AI agent to effectively find the best patterns and avoid common mistakes.\n\n"
 
    "## Critical Rules\n\n"
-   "- **Search thoroughly** - Use tools to find existing files\n"
-   "- **Read before deciding** - Always use tools to read existing files to understand structure\n"
    "- **Integrate carefully** - Place new memories in logical sections\n"
-   "- **Use absolute paths** - FILE_PATH must be absolute like `{SEARCH-DIRECTORY}/clojure-memory.instructions.md`\n"
    "- **Be concise** - Memory entries should be scannable and actionable\n"
    "- Work systematically. Research first, then craft the complete solution.\n\n"
 
-   (when-not domain
-     (str
-      "## Available Memory Files\n\n"
-      "The following instruction files exist:\n"
-      "{DESCRIPTIONS}\n"
-      "The domain is encoded in the basename, `<domain>.instructions.md` for the main domain file, and `<domain>-memory.instructions.md` for the domain memory file. Use the domain and descriptions to find which domain (if any) best matches the `SESSION-LESSON`"))
+   "## Available Memory Files\n\n"
+   "The following instruction files exist:\n"
+   "<AVAILABLE-MEMORY-FILES>\n"
+   "{DESCRIPTIONS}\n"
+   "</AVAILABLE-MEMORY-FILES>\n"
+   (if domain
+     "Consider that the user may have mistyped the domain. Use <AVAILABLE-MEMORY-FILES> to do a sanity check. The domain is encoded in the basename, `<domain>.instructions.md` for the main domain file, and `<domain>-memory.instructions.md` for the domain memory file. If you think the domain is mistyped, use the corrected domain instead of the provided one.\n\n"
+     "The domain is encoded in the basename, `<domain>.instructions.md` for the main domain file, and `<domain>-memory.instructions.md` for the domain memory file. Use the domain and descriptions to find which domain (if any) best matches the `SESSION-LESSON`.\n\n")
 
    "## Action steps"
 
@@ -124,11 +121,10 @@
      "### 2. Deliver results\n"
      "### 3. Deliver results\n")
 
-   "Your deliverable is an EDN structure, wrapped in `---BEGIN RESULTS---`/`---END RESULTS---` markers:\n\n"
+   "Your deliverable is an EDN structure, without code fence, wrapped in `---BEGIN RESULTS---`/`---END RESULTS---` markers:\n\n"
 
    "- IF a memory file already exist:\n"
    "  - Provide a new memory section to be appended to the file:\n"
-   "    ```clojure\n"
    "    ---BEGIN RESULTS---\n"
    "    {:domain                                  ; string\n"
    "     :file-path path                          ; string, absolute path to memory file\n"
@@ -138,11 +134,8 @@
    "     }\n"
    "    ---END RESULTS---\n"
    "    ~~~GOAL-ACHIEVED~~~\n"
-   "    ```\n"
-   "  - Your task is complete!\n"
    "- ELSE IF no existing memory file:\n"
    "  - Provide the data for an entirely new memory file:\n\n"
-   "    ```clojure\n"
    "    ---BEGIN RESULTS---\n"
    "    {:new-file true                           ; boolean, REQUIRED for new files\n"
    "     :domain                                  ; string\n"
@@ -155,11 +148,8 @@
    "     }\n"
    "    ---END RESULTS---\n"
    "    ~~~GOAL-ACHIEVED~~~\n"
-   "    ```\n"
-   "  - Your task is complete!\n"
    "- IF you find that the memory is already covered:\n"
    "  - Provide the data for an entirely new memory file:\n\n"
-   "    ```clojure\n"
    "    ---BEGIN RESULTS---\n"
    "    {:memory-exists? true                     ; boolean\n"
    "     :message                                 ; string, say something about the coverage\n"
@@ -168,7 +158,6 @@
    "     }\n"
    "    ---END RESULTS---\n"
    "    ~~~GOAL-ACHIEVED~~~\n"
-   "    ```\n"
 
    ))
 
@@ -612,8 +601,9 @@
                              (user-data-instructions-path "clojure-memory.instructions.md")]
           result (record-memory!+
                   {:summary "Use inline def for REPL debugging instead of println"
-                   :domain "clojure"
-                   :instructions instruction-paths
+                   :domain "foobartesting"
+                   ;:model-id "claude-haiku-4.5"
+                   ;:instructions instruction-paths
                    :caller "rcf-vector-test"})]
     (def vector-result result)
     result)

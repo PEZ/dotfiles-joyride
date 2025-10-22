@@ -7,6 +7,7 @@
 (ns lm-dispatch.util
   (:require
    ["vscode" :as vscode]
+   [lm-dispatch.logging :as logging]
    [promesa.core :as p]))
 
 (defn create-chat-message
@@ -129,7 +130,7 @@
                         input (.-input tool-call)
                         timeout-ms 30000]
                     (logger "🎯 Invoking tool:" tool-name)
-                    (logger "📝 Input:" (pr-str input))
+                    (logger "📝 Input:" (pr-str (logging/truncate-strings-for-logging input)))
                     (-> (promise-with-timeout
                          (vscode/lm.invokeTool tool-name #js {:input input})
                          timeout-ms
@@ -143,7 +144,7 @@
                                       :result (str "Tool execution timed out after " (/ timeout-ms 1000) " seconds. Try a simpler approach.")})
                                    (let [result (extract-tool-result-content raw-result)]
                                      (logger "✅ Tool execution result for" tool-name ":")
-                                     (logger result)
+                                     (logger (logging/truncate-strings-for-logging result))
                                      {:call-id call-id
                                       :tool-name tool-name
                                       :result result}))))

@@ -14,7 +14,8 @@
    [lm-dispatch.monitor :as monitor]
    [lm-dispatch.util :as util]
    [lm-dispatch.instructions-util :as instr-util]
-   [promesa.core :as p]))
+   [promesa.core :as p]
+   [cljs.pprint :as pprint]))
 
 (def default-conversation-data
   {:model-id "grok-code-fast-1"
@@ -38,6 +39,15 @@ AGENTIC BEHAVIOR RULES:
 7. Never stop and ask the human anything
 8. Take creative initiative to solve problems
 
+TOOL EFFICIENCY:
+- CRITICAL: You can and SHOULD make MULTIPLE tool calls in a SINGLE response
+- All tool calls in one response execute in parallel and results return together
+- Before making ANY tool calls, PLAN which files/tools you'll need
+- Then make ALL those tool calls at once in the same response
+- Example: If you know you need to read 5 files, make all 5 read calls together, not one at a time
+- Reading files one-by-one across multiple turns wastes time and tokens
+- ALWAYS batch independent operations together in a single response
+
 LEARNING FROM FAILURES:
 - If tool results are not what you expected, try a different approach
 - Don't repeat the exact same tool call if it didn't work the first time
@@ -47,7 +57,7 @@ LEARNING FROM FAILURES:
 CONVERSATION FLOW:
 - Receive goal from human
 - Plan your approach
-- Execute tools and actions
+- Execute tools and actions (batch multiple independent tool calls when possible)
 - Analyze results and continue OR adapt if results weren't as expected
 - Report progress and findings
 - Suggest next steps or completion
@@ -119,7 +129,12 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
   (conj history
         {:role :assistant
          :content ai-text
-         :tool-calls tool-calls
+         :tool-calls (clj->js (mapv (fn [tool-call]
+                                      {:tool-name (.-name tool-call)
+                                       :call-id (.-callId tool-call)
+                                       :input (.-input tool-call)})
+                                    tool-calls)
+                              :keywordize-keys true)
          :turn turn-count}))
 
 (defn add-tool-results
@@ -160,7 +175,11 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
 (defn generate-completion-results
   "Generate appropriate results text based on completion reason and context"
   [final-reason result max-turns]
-  (let [final-ai-text (get-in result [:final-response :text])
+  (let [final-ai-text (str (get-in result [:final-response :text])
+                           "\nHistory:\n\n"
+                           "```clojure\n"
+                           (with-out-str (cljs.pprint/pprint (:history result)))
+                           "```")
         turn-count (get-in result [:final-response :turn])]
     (case final-reason
       ;; Success cases - show final AI response as-is
@@ -210,7 +229,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
       (logging/log-to-channel! conv-id (str "🔧 AI Agent executing " (count tool-calls) " tool(s)"))
       (p/let [logger (partial monitor/log-and-update!+ conv-id nil)
               tool-results (util/execute-tool-calls!+ tool-calls logger)]
-        (logging/log-to-channel! conv-id (str "✅ Tools executed, processed results: " tool-results))
+        (logging/log-to-channel! conv-id (str "✅ Tools executed, processed results: " (logging/truncate-strings-for-logging tool-results)))
         (add-tool-results history tool-results turn-count)))
     history))
 
@@ -258,7 +277,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                ;; Log AI's response
                _ (when ai-text
                    (logging/log-to-channel! conv-id "🤖 AI Agent says:")
-                   (logging/log-to-channel! conv-id ai-text))
+                   (logging/log-to-channel! conv-id (logging/truncate-strings-for-logging ai-text)))
 
                ;; Add AI response to history
                history-with-assistant (add-assistant-response history ai-text tool-calls turn-count)

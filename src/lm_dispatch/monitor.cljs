@@ -14,7 +14,8 @@
    [clojure.string :as string]
    [joyride.flare :as flare]
    [promesa.core :as p]
-   ["vscode" :as vscode]))
+   ["vscode" :as vscode]
+   [lm-dispatch.util :as util]))
 
 ;; UI Interaction Handlers
 
@@ -281,7 +282,7 @@
   "Start monitoring a conversation - registers it, logs, and updates flare"
   [{:agent.conversation/keys [goal] :as conversation-data}]
   (let [conv-id (state/register-conversation! conversation-data)]
-    (logging/log-to-channel! conv-id (str "🚀 Starting conversation: " goal))
+    (logging/log-to-channel! conv-id (str "🚀 Starting conversation: " (logging/truncate-strings-for-logging goal)))
     (p/let [_ (update-agent-monitor-flare!+)]
       conv-id)))
 

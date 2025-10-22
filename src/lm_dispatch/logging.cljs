@@ -10,9 +10,17 @@
   Manages output channel for conversation logs."
   (:require
    ["vscode" :as vscode]
+   [clojure.walk :as walk]
    [lm-dispatch.state :as state]))
 
 ;; Output Channel Management
+
+(defn truncate-strings-for-logging [m]
+  (walk/postwalk (fn [x]
+                   (if (and (string? x) (> (count x) 150))
+                     (str (subs x 0 100) "...[truncated]")
+                     x))
+                 m))
 
 (defn get-output-channel!
   "Get or create the output channel for agent logs"
