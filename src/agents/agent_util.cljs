@@ -11,12 +11,8 @@
 ;; Path helpers
 
 (defn user-data-instructions-path
-  "Get path to user-level instructions directory or file.
-
-  Args:
-    relative-path - Optional path relative to prompts directory
-
-  Returns: Absolute path string"
+  "Returns absolute path to user-level instructions directory,
+   optionally appending `relative-path` to prompts directory."
   ([] (user-data-instructions-path nil))
   ([relative-path]
    (let [global-storage-path (-> (joy/extension-context)
@@ -28,14 +24,9 @@
        (path/join user-path "prompts")))))
 
 (defn workspace-instructions-path
-  "Get path to workspace-level instructions directory or file.
-
-  Args:
-    relative-path - Optional path relative to .github/instructions directory
-
-  Returns: Absolute path string
-
-  Throws: Error if no workspace is available"
+  "Returns absolute path to workspace-level instructions directory,
+   optionally appending `relative-path` to .github/instructions directory,
+   or throws if no workspace is available."
   ([] (workspace-instructions-path nil))
   ([relative-path]
    (let [workspace-path (some-> vscode/workspace.workspaceFolders
@@ -51,12 +42,8 @@
 ;; File operations
 
 (defn read-existing-file!+
-  "Read file content or return nil if file doesn't exist.
-
-  Args:
-    file-path - Absolute path to file
-
-  Returns: Promise of file content string or nil"
+  "Returns promise of file content string from `file-path`,
+   or `nil` if file doesn't exist."
   [file-path]
   (p/catch
    (p/let [uri (vscode/Uri.file file-path)
@@ -67,12 +54,7 @@
      nil)))
 
 (defn list-instruction-files!+
-  "List all .instructions.md files in directory.
-
-  Args:
-    dir-path - Absolute path to directory
-
-  Returns: Promise of vector of filenames"
+  "Returns promise of vector of .instructions.md filenames in `dir-path`."
   [dir-path]
   (p/catch
    (p/let [uri (vscode/Uri.file dir-path)
@@ -85,23 +67,15 @@
      [])))
 
 (defn extract-description-from-content
-  "Extract description from file frontmatter.
-
-  Args:
-    content - File content string with YAML frontmatter
-
-  Returns: Description string or nil"
+  "Returns description string from YAML frontmatter in `content`,
+   or `nil` if not found."
   [content]
   (when content
     (second (re-find #"description:\s*'([^']*)'" content))))
 
 (defn build-file-descriptions-map!+
-  "Build map of file descriptions from instruction files.
-
-  Args:
-    search-dir - Absolute path to directory
-
-  Returns: Promise of vector of {:file string :description string} maps"
+  "Returns promise of vector of maps with `:file` and `:description` keys
+   for instruction files in `search-dir`."
   [search-dir]
   (p/let [files (list-instruction-files!+ search-dir)
           file-data (p/all
@@ -114,12 +88,8 @@
     (vec file-data)))
 
 (defn format-description-listing
-  "Format file descriptions into text listing for prompts.
-
-  Args:
-    descriptions - Vector of {:file string :description string} maps
-
-  Returns: Formatted string or empty string if no descriptions"
+  "Returns formatted text listing for `descriptions` (vector of maps),
+   or empty string if no descriptions."
   [descriptions]
   (when (seq descriptions)
     (str "```clojure\n"
@@ -129,14 +99,10 @@
 ;; Utilities
 
 (defn normalize-scope
-  "Convert scope to keyword, handling both string and keyword input.
+  "Returns keyword (`:workspace` or `:global`) from `scope` input.
 
-  Accepts:
-  - Keywords: :workspace, :global
-  - Strings: \"workspace\", \"ws\", \"global\", \"user\"
-  - nil or anything else defaults to :global
-
-  Returns: :workspace or :global keyword"
+   Accepts keywords (`:workspace`, `:global`), strings (\"workspace\", \"ws\",
+   \"global\", \"user\"), or defaults to `:global` for nil/other values."
   [scope]
   (cond
     (keyword? scope) scope
@@ -147,14 +113,7 @@
     :else :global))
 
 (defn file-path->uri-string
-  "Convert file path to URI string.
-
-  Handles cases where input is already a URI string.
-
-  Args:
-    file-path - Either absolute filesystem path or URI string
-
-  Returns: URI string"
+  "Returns URI string for `file-path` (filesystem path or URI string)."
   [file-path]
   (if (string/starts-with? file-path "file://")
     file-path
@@ -173,22 +132,13 @@
         (reverse agent-messages)))
 
 (defn extract-marked-content
-  "Extract content between markers from agent conversation history.
+  "Returns map with `:content` (extracted string between `begin-marker` and
+   `end-marker` from `agent-result` history), or `:extraction-failed` with
+   `:debug-info` if markers not found.
 
-  Searches agent messages backwards for content wrapped in begin/end markers.
-  This is a reusable pattern for extracting structured output (EDN, reports, etc.)
-  from autonomous agent conversations.
-
-  Args:
-    agent-result - Agent result map with :history key
-    begin-marker - String marking start of content (e.g., '---BEGIN REPORT---')
-    end-marker - String marking end of content (e.g., '---END REPORT---')
-
-  Returns:
-    Map with:
-    - :content - Extracted content string (if found)
-    - :extraction-failed - True if markers not found
-    - :debug-info - Minimal debug information (if extraction failed)"
+   Searches agent messages backwards for content wrapped in markers.
+   Reusable pattern for extracting structured output (EDN, reports, etc.)
+   from autonomous agent conversations."
   [agent-result begin-marker end-marker]
   (let [all-messages (get agent-result :history [])
         agent-messages (filter #(= :assistant (:role %)) all-messages)

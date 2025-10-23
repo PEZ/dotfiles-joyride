@@ -65,19 +65,12 @@ CONVERSATION FLOW:
 Be proactive, creative, and goal-oriented. Drive the conversation forward!")
 
 (defn build-agentic-messages
-  "Build message history for agentic conversation with actionable tool feedback.
+  "Returns vector of messages formatted for LM API with `goal` first,
+   followed by `history` conversation entries.
 
-  The goal is kept separate from history and injected as the first message on every turn,
-  ensuring the LM always has context about what it's trying to accomplish. The history
-  vector contains only assistant responses and tool results.
-
-  Args:
-    history - Vector of conversation entries with :role :assistant or :tool-results
-    instructions - String with additional instructions to prepend to goal
-    goal - String describing the task (immutable, never stored in history)
-
-  Returns:
-    Vector of messages formatted for LM API with goal first, followed by conversation"
+   The `goal` is kept separate from `history` and injected as the first message
+   on every turn, ensuring the LM always has context about the task.
+   The `history` vector contains only assistant responses and tool results."
   [history instructions goal]
   (let [goal-message {:role :user
                       :content (str instructions
@@ -106,11 +99,12 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
                     history)))))
 
 (defn agent-indicates-completion?
-  "Check if AI agent indicates the task is complete.
+  "Returns true if `ai-text` contains completion indicators
+   (like '~~~GOAL-ACHIEVED~~~' or 'task complete') without negations.
 
-  Uses a two-phase approach:
-  1. Check for completion indicators
-  2. Exclude negations (not, hasn't, isn't, etc.)"
+   Uses a two-phase approach:
+   1. Check for completion indicators
+   2. Exclude negations (not, hasn't, isn't, etc.)"
   [ai-text]
   (when ai-text
     (and (re-find #"(?i)(~~~GOAL-ACHIEVED~~~|task.*(complete|done|finished)|goal.*(achieved|reached|accomplished)|mission.*(complete|success)|successfully (completed|finished))" ai-text)
@@ -121,10 +115,10 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
     (re-find #"(?i)(~~~CONTINUING~~~|next.*(step|action)|i'll|i.will|let.me|continu|proceed)" ai-text)))
 
 (defn add-assistant-response
-  "Add AI assistant response to conversation history.
+  "Returns `history` with AI assistant response added.
 
-  Note: History contains only assistant responses and tool results, not the goal.
-  The goal is kept separate and injected into messages by build-agentic-messages."
+   Note: History contains only assistant responses and tool results, not the goal.
+   The goal is kept separate and injected into messages by build-agentic-messages."
   [history ai-text tool-calls turn-count]
   (conj history
         {:role :assistant
@@ -138,7 +132,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
          :turn turn-count}))
 
 (defn add-tool-results
-  "Add tool execution results to conversation history"
+  "Returns `history` with tool execution results added."
   [history tool-results turn-count]
   (conj history
         {:role :tool-results
@@ -147,7 +141,8 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
          :turn turn-count}))
 
 (defn determine-conversation-outcome
-  "Determine if conversation should continue and why"
+  "Returns map with `:continue?` and `:reason` based on `ai-text`,
+   `tool-calls`, `turn-count`, and `max-turns`."
   [ai-text tool-calls turn-count max-turns]
   (cond
     (>= turn-count max-turns)
@@ -166,14 +161,16 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
     {:continue? false :reason :agent-finished}))
 
 (defn format-completion-result
-  "Format the final conversation result"
+  "Returns formatted final conversation result map with `:history`, `:reason`,
+   and `:final-response`."
   [history reason final-response]
   {:history history
    :reason reason
    :final-response final-response})
 
 (defn generate-completion-results
-  "Generate appropriate results text based on completion reason and context"
+  "Returns appropriate results text based on `final-reason` completion type,
+   augmenting with context for partial completion cases."
   [final-reason result max-turns]
   (let [final-ai-text (str (get-in result [:final-response :text])
                            "\nHistory:\n\n"
@@ -204,7 +201,9 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
       final-ai-text)))
 
 (defn execute-conversation-turn
-  "Execute a single conversation turn - handles request/response cycle"
+  "Execute a single conversation turn - handles request/response cycle
+   Returns promise of turn result with `:text`, `:tool-calls`, and `:turn`
+   from a single conversation turn request/response cycle."
   [{:keys [model-id goal instructions history turn-count tools-args]}]
   (p/catch
    (p/let [messages (build-agentic-messages history instructions goal)
@@ -222,7 +221,8 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
       :turn turn-count})))
 
 (defn execute-tools-if-present!+
-  "Execute tool calls if present, return updated history"
+  "Execute tool calls if present, return updated history
+   Returns promise of updated `history` with tool results added if `tool-calls` present."
   [history tool-calls turn-count conv-id]
   (if (seq tool-calls)
     (do
@@ -235,10 +235,11 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
 
 (defn continue-conversation-loop
   "Main conversation loop.
+   Returns promise of final conversation result by recursively executing turns.
 
-  The goal parameter is passed separately through all turns and combined with history
-  by build-agentic-messages. This keeps the immutable goal separate from the growing
-  conversation history."
+   The `goal` parameter is passed separately through all turns and combined with
+   `history` by build-agentic-messages, keeping the immutable goal separate from
+   the growing conversation history."
   [{:keys [model-id goal instructions max-turns progress-callback tools-args conv-id]
     :as conversation-data}
    history turn-count last-response]

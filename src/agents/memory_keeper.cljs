@@ -26,8 +26,8 @@
 
 
 (defn remember-prompt
-  "Creates the agent instructions, utilizing that if we know the domain, the prompt
-   does not need have a path for figuring out the domain."
+  "Returns agent instructions string for memory recording, optionally using
+   known `:ma/domain` to skip domain discovery."
   [{:ma/keys [domain]}]
   (str
    "# Memory Recording Agent\n\n"
@@ -142,14 +142,7 @@
   :rcf)
 
 (defn trim-heading-from-content
-  "Remove H2 heading from start of content if present.
-
-  Prevents duplicate headings when agent includes a heading in content.
-
-  Args:
-    content - Memory content that may start with ## heading
-
-  Returns: Content with any leading H2 heading trimmed"
+  "Returns `content` with any leading H2 heading removed to prevent duplicates."
   [content]
   (let [;; Match any H2 heading at start: ## followed by text and newlines
         pattern (js/RegExp. "^##\\s+[^\\n]+\\s*\\n+" "")
@@ -157,7 +150,8 @@
     (string/trim trimmed)))
 
 (defn build-new-file-content
-  "Build complete file content with frontmatter from new file response"
+  "Returns complete file content string with frontmatter built from new file
+   response map (`:description`, `:domain-tagline`, `:applyTo`, `:heading`, `:content`)."
   [{:keys [description domain-tagline applyTo heading content]}]
   (let [trimmed-content (trim-heading-from-content content)]
     (str "---\n"
@@ -169,18 +163,8 @@
          trimmed-content)))
 
 (defn build-goal-prompt
-  "Build the complete goal prompt for the memory agent.
-
-  Combines the prompt template, search directory, and lesson summary into the final goal string.
-
-  Args:
-    config - Map with keys:
-      :ma/summary - String describing the lesson learned (required)
-      :ma/domain - Optional string for domain hint (e.g., 'clojure', 'git-workflow')
-      :ma/search-dir - Absolute path to search directory (required)
-
-  Returns:
-    Complete goal prompt string ready for the autonomous agent"
+  "Returns complete goal prompt string for memory agent by combining template,
+   `:ma/search-dir`, and `:ma/summary` (required), with optional `:ma/domain` hint."
   [{:ma/keys [summary domain search-dir description-listing]}]
   (-> (remember-prompt {:ma/domain domain})
       (string/replace "{SEARCH-DIRECTORY}" search-dir)
@@ -190,13 +174,8 @@
 
 
 (defn write-memory-file!+
-  "Write memory file using workspace.fs API.
-
-  Args:
-    file-path - Absolute path to the file
-    content - Complete file content
-
-  Returns: Promise of {:success true :file-path string} or {:error string}"
+  "Returns promise of result map with `:success` true and `:file-path`,
+   or `:error` string if write fails."
   [file-path content]
   (p/then
    (p/catch
@@ -211,27 +190,15 @@
    identity))
 
 (defn update-frontmatter-applyTo
-  "Update applyTo field in frontmatter if present.
-
-  Args:
-    content - File content with frontmatter
-    new-applyTo - Vector of new glob patterns
-
-  Returns: Updated content with new applyTo, or original if no frontmatter"
+  "Returns updated `content` with applyTo field in frontmatter set to `new-applyTo`,
+   or original content if no frontmatter present."
   [content new-applyTo]
   (if-let [[_ before _ after] (re-find #"(?s)(---\n.*?applyTo: )'([^']*)'(.*?---.*)" content)]
     (str before "'" (string/join ", " new-applyTo) "'" after)
     content))
 
 (defn clean-heading
-  "Remove ## prefix from heading if present.
-
-  Prevents duplicate ## when agent includes ## in heading field.
-
-  Args:
-    heading - H2 heading text that may start with ##
-
-  Returns: Heading text without ## prefix"
+  "Returns `heading` text without ## prefix to prevent duplicate ##."
   [heading]
   (-> heading
       (string/replace #"^##\s+" "")
@@ -240,15 +207,10 @@
 
 
 (defn append-memory-section
-  "Append new memory section to existing file content with consistent spacing
+  "Returns complete updated file content with new memory section appended.
 
-  Args:
-    existing-content - Current file content
-    heading - H2 heading for new section (may include ## prefix which will be removed)
-    content - Memory content markdown (may start with ## heading which will be trimmed)
-    applyTo - Optional vector of glob patterns to update frontmatter
-
-  Returns: Complete updated file content"
+   Takes `:existing-content`, `:heading` (may include ##), `:content` (may start
+   with ## heading), and optional `:applyTo` vector for frontmatter update."
   [{:keys [existing-content heading content applyTo]}]
   (let [with-frontmatter (if applyTo
                            (update-frontmatter-applyTo existing-content applyTo)
@@ -261,12 +223,8 @@
          "\n\n" trimmed-content)))
 
 (defn extract-edn-from-response
-  "Extracts EDN structure from agent response, handling wrapped format or direct EDN.
-
-  Args:
-    response - Agent response string, may contain BEGIN/END markers or direct EDN
-
-  Returns: Parsed EDN map or nil if parsing fails or result is not a map"
+  "Returns parsed EDN map from agent `response` string (with BEGIN/END markers
+   or direct EDN), or `nil` if parsing fails or result is not a map."
   [response]
   (let [marker-match (re-find #"(?s)---BEGIN RESULTS---\s*(.*?)\s*---END RESULTS---" response)
         edn-string (if marker-match
@@ -280,10 +238,8 @@
         nil))))
 
 (defn find-edn-in-messages
-  "Searches agent messages from last to first for EDN wrapped in markers.
-  Args:
-    agent-messages - Sequence of message maps with :role and :content keys
-  Returns: Message content string from first message (searching backwards) containing END marker, or nil"
+  "Returns message content string from first message (searching backwards in
+   `agent-messages`) containing END marker, or `nil` if not found."
   [agent-messages]
   (some (fn [msg]
           (let [content (:content msg)]

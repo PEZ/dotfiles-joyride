@@ -14,12 +14,8 @@
    [promesa.core :as p]))
 
 (defn user-data-instructions-path
-  "Get path to global user data instructions directory.
-
-  Args:
-    relative-path - Optional relative path to append
-
-  Returns: Absolute path string"
+  "Returns absolute path to global user data instructions directory,
+   optionally appending `relative-path`."
   ([] (user-data-instructions-path nil))
   ([relative-path]
    (let [global-storage-path (-> (joy/extension-context)
@@ -31,12 +27,8 @@
        (path/join user-path "prompts")))))
 
 (defn workspace-instructions-path
-  "Get path to workspace instructions directory.
-
-  Args:
-    relative-path - Optional relative path to append
-
-  Returns: Absolute path string or throws if no workspace"
+  "Returns absolute path to workspace instructions directory,
+   optionally appending `relative-path`, or throws if no workspace is available."
   ([] (workspace-instructions-path nil))
   ([relative-path]
    (let [workspace-path (some-> vscode/workspace.workspaceFolders
@@ -50,34 +42,25 @@
        (throw (js/Error. "No workspace available"))))))
 
 (defn extract-domain-from-filename
-  "Extract domain from instruction filename.
+  "Returns domain string extracted from instruction `filename`,
+   or `nil` for reserved words like 'memory'.
 
-  Pattern: {domain}-{suffix}.instructions.md or {domain}.instructions.md
-  Takes everything before the last component before .instructions.md
+   Pattern: {domain}-{suffix}.instructions.md or {domain}.instructions.md
+   Takes everything before the last component before .instructions.md
 
-  Examples:
-    'clojure-memory.instructions.md' → 'clojure'
-    'shadow-cljs-memory.instructions.md' → 'shadow-cljs'
-    'joyride.instructions.md' → 'joyride'
-    'memory.instructions.md' → nil (reserved word)
-
-  Args:
-    filename - Filename string
-
-  Returns: Domain string or nil"
+   Examples:
+     'clojure-memory.instructions.md' → 'clojure'
+     'shadow-cljs-memory.instructions.md' → 'shadow-cljs'
+     'joyride.instructions.md' → 'joyride'
+     'memory.instructions.md' → nil (reserved word)"
   [filename]
   (when-let [[_ domain-part] (re-find #"^(.+?)(?:-[^-]+)?\.instructions\.md$" filename)]
     (when-not (= domain-part "memory")
       domain-part)))
 
 (defn- resolve-file-uri
-  "Resolve file path to VS Code URI, handling both absolute and relative paths.
-
-  Args:
-    file-path - Absolute or relative file path
-
-  Returns: vscode/Uri object
-  Throws: Error if relative path provided without workspace"
+  "Returns vscode/Uri object for `file-path` (absolute or relative),
+   or throws if relative path provided without workspace."
   [file-path]
   (if (path/isAbsolute file-path)
     (vscode/Uri.file file-path)
@@ -89,12 +72,7 @@
         (throw (js/Error. (str "Cannot resolve relative path without workspace: " file-path)))))))
 
 (defn list-instruction-files!+
-  "List all .instructions.md files in the target directory.
-
-  Args:
-    dir-path - Absolute path to directory
-
-  Returns: Promise of vector of filenames"
+  "Returns promise of vector of .instructions.md filenames in `dir-path`."
   [dir-path]
   (p/catch
    (p/let [uri (resolve-file-uri dir-path)
@@ -107,12 +85,8 @@
      [])))
 
 (defn read-file-content!+
-  "Read file content from disk.
-
-  Args:
-    file-path - Absolute path
-
-  Returns: Promise of file content string, or nil if file doesn't exist"
+  "Returns promise of file content string from `file-path`,
+   or `nil` if file doesn't exist."
   [file-path]
   (p/catch
    (p/let [uri (resolve-file-uri file-path)
@@ -123,41 +97,26 @@
      nil)))
 
 (defn extract-description-from-content
-  "Extract description from file content frontmatter.
-
-  Args:
-    content - File content string
-
-  Returns: Description string or nil if not found"
+  "Returns description string from `content` frontmatter,
+   or `nil` if not found."
   [content]
   (when content
     (second (re-find #"description:\s*'([^']*)'" content))))
 
 (defn format-instruction-file
-  "Format a single instruction file with XML-ish <attachment> markup.
-
-  Args:
-    file-path - Absolute path to the file
-    content - File content string (including frontmatter)
-
-  Returns: Formatted string with <attachment> wrapper"
+  "Returns `content` wrapped in XML-ish <attachment> markup with `file-path`."
   [file-path content]
   (str "<attachment filePath=\"" file-path "\">\n"
        content "\n"
        "</attachment>"))
 
 (defn enrich-editor-context!+
-  "Enrich lightweight editor context with file content from VS Code.
+  "Returns promise of enriched `editor-context` map with file content from VS Code,
+   or `nil` if no `:editor-context/file-path` provided.
 
-  Takes flat editor-context keys and returns a promise of enriched map with actual content.
-
-  Args:
-    editor-context - Map with flat keys:
-      :editor-context/file-path - Absolute file path (required)
-      :editor-context/selection-start-line - 0-indexed start line (optional)
-      :editor-context/selection-end-line - 0-indexed end line (optional)
-
-  Returns: Promise of enriched map with all keys including content, or nil if no file-path"
+   Takes flat keys `:editor-context/file-path` (absolute path, required),
+   `:editor-context/selection-start-line`, and `:editor-context/selection-end-line`
+   (both 0-indexed, optional)."
   [editor-context]
   (when-let [file-path (:editor-context/file-path editor-context)]
     (p/let [uri (vscode/Uri.file file-path)
@@ -179,12 +138,8 @@
        :editor-context/full-file-content full-content})))
 
 (defn build-file-descriptions-map!+
-  "Build a map of file descriptions from instruction files with domain info.
-
-  Args:
-    dir-path - Absolute path to directory
-
-  Returns: Promise of vector of {:file string :description string :domain string} maps"
+  "Returns promise of vector of maps with `:file`, `:description`, and `:domain`
+   keys for all instruction files in `search-dir`."
   [search-dir]
   (p/let [files (list-instruction-files!+ search-dir)
           file-data (p/all
@@ -200,12 +155,8 @@
     (vec file-data)))
 
 (defn concatenate-instruction-files!+
-  "Read instruction files and wrap each in <attachment> tags.
-
-  Args:
-    file-paths - Vector of absolute file paths
-
-  Returns: Promise of concatenated string with <attachment> XML-ish wrappers"
+  "Returns promise of concatenated string with each file from `file-paths`
+   wrapped in <attachment> XML-ish tags."
   [file-paths]
   (if (empty? file-paths)
     (p/resolved "")
@@ -216,9 +167,8 @@
       (string/join "\n" (filter some? attachments)))))
 
 (defn collect-all-instruction-descriptions!+
-  "Collect instruction file descriptions from both workspace and global areas.
-
-  Returns: Promise of vector of {:file :filename :description :domain} maps"
+  "Returns promise of vector of maps with `:file`, `:filename`, `:description`,
+   and `:domain` keys from both workspace and global instruction areas."
   []
   (p/let [;; Try workspace instructions (might not exist)
           workspace-descriptions (p/catch
@@ -232,17 +182,11 @@
     (vec (concat workspace-descriptions user-descriptions))))
 
 (defn prepare-instructions-from-selected-paths!+
-  "Concatenate selected instruction files with context files.
+  "Returns promise of concatenated instructions string with <attachment> wrappers,
+   combining `:agent.conversation/instructions-paths` and
+   `:agent.conversation/context-files` from `conversation-data`.
 
-  This function assumes instruction selection has already happened upstream.
-  Designed to be called after select-instructions!+ or when paths are known.
-
-  Args:
-    conversation-data - Map with namespaced keys:
-      :agent.conversation/selected-paths - Vector of selected instruction file paths
-      :agent.conversation/context-files - Vector of context file paths
-
-  Returns: Promise of concatenated instructions string with <attachment> wrappers"
+   Designed to be called after select-instructions!+ or when paths are known."
   [{:agent.conversation/keys [instructions-paths context-files]}]
   (p/let [;; Slurp selected instruction files (wrapped in <attachment> tags)
           selected-content (concatenate-instruction-files!+ (or instructions-paths []))
@@ -263,17 +207,12 @@
     final-instructions))
 
 (defn format-editor-context
-  "Format editor context into XML-ish markup matching Copilot's pattern.
+  "Returns formatted string with XML-ish markup matching Copilot's pattern,
+   or empty string if no context in `editor-context`.
 
-  Args:
-    editor-context - Map with keys:
-      :editor-context/file-path - Absolute path to file
-      :editor-context/selection-start-line - 0-indexed start line
-      :editor-context/selection-end-line - 0-indexed end line
-      :editor-context/selected-text - The selected text (if any)
-      :editor-context/full-file-content - Complete file content
-
-  Returns: Formatted string with XML-ish markup, or empty string if no context"
+   Uses `:editor-context/file-path`, `:editor-context/selection-start-line`,
+   `:editor-context/selection-end-line`, `:editor-context/selected-text`,
+   and `:editor-context/full-file-content`."
   [{:editor-context/keys [file-path selection-start-line selection-end-line
                           selected-text full-file-content]}]
   (when (and file-path full-file-content)
@@ -306,25 +245,15 @@
        "</attachment>"))))
 
 (defn assemble-instructions!+
-  "Assemble instructions from string or vector, with optional editor context and context files.
+  "Returns promise of assembled instructions string combining `instructions`
+   (string or vector of file paths), `context-file-paths`, and `editor-context`.
 
-  The assembly order matches Copilot's pattern:
-  1. Instructions (string or <attachment> wrapped file paths)
-  2. Context files (if provided) - each wrapped in <attachment>
-  3. Editor context (if provided) - comes last, like in Copilot requests
+   Assembly order matches Copilot's pattern:
+   1. Instructions (string or <attachment> wrapped file paths)
+   2. Context files (each wrapped in <attachment>)
+   3. Editor context (enriched internally from VS Code)
 
-  All instruction and context files are wrapped in <attachment filePath=...> XML-ish markup.
-  Editor context is enriched internally by reading file content from VS Code.
-
-  Args:
-    instructions - Either a string or vector of file paths
-    editor-context - Optional map with lightweight flat keys:
-      :editor-context/file-path - File path (will trigger enrichment)
-      :editor-context/selection-start-line - Selection start (optional)
-      :editor-context/selection-end-line - Selection end (optional)
-    context-file-paths - Optional vector of context file paths
-
-  Returns: Promise of assembled instructions string"
+   All instruction and context files wrapped in <attachment filePath=...> XML-ish markup."
   [instructions editor-context context-file-paths]
   (p/let [;; Filter out editor context file from context-file-paths to avoid duplication
           editor-file-path (:editor-context/file-path editor-context)

@@ -93,12 +93,8 @@
    "Inlcude ~~~GOAL-ACHIEVED~~~ in your response containing the results."))
 
 (defn parse-selection-result
-  "Parse agent's final response to extract selected file paths.
-
-  Args:
-    final-response - The agent's final response text
-
-  Returns: Vector of absolute file paths, empty if none selected"
+  "Returns vector of absolute file paths extracted from agent's `final-response`,
+   or empty vector if none selected."
   [final-response]
   (when final-response
     (let [text (:text final-response)

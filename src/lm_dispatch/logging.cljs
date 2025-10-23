@@ -23,7 +23,7 @@
                  m))
 
 (defn get-output-channel!
-  "Get or create the output channel for agent logs"
+  "Returns or creates the output channel for agent logs."
   []
   (if-let [channel (state/get-output-channel)]
     channel
@@ -32,7 +32,7 @@
       channel)))
 
 (defn log-to-channel!
-  "Log a message to the agent channel with conversation ID prefix"
+  "Logs `message` to agent channel with `conv-id` prefix and timestamp."
   [conv-id message]
   (let [channel (get-output-channel!)
         timestamp (.toLocaleTimeString (js/Date.))
@@ -40,7 +40,7 @@
     (.appendLine channel (str prefix message))))
 
 (defn clear-log!
-  "Clear the output channel"
+  "Clears the output channel."
   []
   (when-let [channel (state/get-output-channel)]
     (.clear channel)))
@@ -48,17 +48,17 @@
 ;; Debug Logging
 
 (defn enable-debug-mode!
-  "Enable debug mode to collect logs in memory for inspection"
+  "Enables debug mode to collect logs in memory for inspection."
   []
   (swap! state/!agent-state assoc :debug-mode? true :debug-logs []))
 
 (defn disable-debug-mode!
-  "Disable debug mode and clear debug logs"
+  "Disables debug mode and clears debug logs."
   []
   (swap! state/!agent-state dissoc :debug-mode? :debug-logs))
 
 (defn add-debug-log!
-  "Add a debug log entry if debug mode is enabled"
+  "Adds debug log entry for `conv-id` with `message` if debug mode is enabled."
   [conv-id message]
   (when (:debug-mode? @state/!agent-state)
     (swap! state/!agent-state update :debug-logs conj
@@ -67,7 +67,7 @@
             :message message})))
 
 (defn get-debug-logs
-  "Get all debug logs for a specific conversation, formatted as strings"
+  "Returns all debug logs for `conv-id`, formatted as strings."
   [conv-id]
   (->> (:debug-logs @state/!agent-state)
        (filter #(= (:conv-id %) conv-id))
@@ -75,14 +75,14 @@
               (str (.toISOString timestamp) " - " message)))))
 
 (defn get-all-debug-logs
-  "Get all debug logs across all conversations, formatted as strings"
+  "Returns all debug logs across all conversations, formatted as strings."
   []
   (->> (:debug-logs @state/!agent-state)
        (map (fn [{:keys [conv-id timestamp message]}]
               (str "[Conv-" conv-id "] " (.toISOString timestamp) " - " message)))))
 
 (defn clear-debug-logs!
-  "Clear all debug logs but keep debug mode enabled"
+  "Clears all debug logs while keeping debug mode enabled."
   []
   (swap! state/!agent-state assoc :debug-logs []))
 

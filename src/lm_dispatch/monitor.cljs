@@ -20,7 +20,7 @@
 ;; UI Interaction Handlers
 
 (defn cancel-conversation!
-  "Handle cancel button click - cancels token and marks conversation cancelled"
+  "Cancels cancellation token and marks conversation `conv-id` as cancelled."
   [conv-id]
   (when-let [conv (state/get-conversation conv-id)]
     (logging/log-to-channel! conv-id "🛑 Cancellation requested")
@@ -29,12 +29,13 @@
     (state/mark-conversation-cancelled! conv-id)))
 
 (defn delete-conversation!
-  "Handle delete button click - removes conversation from state"
+  "Removes conversation `conv-id` from state."
   [conv-id]
   (state/delete-conversation! conv-id))
 
 (defn truncate-summary
-  "Truncate text to max-length with ellipsis if needed"
+  "Returns `text` truncated to `max-length` with ellipsis if needed,
+   or `nil` if `text` is `nil`."
   [text max-length]
   (when text
     (if (> (count text) max-length)
@@ -42,7 +43,7 @@
       text)))
 
 (defn open-results-document!+
-  "Open conversation results in a new untitled document"
+  "Returns promise of showing conversation results from `conv-id` in new untitled document."
   [conv-id]
   (when-let [conv (state/get-conversation conv-id)]
     (when-let [results (:agent.conversation/results conv)]
@@ -54,7 +55,7 @@
 ;; UI Rendering
 
 (defn status-icon
-  "Get codicon class for conversation status"
+  "Returns codicon class string for conversation `status`."
   [status]
   (case status
     :started "codicon-debug-pause"
@@ -69,7 +70,7 @@
     "codicon-question"))
 
 (defn format-time
-  "Format JS Date to HH:MM"
+  "Returns HH:MM formatted string from `js-date`, or '--:--' if `nil`."
   [js-date]
   (if js-date
     (let [hours (.getHours js-date)
@@ -79,7 +80,8 @@
     "--:--"))
 
 (defn render-results-section
-  "Render results section similar to error-message section"
+  "Returns Hiccup div rendering `results` section with 'View Full' button,
+   or `nil` if no results."
   [conv-id results icon-color]
   (when results
     (let [summary (truncate-summary results 100)
@@ -105,7 +107,7 @@
         "View Full"]])))
 
 (defn conversation-html
-  "Generate HTML for a single conversation entry"
+  "Returns Hiccup HTML for single conversation entry from `conv` map."
   [conv]
   (let [{:agent.conversation/keys [id goal status model-id
                                    caller title
@@ -202,7 +204,7 @@
      (render-results-section id results icon-color)]))
 
 (defn agent-monitor-html
-  "Generate complete monitor HTML"
+  "Returns complete Hiccup HTML for monitor display."
   []
   (let [conversations (state/get-all-conversations)
         sorted-convs (reverse (sort-by :agent.conversation/id conversations))]
@@ -247,7 +249,7 @@
           new-slot)))))
 
 (defn update-agent-monitor-flare!+
-  "Update the agent monitor flare in sidebar"
+  "Returns promise of updating the agent monitor flare in sidebar."
   []
   (when-let [slot (ensure-sidebar-slot!)]
     (flare/flare!+
@@ -271,7 +273,7 @@
 ;; Public API for Integration
 
 (defn reveal-dispatch-monitor!+
-  "Reveal the dispatch monitor in the sidebar"
+  "Returns promise of revealing the dispatch monitor in the sidebar."
   []
   (update-agent-monitor-flare!+)
   (let [slot (state/get-sidebar-slot)
@@ -279,7 +281,8 @@
     (.show view true)))
 
 (defn start-monitoring-conversation!+
-  "Start monitoring a conversation - registers it, logs, and updates flare"
+  "Returns promise of conversation ID after registering `conversation-data`,
+   logging, and updating flare."
   [{:agent.conversation/keys [goal] :as conversation-data}]
   (let [conv-id (state/register-conversation! conversation-data)]
     (logging/log-to-channel! conv-id (str "🚀 Starting conversation: " (logging/truncate-strings-for-logging goal)))
@@ -287,7 +290,9 @@
       conv-id)))
 
 (defn log-and-update!+
-  "Log messages and optionally update conversation status.
+  "Returns promise of logging variadic `messages` and optionally updating
+   conversation `conv-id` with `status-updates`.
+
    Accepts variadic messages for compatibility with `println`."
   [conv-id status-updates & messages]
   (logging/log-to-channel! conv-id (string/join " " messages))

@@ -11,7 +11,8 @@
    [promesa.core :as p]))
 
 (defn create-chat-message
-  "Create a VS Code Language Model chat message as a plain JS object."
+  "Returns VS Code Language Model chat message as plain JS object
+   with `role` (system/user/assistant) and `content`."
   [{:keys [role content]}]
   (let [role-str (case role
                    :system "system"
@@ -20,7 +21,7 @@
     #js {:role role-str :content content}))
 
 (defn get-available-models+
-  "Get all available Copilot models as a map with model info."
+  "Returns promise of map with Copilot model IDs as keys and model info maps as values."
   []
   (p/let [models (vscode/lm.selectChatModels #js {:vendor "copilot"})]
     (->> models
@@ -46,14 +47,14 @@
          (into {}))))
 
 (defn get-model-by-id!+
-  "Get a specific model by ID, with error handling."
+  "Returns promise of model object for `model-id`, or `nil` if not found."
   [model-id]
   (p/let [models-map (get-available-models+)]
     (when-let [model-info (get models-map model-id)]
       (:model-obj model-info))))
 
 (defn extract-tool-result-content
-  "Extract readable content from VS Code LM tool results"
+  "Returns readable content extracted from VS Code LM tool `raw-result`."
   [raw-result]
   (letfn [(extract-text-from-node [node]
             (cond
@@ -104,7 +105,8 @@
       (str raw-result))))
 
 (defn promise-with-timeout
-  "Wrap a promise with a timeout. Returns timeout-value if promise doesn't resolve in time."
+  "Returns promise that races `promise` with timeout, returning `timeout-value`
+   if `promise` doesn't resolve within `timeout-ms` milliseconds."
   [promise timeout-ms timeout-value]
   (js/Promise.race
    #js [promise
@@ -114,8 +116,10 @@
                         timeout-ms)))]))
 
 (defn execute-tool-calls!+
-  "Execute tool calls using the official VS Code Language Model API with 30s timeout per tool.
-   Accepts optional logger function (variadic) for custom logging."
+  "Returns promise of tool execution results using VS Code Language Model API
+   with 30s timeout per tool.
+
+   Accepts optional `logger` function (variadic) for custom logging."
   ([tool-calls]
    (execute-tool-calls!+ tool-calls println))
   ([tool-calls logger]
@@ -166,9 +170,10 @@
   :rcf)
 
 (defn cancellable-iterator-next!+
-  "Call .next() on iterator with cancellation token support.
-   Uses promise racing with periodic polling to detect cancellation
-   even when .next() is blocking on streaming data."
+  "Returns promise of `.next()` call on `iterator` with `cancellation-token` support.
+
+   Uses promise racing with periodic polling to detect cancellation even when
+   `.next()` is blocking on streaming data."
   [iterator cancellation-token]
   (if (and cancellation-token (.-isCancellationRequested cancellation-token))
     (p/rejected (js/Error. "Cancelled"))
@@ -185,7 +190,8 @@
       (p/race [next-promise cancel-poller]))))
 
 (defn collect-response-with-tools!+
-  "Collect all text and tool calls from a streaming response with cancellation support."
+  "Returns promise of map with `:text`, `:tool-calls`, and `:response` collected
+   from streaming `response`, with optional `cancellation-token` support."
   ([response]
    (collect-response-with-tools!+ response nil))
   ([response cancellation-token]
@@ -214,7 +220,7 @@
        (collect-parts "" [])))))
 
 (defn build-message-chain
-  "Build a message chain with system instructions."
+  "Returns message chain with `system-prompt` prepended to `messages`."
   [{:keys [system-prompt messages]}]
   (let [system-msg (create-chat-message {:role :system :content system-prompt})
         user-msgs (map create-chat-message messages)]
@@ -222,8 +228,11 @@
       system-msg (cons system-msg))))
 
 (defn send-prompt-request!+
-  "Send a prompt request with optional system instructions and tool use.
-   Args: {:model-id string, :system-prompt string (optional), :messages vector, :options map (optional)}"
+  "Returns promise of LM response for prompt request with optional `system-prompt`
+   and tool use via `options`.
+
+   Takes map with `:model-id` (string), `:system-prompt` (optional string),
+   `:messages` (vector), and `:options` (optional map)."
   [{:keys [model-id system-prompt messages options]}]
   (p/let [model (get-model-by-id!+ model-id)
           message-chain (build-message-chain {:system-prompt system-prompt
@@ -233,8 +242,8 @@
     response))
 
 (defn filter-available-tools
-  "Filter out tools that are not reliably available for direct invocation.
-   Uses selective filtering to keep read-only vscode_editing tools while removing write tools."
+  "Returns filtered `tools` with unsafe write tools removed,
+   keeping read-only vscode_editing tools."
   [tools]
   (let [unsafe-tool-names #{"copilot_createFile" "copilot_insertEdit" "copilot_createDirectory"
                             "copilot_editNotebook" "copilot_runInTerminal" "copilot_installExtension"
@@ -245,15 +254,16 @@
                    (contains? unsafe-tool-names (.-name tool)))))))
 
 (defn get-available-tools
-  "Get tools that are available for the agentic system to use.
-   Filters out problematic write tools while keeping useful read-only tools."
+  "Returns tools available for agentic system, filtering out problematic write tools
+   while keeping useful read-only tools."
   []
   (->> vscode/lm.tools
        filter-available-tools))
 
 (defn enable-specific-tools
-  "Enable only specific tools by name.
-   When allow-unsafe? is true, skips the safety filter to allow file write operations."
+  "Returns map with `:tools` array and `:toolMode` for specific tool names.
+
+   When `allow-unsafe?` is true, skips the safety filter to allow file write operations."
   ([tool-names]
    (enable-specific-tools tool-names false))
   ([tool-names allow-unsafe?]
@@ -265,14 +275,16 @@
       :toolMode vscode/LanguageModelChatToolMode.Auto})))
 
 (defn enable-joyride-tools
-  "Get only the Joyride evaluation tool"
+  "Returns map with only the Joyride evaluation tool enabled."
   []
   (enable-specific-tools ["joyride_evaluate_code"]))
 
 (defn count-message-tokens!+
-  "Count tokens for a message chain including tool calls and results.
-   Takes message maps with :role and :content, converts them to proper
-   LanguageModelChatMessage objects for accurate token counting."
+  "Returns promise of token count for `messages` chain (including tool calls/results)
+   using `model-id`.
+
+   Converts message maps with `:role` and `:content` to proper LanguageModelChatMessage
+   objects for accurate token counting."
   [model-id messages]
   (p/let [model (get-model-by-id!+ model-id)
           ;; Convert to LanguageModelChatMessage objects for proper token counting

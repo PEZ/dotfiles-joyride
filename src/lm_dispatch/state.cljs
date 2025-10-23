@@ -21,7 +21,7 @@
 ;; Pure State Operations
 
 (defn register-conversation!
-  "Register a new conversation and return its ID"
+  "Returns new conversation ID after registering `conversation-data`."
   [conversation-data]
   (let [id (:agent/next-id @!agent-state)
         conversation (merge conversation-data
@@ -40,14 +40,14 @@
     id))
 
 (defn update-conversation!
-  "Update conversation by ID with provided data map"
+  "Updates conversation `conv-id` with provided `updates` map."
   [conv-id updates]
   (swap! !agent-state
          (fn [state]
            (update-in state [:agent/conversations conv-id] merge updates))))
 
 (defn mark-conversation-cancelled!
-  "Mark conversation as cancelled and trigger the cancellation token"
+  "Marks conversation `conv-id` as cancelled and triggers the cancellation token."
   [conv-id]
   (let [conv (get-in @!agent-state [:agent/conversations conv-id])
         token-source (:agent.conversation/cancellation-token-source conv)]
@@ -60,38 +60,38 @@
                  (assoc-in [:agent/conversations conv-id :agent.conversation/status] :cancel-requested))))))
 
 (defn get-conversation
-  "Get conversation by ID"
+  "Returns conversation map for `conv-id`, or `nil` if not found."
   [conv-id]
   (get-in @!agent-state [:agent/conversations conv-id]))
 
 (defn get-all-conversations
-  "Get all conversations as a sequence"
+  "Returns all conversations as a sequence."
   []
   (vals (:agent/conversations @!agent-state)))
 
 (defn delete-conversation!
-  "Delete conversation by ID"
+  "Deletes conversation `conv-id` from state."
   [conv-id]
   (swap! !agent-state
          (fn [state]
            (update state :agent/conversations dissoc conv-id))))
 
 (defn get-sidebar-slot
-  "Get the sidebar slot for the monitor"
+  "Returns the sidebar slot for the monitor, or `nil` if not set."
   []
   (:agent/sidebar-slot @!agent-state))
 
 (defn set-sidebar-slot!
-  "Set the sidebar slot for the monitor"
+  "Sets the sidebar `slot` for the monitor."
   [slot]
   (swap! !agent-state assoc :agent/sidebar-slot slot))
 
 (defn get-output-channel
-  "Get the output channel from state"
+  "Returns the output channel from state, or `nil` if not set."
   []
   (:agent/output-channel @!agent-state))
 
 (defn set-output-channel!
-  "Set the output channel in state"
+  "Sets the output `channel` in state."
   [channel]
   (swap! !agent-state assoc :agent/output-channel channel))
