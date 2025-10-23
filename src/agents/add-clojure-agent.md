@@ -80,48 +80,57 @@ The agent should produce a structured report to Copilot containing:
 
 ## Implementation checklist
 
-- [ ] Extract shared helpers from `agents.memory-keeper` into `agents.agent-util` without changing behaviour
-  - [ ] Path helpers: `user-data-instructions-path`, `workspace-instructions-path`
-  - [ ] File operations: `read-existing-file!+`, `list-instruction-files!+`, `build-file-descriptions-map!+`, `format-description-listing`
-  - [ ] Utilities: `normalize-scope`, `file-path->uri-string`, `extract-description-from-content`
-- [ ] Update `agents.memory-keeper` to use `agent-util` while preserving existing defaults
-  - [ ] Replace local implementations with `require` from `agent-util`
-  - [ ] Verify existing tests still pass
-  - [ ] Confirm `record-memory!+` behaviour unchanged
-- [ ] Implement `agents.clojure-interactive/interactively-do!+`
-  - [ ] Core function with conversation-data map parameter
-  - [ ] Default model: `claude-haiku-4.5`
-  - [ ] Default max-turns: `30`
-  - [ ] Default instructions: `:instructions-selector`
-  - [ ] Default tool-ids: full suite from list above
-  - [ ] Build interactive-programming goal prompt template that specifies the deliverable format
-  - [ ] Goal prompt must instruct agent to produce structured report with:
-    - Achievement summary
-    - Complete REPL state reconstruction sequence
-    - Verification instructions for Copilot
-    - User verification handoff (with explicit STOP instruction)
-    - Structural editing guide for Copilot (principles only, not detailed plan)
-  - [ ] Goal prompt must clarify: structural editing tools available for documentation reading only, not for execution
-  - [ ] Support override options (model-id, max-turns, tool-ids, instructions, title, progress-callback, goal)
-  - [ ] Call `agent-orchestrator/autonomous-conversation!+` with merged config
-  - [ ] Parse agent's report from response
-  - [ ] Return structured result containing the report sections
-- [ ] Add tests covering `agent-util` helpers and the new agent's behaviour
-  - [ ] Test `agent-util` path helpers return expected locations
-  - [ ] Test `normalize-scope` handles keywords and strings
-  - [ ] Test `interactively-do!+` goal prompt contains REPL/TDD guidance
-  - [ ] Test goal prompt specifies all required report sections
-  - [ ] Test defaults apply correctly (model, max-turns, instructions, tools)
-  - [ ] Test overrides work as expected
-  - [ ] Test report parsing extracts all sections correctly
-- [ ] Document the agent in `src/agents/README.md`
-  - [ ] Usage examples showing basic invocation
-  - [ ] Explanation of REPL-first workflow
-  - [ ] Description of the structured report format agent produces
-  - [ ] Explanation of user verification handoff workflow
-  - [ ] Note about structural editing for finalization happening after user approval
-  - [ ] Configuration override examples
-  - [ ] Example report showing all five sections
+- [x] Extract shared helpers from `agents.memory-keeper` into `agents.agent-util` without changing behaviour
+  - [x] Path helpers: `user-data-instructions-path`, `workspace-instructions-path`
+  - [x] File operations: `read-existing-file!+`, `list-instruction-files!+`, `build-file-descriptions-map!+`, `format-description-listing`
+  - [x] Utilities: `normalize-scope`, `file-path->uri-string`, `extract-description-from-content`
+- [x] Update `agents.memory-keeper` to use `agent-util` while preserving existing defaults
+  - [x] Replace local implementations with `require` from `agent-util`
+  - [x] Verify existing tests still pass (53 tests, 297 assertions, all passing)
+  - [x] Confirm `record-memory!+` behaviour unchanged
+- [x] Add tests for `agent-util` helpers
+  - [x] Test path helpers return expected locations
+  - [x] Test `normalize-scope` handles keywords and strings
+  - [x] Test `extract-description-from-content` and `format-description-listing`
+  - [x] Test `file-path->uri-string` handles paths and URIs
+- [x] Implement `agents.clojure-interactive/interactively-do!+`
+  - [x] Core function with conversation-data map parameter
+  - [x] Default model: `claude-haiku-4.5`
+  - [x] Default max-turns: `30`
+  - [x] Default instructions: `:instructions-selector`
+  - [x] Default tool-ids: full suite from list above (20 tools including REPL, Backseat Driver, Joyride)
+  - [x] Build interactive-programming goal prompt template that specifies the deliverable format
+  - [x] Goal prompt must instruct agent to produce structured report with:
+    - [x] Achievement summary
+    - [x] Complete REPL state reconstruction sequence
+    - [x] Verification instructions for Copilot
+    - [x] User verification handoff (with explicit STOP instruction)
+    - [x] Structural editing guide for Copilot (principles only, not detailed plan)
+  - [x] Goal prompt must clarify: structural editing tools available for documentation reading only, not for execution
+  - [x] Support override options (model-id, max-turns, tool-ids, instructions, title, progress-callback, goal)
+  - [x] Call `agent-orchestrator/autonomous-conversation!+` with merged config
+  - [x] Parse agent's report from response
+  - [x] Return structured result containing the report sections
+- [x] Add tests covering `agent-util` helpers and the new agent's behaviour
+  - [x] Test `agent-util` path helpers return expected locations
+  - [x] Test `normalize-scope` handles keywords and strings
+  - [x] Test `interactively-do!+` goal prompt contains REPL/TDD guidance
+  - [x] Test goal prompt specifies all required report sections
+  - [x] Test defaults apply correctly (model, max-turns, instructions, tools)
+  - [x] Tests verify all 20 required tools in default suite
+  - [x] Tests verify human_intelligence is excluded
+- [x] Document the agent in `src/agents/README.md`
+  - [x] Usage examples showing basic invocation
+  - [x] Explanation of REPL-first workflow
+  - [x] Description of the structured report format agent produces
+  - [x] Explanation of user verification handoff workflow
+  - [x] Note about structural editing for finalization happening after user approval
+  - [x] Configuration override examples
+  - [x] Example report showing all five sections
+  - [x] Documentation for memory-keeper agent
+  - [x] Documentation for shared agent-util utilities
+  - [x] Testing instructions
+  - [x] Error handling guidance
 
 ## Files to create/modify
 
