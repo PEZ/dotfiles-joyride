@@ -9,7 +9,6 @@
   (:require
    [agents.agent-util :as agent-util]
    [lm-dispatch.agent-orchestrator :as agent-orchestrator]
-   [clojure.string :as string]
    [promesa.core :as p]))
 
 ;; Configuration defaults
@@ -142,9 +141,13 @@
 
   Returns:
     Promise of result map:
-    - Full agent result with :history, :model-id, etc.
-    - :report - Parsed report map with sections (if parsing succeeds)
-    - :report-raw - Raw report string (if extraction succeeds)"
+    - :model-id, :reason, etc. from agent execution
+    - :report-raw - Raw extracted report string (if found)
+    - :report - Parsed report map (if found)
+    - :extraction-failed - True if report markers not found
+    - :debug-info - Debugging information (if extraction failed)
+
+    Note: The full :history is NOT included to prevent massive data return"
   [{:keys [task model-id max-turns tool-ids instructions title goal]
     :or {model-id default-model
          max-turns default-max-turns
@@ -165,29 +168,26 @@
                                 :instructions instructions
                                 :title title}))
 
-          ;; Extract report from agent messages
-          all-messages (get-in agent-result [:history] [])
-          agent-messages (filter #(= :assistant (:role %)) all-messages)
+          ;; Extract report using agent-util
+          extraction-result (agent-util/extract-marked-content
+                             agent-result
+                             "---BEGIN INTERACTIVE REPORT---"
+                             "---END INTERACTIVE REPORT---")
 
-          ;; Find message containing report markers
-          message-with-report (some (fn [msg]
-                                      (let [content (:content msg)]
-                                        (when (and content
-                                                   (string/includes? content "---END INTERACTIVE REPORT---"))
-                                          content)))
-                                    (reverse agent-messages))
+          ;; Transform to expected format
+          report-result (if-let [content (:content extraction-result)]
+                          {:report-raw content
+                           :report {:raw content}}
+                          extraction-result)]
 
-          ;; Extract report content
-          report-match (when message-with-report
-                         (re-find #"(?s)---BEGIN INTERACTIVE REPORT---\s*(.*?)\s*---END INTERACTIVE REPORT---"
-                                  message-with-report))
-          report-raw (when report-match (string/trim (second report-match)))]
+    ;; Return minimal result with report data, NOT the full history
+    (merge
+     ;; Essential agent metadata only
+     (select-keys agent-result [:model-id :reason :error? :error-message])
+     ;; Report extraction results
+     report-result)))
 
-    ;; Return result with report sections
-    (cond-> agent-result
-      report-raw (assoc :report-raw report-raw
-                        :report {:raw report-raw})
-      (not report-raw) (assoc :report-extraction-failed true))))
+
 
 (comment
   ;; Test the prompt generation

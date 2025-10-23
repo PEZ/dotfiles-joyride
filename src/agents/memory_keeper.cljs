@@ -291,18 +291,6 @@
               content)))
         (reverse agent-messages)))
 
-
-
-
-
-
-
-
-
-
-
-
-
 (defn record-memory!+
   "Records a memory using autonomous agent workflow with orchestrator pattern.
 
