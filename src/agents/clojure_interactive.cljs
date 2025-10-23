@@ -12,8 +12,8 @@
    [promesa.core :as p]))
 
 ;; Configuration defaults
-(def default-model "claude-haiku-4.5")
-(def default-max-turns 30)
+(def default-model "claude-sonnet-4.5")
+(def default-max-turns 40)
 (def default-instructions :instructions-selector)
 
 ;; Tool suite - complete Clojure REPL, Backseat Driver, and Joyride toolset
