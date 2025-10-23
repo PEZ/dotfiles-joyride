@@ -113,7 +113,7 @@
    "- Use replace_top_level_form, insert_top_level_form, clojure_create_file, clojure_append_code as appropriate\n"
    "- Read tool documentation if uncertain about usage\n"
    "- Reference the complete REPL state (Section 2) needed after edits\n"
-   "- Note that exact editing details depend on user feedback and cannot be predetermined\n\n"
+   "- That's it, no need to mention what files to edit or anything like that\n\n"
 
    "Wrap your deliverable in markers:\n"
    "---BEGIN INTERACTIVE REPORT---\n"
