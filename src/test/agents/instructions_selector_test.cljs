@@ -46,11 +46,10 @@
 
 (deftest concatenate-instruction-files-with-wrappers-test
   (async done
-         (p/let [;; Get some actual instruction files
-                 user-path (instr-util/user-data-instructions-path)
-                 files (instr-util/list-instruction-files!+ user-path)
-                 ;; Build full file paths - force realization with vec
-                 test-file-paths (vec (take 2 (map #(str user-path "/" %) files)))
+         (p/let [;; Use stable test files instead of real user files
+                 test-dir "/Users/pez/.config/joyride/src/test/testing-files"
+                 test-file-paths [(str test-dir "/clojure-memory.instructions.md")
+                                  (str test-dir "/joyride.instructions.md")]
                  result (instr-util/concatenate-instruction-files!+ test-file-paths)]
            (is (string? result)
                "Should return a string")
@@ -60,15 +59,21 @@
                "Should include closing </attachment> tag")
            (is (> (count result) 0)
                "Should have content")
+           (is (string/includes? result "clojure-memory.instructions.md")
+               "Should include first test file")
+           (is (string/includes? result "joyride.instructions.md")
+               "Should include second test file")
            (done))))
 
 (deftest collect-all-instruction-descriptions-test
   (async done
-         (p/let [descriptions (instr-util/collect-all-instruction-descriptions!+)]
+         (p/let [;; Use stable test files instead of real user files
+                 test-dir "/Users/pez/.config/joyride/src/test/testing-files"
+                 descriptions (instr-util/build-file-descriptions-map!+ test-dir)]
            (is (vector? descriptions)
                "Should return a vector")
-           (is (> (count descriptions) 0)
-               "Should find at least some instruction files")
+           (is (= 3 (count descriptions))
+               "Should find exactly 3 .instructions.md test files")
            (is (every? #(contains? % :file) descriptions)
                "Each description should have :file key")
            (is (every? #(contains? % :filename) descriptions)
@@ -77,6 +82,14 @@
                "Each description should have :description key")
            (is (every? #(contains? % :domain) descriptions)
                "Each description should have :domain key")
+           ;; Verify our specific test files are present
+           (let [filenames (set (map :filename descriptions))]
+             (is (contains? filenames "clojure-memory.instructions.md")
+                 "Should include clojure-memory test file")
+             (is (contains? filenames "git-workflow-memory.instructions.md")
+                 "Should include git-workflow-memory test file")
+             (is (contains? filenames "joyride.instructions.md")
+                 "Should include joyride test file"))
            (done))))
 
 (deftest build-selection-prompt-test
