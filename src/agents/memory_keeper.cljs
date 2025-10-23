@@ -7,48 +7,23 @@
 (ns agents.memory-keeper
   "Autonomous memory recording agent using the LM agent dispatch system"
   (:require
-   ["path" :as path]
    ["vscode" :as vscode]
+   [agents.agent-util :as agent-util]
    [lm-dispatch.agent-orchestrator :as agent-orchestrator]
    [cljs.pprint]
    [clojure.edn :as edn]
    [clojure.string :as string]
-   [joyride.core :as joy]
    [promesa.core :as p]))
 
 (def agent-model "grok-code-fast-1")
 (def default-max-turns 15)
 (def agent-tool-ids ["copilot_readFile"])
 
-(defn user-data-instructions-path
-  ([] (user-data-instructions-path nil))
-  ([relative-path]
-   (let [global-storage-path (-> (joy/extension-context)
-                                 .-globalStorageUri
-                                 .-fsPath)
-         user-path (path/join global-storage-path ".." "..")]
-     (if relative-path
-       (path/join user-path "prompts" relative-path)
-       (path/join user-path "prompts")))))
 
-(defn workspace-instructions-path
-  ([] (workspace-instructions-path nil))
-  ([relative-path]
-   (let [workspace-path (some-> vscode/workspace.workspaceFolders
-                                first
-                                .-uri
-                                .-fsPath)]
-     (if workspace-path
-       (if relative-path
-         (path/join workspace-path ".github" "instructions" relative-path)
-         (path/join workspace-path ".github" "instructions"))
-       (throw (js/Error. "No workspace available"))))))
 
-(comment
-  (vscode/Uri.file (user-data-instructions-path "**"))
-  (user-data-instructions-path)
-  (workspace-instructions-path "**")
-  (workspace-instructions-path))
+
+
+
 
 (defn remember-prompt
   "Creates the agent instructions, utilizing that if we know the domain, the prompt
@@ -212,17 +187,7 @@
       (string/replace "{DESCRIPTIONS}" description-listing)
       (string/replace "{LESSON}" summary)))
 
-(defn read-existing-file!+
-  "Returns a promise of file content string, or nil if file doesn't exist"
-  [file-path]
-  (p/catch
-   (p/let [uri (vscode/Uri.file file-path)
-           content-bytes (vscode/workspace.fs.readFile uri)
-           decoder (js/TextDecoder.)]
-     (.decode decoder content-bytes))
-   (fn [_error]
-     ;; File doesn't exist
-     nil)))
+
 
 (defn write-memory-file!+
   "Write memory file using workspace.fs API.
@@ -326,99 +291,17 @@
               content)))
         (reverse agent-messages)))
 
-(defn extract-description-from-content
-  "Extract description from file content frontmatter.
 
-  Args:
-    content - File content string
 
-  Returns: Description string or nil if not found"
-  [content]
-  (when content
-    (second (re-find #"description:\s*'([^']*)'" content))))
 
-(defn list-instruction-files!+
-  "List all .instructions.md files in the target directory.
 
-  Args:
-    dir-path - Absolute path to directory
 
-  Returns: Promise of vector of filenames"
-  [dir-path]
-  (p/catch
-   (p/let [uri (vscode/Uri.file dir-path)
-           files (vscode/workspace.fs.readDirectory uri)]
-     (->> files
-          (filter #(string/ends-with? (first %) ".instructions.md"))
-          (map first)
-          vec))
-   (fn [_error]
-     [])))
 
-(defn build-file-descriptions-map!+
-  "Build a map of file descriptions from instruction files.
 
-  Args:
-    dir-path - Absolute path to directory
 
-  Returns: Promise of vector of {:file string :description string} maps"
-  [search-dir]
-  (p/let [files (list-instruction-files!+ search-dir)
-          file-data (p/all
-                     (for [filename files]
-                       (p/let [file-path (path/join search-dir filename)
-                               content (read-existing-file!+ file-path)
-                               description (extract-description-from-content content)]
-                         {:file file-path
-                          :description description})))]
-    (vec file-data)))
 
-(defn format-description-listing
-  "Format file descriptions into a text listing for the prompt.
 
-  Args:
-    descriptions - Vector of {:file string :description string} maps
-    search-dir - Base directory path
 
-  Returns: Formatted string or empty string if no descriptions"
-  [descriptions]
-  (when (seq descriptions)
-    (str "```clojure\n"
-         (with-out-str (cljs.pprint/pprint descriptions))
-         "\n```\n")
-    #_(string/join "\n"
-                 (for [{:keys [file description]} descriptions]
-                   (str "- " file ": " description)))))
-
-(defn normalize-scope
-  "Convert scope to keyword, handling both string and keyword input.
-
-  Accepts:
-  - Keywords: :workspace, :global
-  - Strings: \"workspace\", \"ws\", \"global\", \"user\"
-  - nil or anything else defaults to :global
-
-  Returns: :workspace or :global keyword"
-  [scope]
-  (cond
-    (keyword? scope) scope
-    (= scope "workspace") :workspace
-    (= scope "ws") :workspace
-    (= scope "global") :global
-    (= scope "user") :global
-    :else :global))
-
-(defn file-path->uri-string
-  "Convert file path to URI string, handling cases where it's already a URI string.
-
-  Args:
-    file-path - Either an absolute filesystem path or a URI string
-
-  Returns: URI string"
-  [file-path]
-  (if (string/starts-with? file-path "file://")
-    file-path
-    (.toString (vscode/Uri.file file-path))))
 
 (defn record-memory!+
   "Records a memory using autonomous agent workflow with orchestrator pattern.
@@ -456,16 +339,16 @@
          title "Keeping a memory"}
     :as conversation-data}]
   (p/let [;; Step 1: Normalize scope to handle both strings and keywords
-          normalized-scope (normalize-scope scope)
+          normalized-scope (agent-util/normalize-scope scope)
           ;; Step 2: Determine search directory from normalized scope
           search-dir (case normalized-scope
-                       :global (user-data-instructions-path)
-                       :workspace (workspace-instructions-path)
-                       (user-data-instructions-path))
+                       :global (agent-util/user-data-instructions-path)
+                       :workspace (agent-util/workspace-instructions-path)
+                       (agent-util/user-data-instructions-path))
 
           ;; Step 1b: Build description listing for available files
-          file-descriptions (build-file-descriptions-map!+ search-dir)
-          description-listing (format-description-listing file-descriptions)
+          file-descriptions (agent-util/build-file-descriptions-map!+ search-dir)
+          description-listing (agent-util/format-description-listing file-descriptions)
 
           ;; Steps 2-3: Build complete goal prompt with description listing
           goal (build-goal-prompt {:ma/summary summary
@@ -491,7 +374,7 @@
           ;; Step 7: Parse agent's decision (handles wrapped or direct EDN)
           {:keys [file-path] :as parsed} (when message-with-edn
                                            (extract-edn-from-response message-with-edn))
-          file-uri-string (file-path->uri-string file-path)]
+          file-uri-string (agent-util/file-path->uri-string file-path)]
 
     (if parsed
       ;; Step 8:
@@ -502,7 +385,7 @@
          :domain (:domaain parsed)
          :file-uri file-uri-string}
         ;; Check if file exists first (handles agent misidentifying new vs existing)
-        (p/let [existing-content (read-existing-file!+ file-path)]
+        (p/let [existing-content (agent-util/read-existing-file!+ file-path)]
           (if existing-content
             ;; File exists - always append (even if agent said :new-file true)
             ;; Don't trust agent's applyTo when appending to existing unread file
@@ -541,19 +424,19 @@
 
 (comment
   (p/let [;; Step 1: Normalize scope to handle both strings and keywords
-          normalized-scope (normalize-scope "global")
+          normalized-scope (agent-util/normalize-scope "global")
           ;; Step 2: Determine search directory from normalized scope
           search-dir (case normalized-scope
-                       :global (user-data-instructions-path)
-                       :workspace (workspace-instructions-path)
-                       (user-data-instructions-path))
+                       :global (agent-util/user-data-instructions-path)
+                       :workspace (agent-util/workspace-instructions-path)
+                       (agent-util/user-data-instructions-path))
 
           ;; Step 1b: Build description listing for available files
           _ (def normalized-scope normalized-scope)
           _ (def search-dir search-dir)
-          file-descriptions (build-file-descriptions-map!+ search-dir)
+          file-descriptions (agent-util/build-file-descriptions-map!+ search-dir)
           _ (def file-descriptions file-descriptions)
-          description-listing (format-description-listing file-descriptions)
+          description-listing (agent-util/format-description-listing file-descriptions)
 
           ;; Steps 2-3: Build complete goal prompt with description listing
           goal (build-goal-prompt {:ma/summary "Use REPL for debugging"
@@ -600,8 +483,8 @@
 
   ;; Example 5: With specific instruction file vector
   ;; Provide explicit paths to instruction files
-  (p/let [instruction-paths [(user-data-instructions-path "clojure.instructions.md")
-                             (user-data-instructions-path "clojure-memory.instructions.md")]
+  (p/let [instruction-paths [(agent-util/user-data-instructions-path "clojure.instructions.md")
+                             (agent-util/user-data-instructions-path "clojure-memory.instructions.md")]
           result (record-memory!+
                   {:summary "Use inline def for REPL debugging instead of println"
                    :domain "foobartesting"
@@ -613,7 +496,7 @@
 
   ;; Example 6: With specific context files
   ;; Context files are always appended after instructions
-  (p/let [context-paths [(user-data-instructions-path "memory.instructions.md")]
+  (p/let [context-paths [(agent-util/user-data-instructions-path "memory.instructions.md")]
           result (record-memory!+
                   {:summary "Use inline def for REPL debugging instead of println"
                    :domain "foobartesting"

@@ -81,26 +81,26 @@
 
 (deftest enrich-editor-context-full-test
   (async done
-    (p/let [result (instr-util/enrich-editor-context!+
-                    {:editor-context/file-path "/Users/pez/.config/joyride/src/agents/memory_keeper.cljs"
-                     :editor-context/selection-start-line 10
-                     :editor-context/selection-end-line 12})]
-      (is (some? result)
-          "Should return enriched map")
-      (is (= "/Users/pez/.config/joyride/src/agents/memory_keeper.cljs"
-             (:editor-context/file-path result))
-          "Should preserve file path")
-      (is (= 10 (:editor-context/selection-start-line result))
-          "Should preserve start line")
-      (is (= 12 (:editor-context/selection-end-line result))
-          "Should preserve end line")
-      (is (some? (:editor-context/full-file-content result))
-          "Should have full file content")
-      (is (some? (:editor-context/selected-text result))
-          "Should have selected text")
-      (is (string/includes? (:editor-context/selected-text result) "vscode")
-          "Selection should contain expected content from lines 10-12")
-      (done))))
+         (p/let [result (instr-util/enrich-editor-context!+
+                         {:editor-context/file-path "/Users/pez/.config/joyride/src/test/testing-files/sample_code.cljs"
+                          :editor-context/selection-start-line 8
+                          :editor-context/selection-end-line 10})]
+           (is (some? result)
+               "Should return enriched map")
+           (is (= "/Users/pez/.config/joyride/src/test/testing-files/sample_code.cljs"
+                  (:editor-context/file-path result))
+               "Should preserve file path")
+           (is (= 8 (:editor-context/selection-start-line result))
+               "Should preserve start line")
+           (is (= 10 (:editor-context/selection-end-line result))
+               "Should preserve end line")
+           (is (some? (:editor-context/full-file-content result))
+               "Should have full file content")
+           (is (some? (:editor-context/selected-text result))
+               "Should have selected text")
+           (is (string/includes? (:editor-context/selected-text result) "vscode")
+               "Selection should contain expected content from lines 8-10")
+           (done))))
 
 (deftest enrich-editor-context-nil-path-test
   (async done
@@ -111,45 +111,45 @@
 
 (deftest enrich-editor-context-no-selection-test
   (async done
-    (p/let [result (instr-util/enrich-editor-context!+
-                    {:editor-context/file-path "/Users/pez/.config/joyride/src/agents/memory_keeper.cljs"})]
-      (is (some? result)
-          "Should return map even without selection")
-      (is (some? (:editor-context/full-file-content result))
-          "Should have full file content")
-      (is (nil? (:editor-context/selected-text result))
-          "Should have nil selection when no range provided")
-      (done))))
+         (p/let [result (instr-util/enrich-editor-context!+
+                         {:editor-context/file-path "/Users/pez/.config/joyride/src/test/testing-files/sample_code.cljs"})]
+           (is (some? result)
+               "Should return map even without selection")
+           (is (some? (:editor-context/full-file-content result))
+               "Should have full file content")
+           (is (nil? (:editor-context/selected-text result))
+               "Should have nil selection when no range provided")
+           (done))))
 
 (deftest enrich-editor-context-partial-range-test
   (async done
-    (p/let [result (instr-util/enrich-editor-context!+
-                    {:editor-context/file-path "/Users/pez/.config/joyride/src/agents/memory_keeper.cljs"
-                     :editor-context/selection-start-line 10})]
-      (is (some? result)
-          "Should return map with partial range")
-      (is (nil? (:editor-context/selected-text result))
-          "Should have nil selection when range incomplete")
-      (done))))
+         (p/let [result (instr-util/enrich-editor-context!+
+                         {:editor-context/file-path "/Users/pez/.config/joyride/src/test/testing-files/sample_code.cljs"
+                          :editor-context/selection-start-line 10})]
+           (is (some? result)
+               "Should return map with partial range")
+           (is (nil? (:editor-context/selected-text result))
+               "Should have nil selection when range incomplete")
+           (done))))
 
 (deftest assemble-instructions-filters-editor-context-file-test
   (async done
-    (p/let [editor-file "/Users/pez/.config/joyride/src/lm_dispatch/util.cljs"
-            context-files ["/Users/pez/.config/joyride/src/lm_dispatch/state.cljs"
-                           editor-file  ; This should be filtered out
-                           "/Users/pez/.config/joyride/src/lm_dispatch/monitor.cljs"]
-            result (instr-util/assemble-instructions!+
-                    "Test instructions"
-                    {:editor-context/file-path editor-file}
-                    context-files)
-            ;; Count how many times util appears as an attachment
-            util-attachment-count (count (re-seq #"<attachment filePath=\"[^\"]*util\.cljs\">" result))
-            state-in-result (> (.indexOf result "state.cljs") -1)
-            monitor-in-result (> (.indexOf result "monitor.cljs") -1)]
-      (is state-in-result
-          "Context file state.cljs should appear in result")
-      (is monitor-in-result
-          "Context file monitor.cljs should appear in result")
-      (is (= 1 util-attachment-count)
-          "Editor context file should appear exactly once (filtered from context-file-paths)")
-      (done))))
+         (p/let [editor-file "/Users/pez/.config/joyride/src/test/testing-files/sample_code.cljs"
+                 context-files ["/Users/pez/.config/joyride/src/test/testing-files/another_sample.cljs"
+                                editor-file  ; This should be filtered out
+                                "/Users/pez/.config/joyride/src/test/testing-files/sample_instructions.md"]
+                 result (instr-util/assemble-instructions!+
+                         "Test instructions"
+                         {:editor-context/file-path editor-file}
+                         context-files)
+                 ;; Count how many times sample_code appears as an attachment
+                 sample-attachment-count (count (re-seq #"<attachment filePath=\"[^\"]*sample_code\.cljs\">" result))
+                 another-in-result (> (.indexOf result "another_sample.cljs") -1)
+                 instructions-in-result (> (.indexOf result "sample_instructions.md") -1)]
+           (is another-in-result
+               "Context file another_sample.cljs should appear in result")
+           (is instructions-in-result
+               "Context file sample_instructions.md should appear in result")
+           (is (= 1 sample-attachment-count)
+               "Editor context file should appear exactly once (filtered from context-file-paths)")
+           (done))))
