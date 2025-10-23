@@ -1,0 +1,20 @@
+// Sample FooBar code file for testing
+
+package test.sample.code
+
+import frobulator  // Line 5 - selection start
+import bazinator   // Line 6
+import widgetizer  // Line 7 - selecttion end
+
+// Lines 7-9 contain the import block with "frobulator" on line 7
+// This is used by the enrich-editor-context-full-test
+
+function sampleFunction(x, y) {
+  return x + y
+}
+
+function anotherFunction(data) {
+  if (data) {
+    return data.toUpperCase()
+  }
+}

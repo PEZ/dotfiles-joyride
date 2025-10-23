@@ -440,8 +440,8 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
           result (agentic-conversation!+
                   {:model-id "grok-code-fast-1"
                    :goal "Create function"
-                   :instructions [(instr-util/user-data-instructions-path "clojure.instructions.md")]
-                   :context-file-paths [(instr-util/user-data-instructions-path "clojure-memory.instructions.md")]
+                   :instructions ["src/lm_dispatch/rcf-dummy-files/dummy.instructions.md"]
+                   :context-file-paths ["src/lm_dispatch/rcf-dummy-files/dummy-memory.instructions.md"]
                    :max-turns 10
                    :tool-ids ["copilot_readFile"]
                    :conv-id conv-id

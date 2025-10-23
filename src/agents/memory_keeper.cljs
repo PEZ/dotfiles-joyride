@@ -483,8 +483,8 @@
 
   ;; Example 5: With specific instruction file vector
   ;; Provide explicit paths to instruction files
-  (p/let [instruction-paths [(agent-util/user-data-instructions-path "clojure.instructions.md")
-                             (agent-util/user-data-instructions-path "clojure-memory.instructions.md")]
+  (p/let [instruction-paths ["src/lm_dispatch/rcf-dummy-files/dummy.instructions.md"
+                             "src/lm_dispatch/rcf-dummy-files/dummy-memory.instructions.md"]
           result (record-memory!+
                   {:summary "Use inline def for REPL debugging instead of println"
                    :domain "foobartesting"
@@ -496,7 +496,7 @@
 
   ;; Example 6: With specific context files
   ;; Context files are always appended after instructions
-  (p/let [context-paths [(agent-util/user-data-instructions-path "memory.instructions.md")]
+  (p/let [context-paths ["src/lm_dispatch/rcf-dummy-files/sample_code.foobar"]
           result (record-memory!+
                   {:summary "Use inline def for REPL debugging instead of println"
                    :domain "foobartesting"
@@ -525,4 +525,3 @@
      :has-error? (some? (:error result))})
 
   :rcf)
-

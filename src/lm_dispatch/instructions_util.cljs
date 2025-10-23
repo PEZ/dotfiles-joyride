@@ -70,6 +70,24 @@
     (when-not (= domain-part "memory")
       domain-part)))
 
+(defn- resolve-file-uri
+  "Resolve file path to VS Code URI, handling both absolute and relative paths.
+
+  Args:
+    file-path - Absolute or relative file path
+
+  Returns: vscode/Uri object
+  Throws: Error if relative path provided without workspace"
+  [file-path]
+  (if (path/isAbsolute file-path)
+    (vscode/Uri.file file-path)
+    (let [workspace-root (some-> vscode/workspace.workspaceFolders
+                                 first
+                                 .-uri)]
+      (if workspace-root
+        (vscode/Uri.joinPath workspace-root file-path)
+        (throw (js/Error. (str "Cannot resolve relative path without workspace: " file-path)))))))
+
 (defn list-instruction-files!+
   "List all .instructions.md files in the target directory.
 
@@ -79,7 +97,7 @@
   Returns: Promise of vector of filenames"
   [dir-path]
   (p/catch
-   (p/let [uri (vscode/Uri.file dir-path)
+   (p/let [uri (resolve-file-uri dir-path)
            files (vscode/workspace.fs.readDirectory uri)]
      (->> files
           (filter #(string/ends-with? (first %) ".instructions.md"))
@@ -92,12 +110,12 @@
   "Read file content from disk.
 
   Args:
-    file-path - Absolute path to file
+    file-path - Absolute path
 
   Returns: Promise of file content string, or nil if file doesn't exist"
   [file-path]
   (p/catch
-   (p/let [uri (vscode/Uri.file file-path)
+   (p/let [uri (resolve-file-uri file-path)
            content-bytes (vscode/workspace.fs.readFile uri)
            decoder (js/TextDecoder. "utf-8")]
      (.decode decoder content-bytes))
@@ -366,19 +384,19 @@
     result)
 
   ;; Test assembling instructions - vector input
-  (p/let [files [(user-data-instructions-path "clojure.instructions.md")]
+  (p/let [files ["src/lm_dispatch/rcf-dummy-files/dummy.instructions.md"]
           result (assemble-instructions!+ files nil nil)]
     result)
 
   ;; Test assembling with context files
   (p/let [instructions "Custom instructions"
-          context-files [(user-data-instructions-path "memory.instructions.md")]
+          context-files ["src/lm_dispatch/rcf-dummy-files/sample_code.foobar"]
           result (assemble-instructions!+ instructions nil context-files)]
     result)
 
   ;; Test assembling vector + context
-  (p/let [instructions [(user-data-instructions-path "clojure.instructions.md")]
-          context-files [(user-data-instructions-path "clojure-memory.instructions.md")]
+  (p/let [instructions ["src/lm_dispatch/rcf-dummy-files/dummy.instructions.md"]
+          context-files ["src/lm_dispatch/rcf-dummy-files/dummy-memory.instructions.md"]
           result (assemble-instructions!+ instructions nil context-files)]
     result)
 
@@ -392,13 +410,13 @@
     result)
 
   ;; Test complete assembly with all pieces - see the full output format
-  (p/let [instructions [(user-data-instructions-path "clojure.instructions.md")]
-          context-files [(user-data-instructions-path "memory.instructions.md")]
-          editor-ctx {:editor-context/file-path "/Users/pez/.config/joyride/src/lm_dispatch/instructions_util.cljs"
-                      :editor-context/selection-start-line 315
-                      :editor-context/selection-end-line 358
-                      :editor-context/selected-text "(defn assemble-instructions!+\n  \"Assemble instructions from string or vector...\"\n  [instructions editor-context context-file-paths]\n  ;; implementation\n  )"
-                      :editor-context/full-file-content "(ns lm-dispatch.instructions-util)\n\n;; Full file content here..."}
+  (p/let [instructions ["src/lm_dispatch/rcf-dummy-files/dummy.instructions.md"]
+          context-files ["src/lm_dispatch/rcf-dummy-files/sample_code.foobar"]
+          editor-ctx {:editor-context/file-path "/Users/pez/.config/joyride/src/lm_dispatch/rcf-dummy-files/sample_code.foobar"
+                      :editor-context/selection-start-line 5
+                      :editor-context/selection-end-line 7
+                      :editor-context/selected-text "import frobulator  // Line 5 - selection start\nimport bazinator   // Line 6\nimport widgetizer  // Line 7 - selecttion end"
+                      :editor-context/full-file-content "// Sample FooBar code file for testing... Full file content here..."}
           result (assemble-instructions!+ instructions editor-ctx context-files)]
     (def assembled-output result)
     (println "\n=== ASSEMBLED OUTPUT ===\n")

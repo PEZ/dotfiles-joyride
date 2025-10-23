@@ -134,8 +134,8 @@
   ;; Example 3: Using vector of instruction file paths
   (p/let [result (autonomous-conversation!+
                   "Create a new feature"
-                  {:instructions [(instr-util/user-data-instructions-path "clojure.instructions.md")
-                                  (instr-util/user-data-instructions-path "clojure-memory.instructions.md")]
+                  {:instructions ["src/lm_dispatch/rcf-dummy-files/dummy.instructions.md"
+                                  "src/lm_dispatch/rcf-dummy-files/dummy-memory.instructions.md"]
                    :tool-ids ["copilot_readFile" "copilot_writeFile"]
                    :max-turns 10})]
     result)
@@ -144,7 +144,7 @@
   (p/let [result (autonomous-conversation!+
                   "Update the memory system"
                   {:instructions "Go, go, go!"
-                   :context-file-paths [(instr-util/user-data-instructions-path "memory.instructions.md")]
+                   :context-file-paths ["src/lm_dispatch/rcf-dummy-files/sample_code.foobar"]
                    :tool-ids ["copilot_readFile" "copilot_writeFile"]
                    :max-turns 15})]
     result)
