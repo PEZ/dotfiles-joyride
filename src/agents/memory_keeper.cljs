@@ -19,12 +19,6 @@
 (def default-max-turns 15)
 (def agent-tool-ids ["copilot_readFile"])
 
-
-
-
-
-
-
 (defn remember-prompt
   "Returns agent instructions string for memory recording, optionally using
    known `:ma/domain` to skip domain discovery."
@@ -222,30 +216,22 @@
          "\n\n## " cleaned-heading
          "\n\n" trimmed-content)))
 
-(defn extract-edn-from-response
-  "Returns parsed EDN map from agent `response` string (with BEGIN/END markers
-   or direct EDN), or `nil` if parsing fails or result is not a map."
-  [response]
-  (let [marker-match (re-find #"(?s)---BEGIN RESULTS---\s*(.*?)\s*---END RESULTS---" response)
-        edn-string (if marker-match
-                     (string/trim (second marker-match))
-                     (string/trim response))]
-    (try
-      (let [parsed (edn/read-string edn-string)]
-        (when (map? parsed)
-          parsed))
-      (catch js/Error _
-        nil))))
-
-(defn find-edn-in-messages
-  "Returns message content string from first message (searching backwards in
-   `agent-messages`) containing END marker, or `nil` if not found."
-  [agent-messages]
-  (some (fn [msg]
-          (let [content (:content msg)]
-            (when (and content (string/includes? content "---END RESULTS---"))
-              content)))
-        (reverse agent-messages)))
+(defn extract-edn-from-agent-result
+  "Returns parsed EDN map from `agent-result` using agent-util extraction
+   (between ---BEGIN RESULTS---/---END RESULTS--- markers), or `nil` if
+   extraction fails or result is not a map."
+  [agent-result]
+  (let [extraction (agent-util/extract-marked-content
+                    agent-result
+                    "---BEGIN RESULTS---"
+                    "---END RESULTS---")]
+    (when-not (:extraction-failed extraction)
+      (try
+        (let [parsed (edn/read-string (:content extraction))]
+          (when (map? parsed)
+            parsed))
+        (catch js/Error _
+          nil)))))
 
 (defn record-memory!+
   "Records a memory using autonomous agent workflow with orchestrator pattern.
@@ -282,25 +268,17 @@
          max-turns default-max-turns
          title "Keeping a memory"}
     :as conversation-data}]
-  (p/let [;; Step 1: Normalize scope to handle both strings and keywords
-          normalized-scope (agent-util/normalize-scope scope)
-          ;; Step 2: Determine search directory from normalized scope
+  (p/let [normalized-scope (agent-util/normalize-scope scope)
           search-dir (case normalized-scope
                        :global (agent-util/user-data-instructions-path)
                        :workspace (agent-util/workspace-instructions-path)
                        (agent-util/user-data-instructions-path))
-
-          ;; Step 1b: Build description listing for available files
           file-descriptions (agent-util/build-file-descriptions-map!+ search-dir)
           description-listing (agent-util/format-description-listing file-descriptions)
-
-          ;; Steps 2-3: Build complete goal prompt with description listing
           goal (build-goal-prompt {:ma/summary summary
                                    :ma/domain domain
                                    :ma/search-dir search-dir
                                    :ma/description-listing description-listing})
-
-          ;; Step 5: Call agent for analysis and content creation
           agent-result (agent-orchestrator/autonomous-conversation!+
                         goal
                         (merge conversation-data
@@ -308,16 +286,7 @@
                                 :tool-ids tool-ids
                                 :max-turns max-turns
                                 :title title}))
-
-          ;; Step 6: Search agent messages backwards for EDN structure
-          ;; Agent may include EDN in any message, not just the last one
-          all-messages (get-in agent-result [:history] [])
-          agent-messages (filter #(= :assistant (:role %)) all-messages)
-          message-with-edn (find-edn-in-messages agent-messages)
-
-          ;; Step 7: Parse agent's decision (handles wrapped or direct EDN)
-          {:keys [file-path] :as parsed} (when message-with-edn
-                                           (extract-edn-from-response message-with-edn))
+          {:keys [file-path] :as parsed} (extract-edn-from-agent-result agent-result)
           file-uri-string (agent-util/file-path->uri-string file-path)]
 
     (if parsed
