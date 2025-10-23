@@ -20,10 +20,6 @@
 ;(def selector-model-id "grok-code-fast-1")
 (def selector-model-id "claude-haiku-4.5")
 (def selector-max-turns 10)
-(def selector-tool-ids ["copilot_findFiles"
-                        "copilot_readFile"
-                        "copilot_listDirectory"
-                        "copilot_searchCodebase"])
 
 (defn build-selection-prompt
   "Build prompt for instructions selector agent.
@@ -35,7 +31,7 @@
     tool-ids - Optional vector of tool IDs available for the task
 
   Returns: Prompt string"
-  [{:keys [goal file-descriptions context-content tool-ids]}]
+  [{:keys [goal file-descriptions context-content]}]
   (str
    "# Instruction File Selection Task\n\n"
    "You are an expert at analyzing task requirements and selecting the most relevant instruction files.\n\n"
@@ -43,12 +39,6 @@
    "## Your Goal\n\n"
    "Select and prioritize instruction files that will help accomplish this task:\n\n"
    "<TASK-GOAL>\n" goal "\n</TASK-GOAL>\n\n"
-
-   (when (seq tool-ids)
-     (str "## Available Tools\n\n"
-          "The following tools will be available for this task:\n"
-          "- " (string/join "\n- " tool-ids) "\n\n"
-          "Consider whether the instructions you select will be relevant given these capabilities.\n\n"))
 
    (when context-content
      (str "## Additional Context\n\n"
@@ -62,8 +52,9 @@
    "```\n\n"
 
    "## Your Task\n\n"
+   "0. Do not use tools. You have no tools."
    "1. **Use the descriptions as your PRIMARY selection criteria** - They clearly state what each file covers\n"
-   "2. **Use tools to explore the workspace/project** to understand context:\n"
+   "2. **Use the context you are provided:\n"
    "   - What kind of project is this? (language, framework, domain)\n"
    "   - What files and structures are present?\n"
    "   - Are there specific patterns or conventions in use?\n"
@@ -75,10 +66,18 @@
    "5. **Return ONLY absolute file paths**, one per line, no other text\n\n"
 
    "## Selection Guidelines\n\n"
-   "- Prefer domain-specific over general instructions when relevant\n"
+   "- Always include files with `copilot.instructions.md` in their name\n"
+   "- Consider the `applyTo` to be an important clue.\n"
    "- Include testing/quality instructions if the task involves code changes\n"
+   "- **Domain file pairing** - Domain instructions and their memories are ALWAYS paired:\n"
+   "  - Domain files: `<domain>.instructions.md` (e.g., `clojure.instructions.md`)\n"
+   "  - Domain memory files: `<domain>-memory.instructions.md` (e.g., `clojure-memory.instructions.md`)\n"
+   "  - If you select `<domain>.instructions.md`, ALSO select `<domain>-memory.instructions.md`\n"
+   "  - If you select `<domain>-memory.instructions.md`, ALSO select `<domain>.instructions.md`\n"
+   "  - They contain complementary information and should always be used together\n"
    "- An empty selection is valid if no instructions match\n"
-   "- DO NOT read instruction files during selection (rely on descriptions + tools)\n\n"
+   "- All relevant files are listed in **Available Instruction Files**. Rely on descriptions + applyTo from that listing), instead of trying to list files.\n\n"
+   "- DO NOT read instruction files during selection (rely on descriptions + applyTo from **Available Instruction Files**)\n\n"
    "## Output Format\n\n"
    "Your deliverable is the absolute paths of the selected files, one per line, in prioroty order - most important LAST.\n\n"
    "The list should be wrapped in `---BEGIN RESULTS---`/`---END RESULTS---` markers:\n\n"
@@ -124,13 +123,12 @@
   [{:keys [goal context-content model-id max-turns tool-ids caller]
     :or {model-id selector-model-id
          max-turns selector-max-turns
-         tool-ids selector-tool-ids}
+         tool-ids []}
     :as conversation-data}]
   (p/let [file-descriptions (instr-util/collect-all-instruction-descriptions!+)
           selection-goal (build-selection-prompt {:goal goal
                                                   :file-descriptions file-descriptions
-                                                  :context-content context-content
-                                                  :tool-ids tool-ids})
+                                                  :context-content context-content})
           ;; Register conversation manually since we're using core directly
           conv-id (monitor/start-monitoring-conversation!+
                    {:agent.conversation/goal selection-goal
@@ -162,7 +160,10 @@
   (p/let [selected (select-instructions!+
                     {:goal "Add a new Clojure function using TDD, minding the rules of this project"
                      :context-content nil
-                     :tool-ids ["copilot_readFile" "copilot_writeFile" "copilot_replaceInFile"]
+                     :caller-tool-ids ["clojure_evaluate_code" "clojure_symbol_info" "clojuredocs_info"
+                                       "clojure_repl_output_log" "clojure_balance_brackets" "replace_top_level_form"
+                                       "insert_top_level_form" "clojure_create_file" "clojure_append_code"
+                                       "joyride_evaluate_code" "copilot_findFiles" "copilot_readFile"]
                      :caller "rcf-test"})]
     (def test-selection selected)
     selected)

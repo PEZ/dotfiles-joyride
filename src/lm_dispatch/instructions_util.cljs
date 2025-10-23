@@ -103,6 +103,13 @@
   (when content
     (second (re-find #"description:\s*'([^']*)'" content))))
 
+(defn extract-apply-to-from-content
+  "Returns applyTo string from `content` frontmatter,
+   or `nil` if not found."
+  [content]
+  (when content
+    (second (re-find #"applyTo:\s*'([^']*)'" content))))
+
 (defn format-instruction-file
   "Returns `content` wrapped in XML-ish <attachment> markup with `file-path`."
   [file-path content]
@@ -138,8 +145,8 @@
        :editor-context/full-file-content full-content})))
 
 (defn build-file-descriptions-map!+
-  "Returns promise of vector of maps with `:file`, `:description`, and `:domain`
-   keys for all instruction files in `search-dir`."
+  "Returns promise of vector of maps with `:file`, `:filename`, `:description`,
+   `:apply-to`, and `:domain` keys for all instruction files in `search-dir`."
   [search-dir]
   (p/let [files (list-instruction-files!+ search-dir)
           file-data (p/all
@@ -147,10 +154,12 @@
                        (p/let [file-path (path/join search-dir filename)
                                content (read-file-content!+ file-path)
                                description (extract-description-from-content content)
+                               apply-to (extract-apply-to-from-content content)
                                domain (extract-domain-from-filename filename)]
                          {:file file-path
                           :filename filename
                           :description description
+                          :apply-to apply-to
                           :domain domain})))]
     (vec file-data)))
 
