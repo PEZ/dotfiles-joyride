@@ -16,16 +16,16 @@
 
 (deftest extract-domain-from-filename-test
   (testing "Extracts domain from hyphenated filenames"
-    (is (= "clojure" (instr-util/extract-domain-from-filename "clojure-memory.instructions.md"))
-        "Should extract 'clojure' from clojure-memory")
-    (is (= "shadow-cljs" (instr-util/extract-domain-from-filename "shadow-cljs-memory.instructions.md"))
-        "Should extract 'shadow-cljs' from shadow-cljs-memory")
-    (is (= "pez" (instr-util/extract-domain-from-filename "pez-preferences.instructions.md"))
-        "Should extract 'pez' from pez-preferences"))
+    (is (= "foobartesting" (instr-util/extract-domain-from-filename "foobartesting-memory.instructions.md"))
+        "Should extract 'foobartesting' from foobartesting-memory")
+    (is (= "sample-domain" (instr-util/extract-domain-from-filename "sample-domain-memory.instructions.md"))
+        "Should extract 'sample-domain' from sample-domain-memory")
+    (is (= "test-workflow" (instr-util/extract-domain-from-filename "test-workflow-preferences.instructions.md"))
+        "Should extract 'test-workflow' from test-workflow-preferences"))
 
   (testing "Extracts domain from simple filenames"
-    (is (= "joyride" (instr-util/extract-domain-from-filename "joyride.instructions.md"))
-        "Should extract 'joyride' from simple filename"))
+    (is (= "test-domain" (instr-util/extract-domain-from-filename "test-domain-alpha.instructions.md"))
+        "Should extract 'test-domain' from hyphenated filename"))
 
   (testing "Filters reserved 'memory' domain"
     (is (nil? (instr-util/extract-domain-from-filename "memory.instructions.md"))
@@ -48,8 +48,8 @@
   (async done
          (p/let [;; Use stable test files instead of real user files
                  test-dir "/Users/pez/.config/joyride/src/test/testing-files"
-                 test-file-paths [(str test-dir "/clojure-memory.instructions.md")
-                                  (str test-dir "/joyride.instructions.md")]
+                 test-file-paths [(str test-dir "/foobartesting.instructions.md")
+                                  (str test-dir "/test-domain-alpha.instructions.md")]
                  result (instr-util/concatenate-instruction-files!+ test-file-paths)]
            (is (string? result)
                "Should return a string")
@@ -59,9 +59,9 @@
                "Should include closing </attachment> tag")
            (is (> (count result) 0)
                "Should have content")
-           (is (string/includes? result "clojure-memory.instructions.md")
+           (is (string/includes? result "foobartesting.instructions.md")
                "Should include first test file")
-           (is (string/includes? result "joyride.instructions.md")
+           (is (string/includes? result "test-domain-alpha.instructions.md")
                "Should include second test file")
            (done))))
 
@@ -84,12 +84,12 @@
                "Each description should have :domain key")
            ;; Verify our specific test files are present
            (let [filenames (set (map :filename descriptions))]
-             (is (contains? filenames "clojure-memory.instructions.md")
-                 "Should include clojure-memory test file")
-             (is (contains? filenames "git-workflow-memory.instructions.md")
-                 "Should include git-workflow-memory test file")
-             (is (contains? filenames "joyride.instructions.md")
-                 "Should include joyride test file"))
+             (is (contains? filenames "foobartesting.instructions.md")
+                 "Should include foobartesting test file")
+             (is (contains? filenames "sample-domain-memory.instructions.md")
+                 "Should include sample-domain-memory test file")
+             (is (contains? filenames "test-domain-alpha.instructions.md")
+                 "Should include test-domain-alpha test file"))
            (done))))
 
 (deftest build-selection-prompt-test
