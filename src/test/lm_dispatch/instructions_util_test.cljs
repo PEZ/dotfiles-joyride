@@ -82,12 +82,12 @@
 (deftest enrich-editor-context-full-test
   (async done
          (p/let [result (instr-util/enrich-editor-context!+
-                         {:editor-context/file-path "/Users/pez/.config/joyride/src/test/testing-files/sample_code.cljs"
+                         {:editor-context/file-path "/Users/pez/.config/joyride/src/test/testing-files/sample_code.foobar"
                           :editor-context/selection-start-line 8
                           :editor-context/selection-end-line 10})]
            (is (some? result)
                "Should return enriched map")
-           (is (= "/Users/pez/.config/joyride/src/test/testing-files/sample_code.cljs"
+           (is (= "/Users/pez/.config/joyride/src/test/testing-files/sample_code.foobar"
                   (:editor-context/file-path result))
                "Should preserve file path")
            (is (= 8 (:editor-context/selection-start-line result))
@@ -98,7 +98,7 @@
                "Should have full file content")
            (is (some? (:editor-context/selected-text result))
                "Should have selected text")
-           (is (string/includes? (:editor-context/selected-text result) "vscode")
+           (is (string/includes? (:editor-context/selected-text result) "frobulator")
                "Selection should contain expected content from lines 8-10")
            (done))))
 
@@ -112,7 +112,7 @@
 (deftest enrich-editor-context-no-selection-test
   (async done
          (p/let [result (instr-util/enrich-editor-context!+
-                         {:editor-context/file-path "/Users/pez/.config/joyride/src/test/testing-files/sample_code.cljs"})]
+                         {:editor-context/file-path "/Users/pez/.config/joyride/src/test/testing-files/sample_code.foobar"})]
            (is (some? result)
                "Should return map even without selection")
            (is (some? (:editor-context/full-file-content result))
@@ -124,7 +124,7 @@
 (deftest enrich-editor-context-partial-range-test
   (async done
          (p/let [result (instr-util/enrich-editor-context!+
-                         {:editor-context/file-path "/Users/pez/.config/joyride/src/test/testing-files/sample_code.cljs"
+                         {:editor-context/file-path "/Users/pez/.config/joyride/src/test/testing-files/sample_code.foobar"
                           :editor-context/selection-start-line 10})]
            (is (some? result)
                "Should return map with partial range")
@@ -134,8 +134,8 @@
 
 (deftest assemble-instructions-filters-editor-context-file-test
   (async done
-         (p/let [editor-file "/Users/pez/.config/joyride/src/test/testing-files/sample_code.cljs"
-                 context-files ["/Users/pez/.config/joyride/src/test/testing-files/another_sample.cljs"
+         (p/let [editor-file "/Users/pez/.config/joyride/src/test/testing-files/sample_code.foobar"
+                 context-files ["/Users/pez/.config/joyride/src/test/testing-files/another_sample.foobar"
                                 editor-file  ; This should be filtered out
                                 "/Users/pez/.config/joyride/src/test/testing-files/sample_instructions.md"]
                  result (instr-util/assemble-instructions!+
@@ -143,11 +143,11 @@
                          {:editor-context/file-path editor-file}
                          context-files)
                  ;; Count how many times sample_code appears as an attachment
-                 sample-attachment-count (count (re-seq #"<attachment filePath=\"[^\"]*sample_code\.cljs\">" result))
-                 another-in-result (> (.indexOf result "another_sample.cljs") -1)
+                 sample-attachment-count (count (re-seq #"<attachment filePath=\"[^\"]*sample_code\.foobar\">" result))
+                 another-in-result (> (.indexOf result "another_sample.foobar") -1)
                  instructions-in-result (> (.indexOf result "sample_instructions.md") -1)]
            (is another-in-result
-               "Context file another_sample.cljs should appear in result")
+               "Context file another_sample.foobar should appear in result")
            (is instructions-in-result
                "Context file sample_instructions.md should appear in result")
            (is (= 1 sample-attachment-count)

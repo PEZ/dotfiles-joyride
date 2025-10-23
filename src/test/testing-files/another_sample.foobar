@@ -1,0 +1,10 @@
+// Another sample file for context file testing
+// Used to test filtering of duplicate files in context
+
+package test.sample.another
+
+import stringutils
+
+function utilityFunction(s) {
+  return s.trim()
+}

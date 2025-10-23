@@ -1,0 +1,22 @@
+// Sample FooBar code file for testing
+// This file is used by instructions_util_test.cljs
+// DO NOT MODIFY - tests depend on specific line numbers and content
+
+package test.sample.code
+
+import frobulator  // Line 7 - contains "frobulator"
+import bazinator   // Line 8
+import widgetizer  // Line 9 - part of import block (lines 7-9)
+
+// Lines 7-9 contain the import block with "frobulator" on line 7
+// This is used by the enrich-editor-context-full-test
+
+function sampleFunction(x, y) {
+  return x + y
+}
+
+function anotherFunction(data) {
+  if (data) {
+    return data.toUpperCase()
+  }
+}
