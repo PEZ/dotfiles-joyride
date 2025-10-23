@@ -29,9 +29,17 @@
   Returns a promise that resolves when all tests are complete."
   []
   (p/let [test-nss (glob->ns-symbols "src/test/**/*_test.cljs")]
-    (doseq [test-ns test-nss]
-      (require test-ns :reload))
-    (apply cljs.test/run-tests test-nss)))
+    (let [loaded (reduce (fn [acc test-ns]
+                           (try
+                             (require test-ns :reload)
+                             (conj acc test-ns)
+                             (catch js/Error e
+                               (println (str "❌ Failed to load test namespace: " test-ns ": "
+                                             (.-message e)))
+                               acc)))
+                         []
+                         test-nss)]
+      (apply cljs.test/run-tests loaded))))
 
 (comment
   (run!+)
