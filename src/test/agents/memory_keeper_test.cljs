@@ -8,6 +8,7 @@
   (:require
    [cljs.test :refer [deftest is testing run-tests]]
    [clojure.string :as string]
+   [agents.agent-util :as agent-util]
    [agents.memory-keeper :as mk]))
 
 (deftest append-memory-section-test
@@ -220,15 +221,15 @@
     (testing "Should extract description from frontmatter"
       (let [content "---\ndescription: 'Test description here'\napplyTo: '**/*.clj'\n---\n\n# Content"]
         (is (= "Test description here"
-               (mk/extract-description-from-content content)))))
+               (agent-util/extract-description-from-content content)))))
 
     (testing "Should handle missing description"
       (let [content "---\napplyTo: '**/*.clj'\n---\n\n# Content"]
-        (is (nil? (mk/extract-description-from-content content)))))
+        (is (nil? (agent-util/extract-description-from-content content)))))
 
     (testing "Should handle malformed frontmatter"
       (let [content "# Just a heading\n\nNo frontmatter"]
-        (is (nil? (mk/extract-description-from-content content)))))))
+        (is (nil? (agent-util/extract-description-from-content content)))))))
 
 (deftest format-description-listing-test
   (testing "Formats description listing for prompt"
@@ -237,14 +238,14 @@
                            :description "Clojure best practices"}
                           {:file "git-workflow-memory.instructions.md"
                            :description "Git workflow patterns"}]
-            result (mk/format-description-listing descriptions)]
+            result (agent-util/format-description-listing descriptions)]
         (is (string/includes? result "```clojure"))
         (is (string/includes? result ":file \"clojure-memory.instructions.md\""))
         (is (string/includes? result ":description \"Clojure best practices\""))
         (is (string/includes? result "```\n"))))
 
     (testing "Should return nil for empty descriptions"
-      (let [result (mk/format-description-listing [])]
+      (let [result (agent-util/format-description-listing [])]
         (is (nil? result))))))
 
 (deftest integration-description-listing-test
@@ -255,7 +256,7 @@
                            :description "Clojure patterns"}
                           {:file "git-workflow-memory.instructions.md"
                            :description "Git workflows"}]
-            listing (mk/format-description-listing descriptions)
+            listing (agent-util/format-description-listing descriptions)
             prompt (mk/build-goal-prompt {:ma/summary "Test"
                                           :ma/domain nil
                                           :ma/search-dir test-dir
@@ -340,19 +341,19 @@
 
 (deftest normalize-scope-test
   (testing "Normalizes keyword scope values"
-    (is (= :global (mk/normalize-scope :global)))
-    (is (= :workspace (mk/normalize-scope :workspace))))
+    (is (= :global (agent-util/normalize-scope :global)))
+    (is (= :workspace (agent-util/normalize-scope :workspace))))
 
   (testing "Normalizes string scope values"
-    (is (= :global (mk/normalize-scope "global")))
-    (is (= :global (mk/normalize-scope "user")))
-    (is (= :workspace (mk/normalize-scope "workspace")))
-    (is (= :workspace (mk/normalize-scope "ws"))))
+    (is (= :global (agent-util/normalize-scope "global")))
+    (is (= :global (agent-util/normalize-scope "user")))
+    (is (= :workspace (agent-util/normalize-scope "workspace")))
+    (is (= :workspace (agent-util/normalize-scope "ws"))))
 
   (testing "Defaults to global for invalid or nil values"
-    (is (= :global (mk/normalize-scope nil)))
-    (is (= :global (mk/normalize-scope "invalid")))
-    (is (= :global (mk/normalize-scope 123)))))
+    (is (= :global (agent-util/normalize-scope nil)))
+    (is (= :global (agent-util/normalize-scope "invalid")))
+    (is (= :global (agent-util/normalize-scope 123)))))
 
 (deftest clean-heading-test
   (testing "Removes ## prefix with space"
@@ -396,18 +397,18 @@
 (deftest file-path->uri-string-test
   (testing "Converts filesystem path to URI string"
     (let [path "/Users/test/file.md"
-          result (mk/file-path->uri-string path)]
+          result (agent-util/file-path->uri-string path)]
       (is (string/starts-with? result "file://"))
       (is (string/includes? result "/Users/test/file.md"))))
 
   (testing "Returns URI string unchanged (idempotent)"
     (let [uri "file:///Users/test/file.md"
-          result (mk/file-path->uri-string uri)]
+          result (agent-util/file-path->uri-string uri)]
       (is (= uri result))))
 
   (testing "Handles different path formats"
     (let [path "/path/to/memory.instructions.md"
-          result (mk/file-path->uri-string path)]
+          result (agent-util/file-path->uri-string path)]
       (is (string/starts-with? result "file://"))
       (is (string/includes? result "/path/to/memory.instructions.md")))))
 
