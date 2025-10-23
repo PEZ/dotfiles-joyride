@@ -163,17 +163,8 @@
 ;; Agent result extraction
 
 (defn find-message-with-marker
-  "Find first message (searching backwards) containing marker.
-  
-  Searches assistant messages in reverse order (most recent first) and returns
-  the content of the first message containing the marker string.
-  
-  Args:
-    agent-messages - Sequence of assistant message maps with :content key
-    marker - String to search for in message content
-    
-  Returns:
-    Message content string, or nil if not found"
+  "Returns first message content (searching backwards in `agent-messages`) containing `marker`,
+   or `nil` if not found."
   [agent-messages marker]
   (some (fn [msg]
           (let [content (:content msg)]
@@ -201,7 +192,7 @@
   [agent-result begin-marker end-marker]
   (let [all-messages (get agent-result :history [])
         agent-messages (filter #(= :assistant (:role %)) all-messages)
-        
+
         ;; Find message containing end marker (searching backwards)
         message-with-content (find-message-with-marker agent-messages end-marker)
 
