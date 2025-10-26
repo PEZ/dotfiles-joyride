@@ -14,8 +14,7 @@
    [clojure.string :as string]
    [joyride.flare :as flare]
    [promesa.core :as p]
-   ["vscode" :as vscode]
-   [lm-dispatch.util :as util]))
+   ["vscode" :as vscode]))
 
 ;; UI Interaction Handlers
 
@@ -248,6 +247,92 @@
           (state/set-sidebar-slot! new-slot)
           new-slot)))))
 
+;; Replicant-based Monitor (New Implementation)
+
+(defn message-handler-fn
+  "Handles messages from Replicant webview."
+  [msg]
+  (let [msg-type (keyword (.-type msg))
+        msg-data (js->clj (.-data msg) :keywordize-keys true)]
+    (case msg-type
+      :cancel-conversation (cancel-conversation! (:id msg-data))
+      :delete-conversation (delete-conversation! (:id msg-data))
+      :show-results (open-results-document!+ (:id msg-data))
+      :show-logs (.show (logging/get-output-channel!))
+      :log (apply println (into msg-data "\n"))
+      :warn (apply (partial println "WARNING: ") msg-data)
+      (js/console.warn "Unknown message from webview:" msg-type))))
+
+(defn create-monitor-flare!+
+  "Returns promise of creating the Replicant-based monitor flare in sidebar."
+  []
+  (when-let [slot (ensure-sidebar-slot!)]
+    (flare/flare!+
+     {:key slot
+      :title "Agent Dispatch"
+      :html [:html
+             [:head
+              [:script {:src "https://cdn.jsdelivr.net/npm/scittle@0.7.28/dist/scittle.js"
+                        :type "application/javascript"}]
+              [:script {:src "https://cdn.jsdelivr.net/npm/scittle@0.7.28/dist/scittle.replicant.js"
+                        :type "application/javascript"}]
+              [:script {:type "application/x-scittle"
+                        :src "{joyride/user-dir}/resources/scittle/monitor/dispatch.cljs"}]
+              [:script {:type "application/x-scittle"
+                        :src "{joyride/user-dir}/resources/scittle/monitor/ui.cljs"}]
+              [:script {:type "application/x-scittle"
+                        :src "{joyride/user-dir}/resources/scittle/monitor/core.cljs"}]
+              [:link {:rel "stylesheet"
+                      :href "https://unpkg.com/@vscode/codicons@latest/dist/codicon.css"}]
+              [:style "body { margin: 0; padding: 0; }"]]
+             [:body
+              [:div#app]]]
+      :reveal? false
+      :preserve-focus? true
+      :webview-options {:enableScripts true
+                        :retainContextWhenHidden true}
+      :message-handler message-handler-fn})))
+
+(defn send-state-to-webview!+
+  "Returns promise of sending current conversation state to webview."
+  []
+  (when-let [slot (state/get-sidebar-slot)]
+    (let [conversations (state/get-all-conversations)]
+      (flare/post-message!+ slot
+        {:type "state-update"
+         :data {:conversations conversations}}))))
+
+;; Public API for Integration
+
+(defn start-monitoring-conversation!+
+  "Returns promise of conversation ID after registering `conversation-data`,
+   logging, and sending state to Replicant webview."
+  [{:agent.conversation/keys [goal] :as conversation-data}]
+  (let [conv-id (state/register-conversation! conversation-data)]
+    (logging/log-to-channel! conv-id (str "🚀 Starting conversation: " (logging/truncate-strings-for-logging goal)))
+    (p/let [_ (send-state-to-webview!+)]
+      conv-id)))
+
+(defn log-and-update!+
+  "Returns promise of logging variadic `messages`, updating conversation `conv-id`
+   with `status-updates`, and sending state to Replicant webview.
+
+   Accepts variadic messages for compatibility with `println`."
+  [conv-id status-updates & messages]
+  (logging/log-to-channel! conv-id (string/join " " messages))
+  (when status-updates
+    (state/update-conversation! conv-id status-updates))
+  (send-state-to-webview!+))
+
+(defn reveal-dispatch-monitor!+
+  "Returns promise of revealing the Replicant dispatch monitor in the sidebar."
+  []
+  (p/let [_ (create-monitor-flare!+)
+          _ (send-state-to-webview!+)]
+    (let [slot (state/get-sidebar-slot)
+          view (some-> (flare/ls) slot :view)]
+      (.show view true))))
+
 (defn update-agent-monitor-flare!+
   "Returns promise of updating the agent monitor flare in sidebar."
   []
@@ -270,38 +355,10 @@
                                      (update-agent-monitor-flare!+))
                            nil))})))
 
-;; Public API for Integration
-
-(defn reveal-dispatch-monitor!+
-  "Returns promise of revealing the dispatch monitor in the sidebar."
-  []
-  (update-agent-monitor-flare!+)
-  (let [slot (state/get-sidebar-slot)
-        view (some-> (flare/ls) slot :view)]
-    (.show view true)))
-
-(defn start-monitoring-conversation!+
-  "Returns promise of conversation ID after registering `conversation-data`,
-   logging, and updating flare."
-  [{:agent.conversation/keys [goal] :as conversation-data}]
-  (let [conv-id (state/register-conversation! conversation-data)]
-    (logging/log-to-channel! conv-id (str "🚀 Starting conversation: " (logging/truncate-strings-for-logging goal)))
-    (p/let [_ (update-agent-monitor-flare!+)]
-      conv-id)))
-
-(defn log-and-update!+
-  "Returns promise of logging variadic `messages` and optionally updating
-   conversation `conv-id` with `status-updates`.
-
-   Accepts variadic messages for compatibility with `println`."
-  [conv-id status-updates & messages]
-  (logging/log-to-channel! conv-id (string/join " " messages))
-  (when status-updates
-    (state/update-conversation! conv-id status-updates))
-  (update-agent-monitor-flare!+))
-
 (comment
-  ;; Test the monitor
+  (reveal-dispatch-monitor!+)
+  (flare/ls)
+  (flare/close-all!)
 
   ;; Create first conversation
   (p/let [conv-id (start-monitoring-conversation!+
@@ -314,11 +371,13 @@
     (println "Started conversation" conv-id))
 
   ;; Update progress
-  (p/let [_ (log-and-update!+ test-conv-id
-                              {:agent.conversation/status :working
-                               :agent.conversation/current-turn 1}
-                              "Turn 1/5")]
-    (println "Updated to working"))
+  (p/let [_ (log-and-update!+
+             test-conv-id
+             {:agent.conversation/status :working
+              :agent.conversation/current-turn 3
+              :agent.conversation/total-tokens 1500}
+             "🔄 Turn 3/10")]
+    (println "Updated to working, and then some"))
 
   ;; Add more activity
   (p/let [_ (log-and-update!+ test-conv-id nil "🤖 AI Agent says: Analyzing...")
@@ -328,7 +387,8 @@
   ;; Complete conversation
   (p/let [_ (log-and-update!+ test-conv-id
                               {:agent.conversation/status :done
-                               :agent.conversation/current-turn 5}
+                               :agent.conversation/current-turn 5
+                               :agent.conversation/results "Replicant integration complete! Much more better"}
                               "✅ Task completed!")]
     (println "Conversation completed"))
 
@@ -345,14 +405,18 @@
                               "❌ Error: Model not found")]
     (println "Error conversation created"))
 
+
   ;; Check state
   @state/!agent-state
 
   ;; Get all conversations
   (state/get-all-conversations)
 
-  ;; Manually update flare
+  ;; Manually update flare (old way)
   (update-agent-monitor-flare!+)
+
+  ;; Manually send state to Replicant (new way)
+  (send-state-to-webview!+)
 
   (flare/flare!+ {:html [:div [:h2 "Sidebar"] [:p "Content"]]
                   :key :sidebar-2})
