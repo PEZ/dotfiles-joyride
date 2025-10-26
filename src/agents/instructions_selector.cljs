@@ -67,6 +67,7 @@
 
    "## Selection Guidelines\n\n"
    "- Always include files with `copilot.instructions.md` in their name\n"
+   "- Instructions from the workspace are extra important\n"
    "- Consider the `applyTo` to be an important clue.\n"
    "- Include testing/quality instructions if the task involves code changes\n"
    "- **Domain file pairing** - Domain instructions and their memories are ALWAYS paired:\n"
