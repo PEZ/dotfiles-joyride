@@ -1,5 +1,6 @@
 (ns monitor.ui
-  "Pure UI rendering functions - transforms data to Hiccup")
+  "Pure UI rendering functions - transforms data to Hiccup"
+  (:require [monitor.dispatch :as dispatch]))
 
 (defn status-icon
   "Returns codicon class string for conversation `status`."
@@ -85,8 +86,9 @@
                 current-turn max-turns
                 started-at error-message
                 results total-tokens]} conv
-        icon-class (status-icon status)
-        icon-color (status-color status)
+        status-kw (keyword status)
+        icon-class (status-icon status-kw)
+        icon-color (status-color status-kw)
         time-str (format-time started-at)]
     [:div {:style {:border "1px solid var(--vscode-panel-border)"
                    :padding "8px"
@@ -119,7 +121,7 @@
       [:div {:style {:display :flex
                      :align-items :center
                      :gap "4px"}}
-       (when (#{:working :started} status)
+       (when (#{:working :started} status-kw)
          [:button {:on {:click [:cancel-conversation id]}
                    :style {:padding "2px 4px"
                            :background "transparent"
@@ -132,7 +134,7 @@
                        :font-size "14px"}}]])
        [:span {:style {:font-size "0.9em" :opacity "0.7" :flex-shrink "0"}}
         time-str]
-       (when (#{:task-complete :max-turns-reached :agent-finished :cancelled :error :done} status)
+       (when (#{:task-complete :max-turns-reached :agent-finished :cancelled :error :done} status-kw)
          [:button {:on {:click [:delete-conversation id]}
                    :style {:padding "2px 4px"
                            :background "transparent"
