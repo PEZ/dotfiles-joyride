@@ -16,6 +16,8 @@
    [promesa.core :as p]
    ["vscode" :as vscode]))
 
+(def monitor-title "Agent Dispatch")
+
 ;; UI Interaction Handlers
 
 (defn cancel-conversation!
@@ -44,18 +46,22 @@
 
 ;; Flare Management
 
-(defn ensure-sidebar-slot! []
-  (if-let [slot (state/get-sidebar-slot)]
-    slot
-    (let [free-slots (apply disj
-                            #{:sidebar-1 :sidebar-2 :sidebar-3 :sidebar-4 :sidebar-5}
-                            (vec (keys (flare/ls))))]
-      (when (seq free-slots)
-        (let [new-slot (first free-slots)]
-          (state/set-sidebar-slot! new-slot)
-          new-slot)))))
+(defn find-monitor-slot
+  "Returns the slot keyword where the Agent Dispatch monitor currently exists,
+   or nil if it doesn't exist."
+  []
+  (some (fn [[slot flare-info]]
+          (when (= monitor-title (some-> flare-info :view .-title))
+            slot))
+        (flare/ls)))
 
-;; Replicant-based Monitor (New Implementation)
+(defn find-free-sidebar-slot
+  "Returns first available sidebar slot, or nil if all are occupied."
+  []
+  (let [free-slots (apply disj
+                          #{:sidebar-1 :sidebar-2 :sidebar-3 :sidebar-4 :sidebar-5}
+                          (vec (keys (flare/ls))))]
+    (first free-slots)))
 
 (defn message-handler-fn
   "Handles messages from Replicant webview."
@@ -71,40 +77,44 @@
       :warn (apply (partial println "WARNING: ") msg-data)
       (js/console.warn "Unknown message from webview:" msg-type))))
 
-(defn create-monitor-flare!+
-  "Returns promise of creating the Replicant-based monitor flare in sidebar."
+(defn ensure-monitor-flare!+
+  "Returns promise of the slot containing the monitor flare.
+   Creates the flare in a free slot if it doesn't exist."
   []
-  (when-let [slot (ensure-sidebar-slot!)]
-    (flare/flare!+
-     {:key slot
-      :title "Agent Dispatch"
-      :html [:html
-             [:head
-              [:script {:src "https://cdn.jsdelivr.net/npm/scittle@0.7.28/dist/scittle.js"
-                        :type "application/javascript"}]
-              [:script {:src "https://cdn.jsdelivr.net/npm/scittle@0.7.28/dist/scittle.replicant.js"
-                        :type "application/javascript"}]
-              [:script {:type "application/x-scittle"
-                        :src "{joyride/user-dir}/resources/scittle/monitor/dispatch.cljs"}]
-              [:script {:type "application/x-scittle"
-                        :src "{joyride/user-dir}/resources/scittle/monitor/ui.cljs"}]
-              [:script {:type "application/x-scittle"
-                        :src "{joyride/user-dir}/resources/scittle/monitor/core.cljs"}]
-              [:link {:rel "stylesheet"
-                      :href "https://unpkg.com/@vscode/codicons@latest/dist/codicon.css"}]
-              [:style "body { margin: 0; padding: 0; }"]]
-             [:body
-              [:div#app]]]
-      :reveal? false
-      :preserve-focus? true
-      :webview-options {:enableScripts true
-                        :retainContextWhenHidden true}
-      :message-handler message-handler-fn})))
+  (if-let [existing-slot (find-monitor-slot)]
+    (p/resolved existing-slot)
+    (when-let [free-slot (find-free-sidebar-slot)]
+      (p/let [_ (flare/flare!+
+                 {:key free-slot
+                  :title monitor-title
+                  :html [:html
+                         [:head
+                          [:script {:src "https://cdn.jsdelivr.net/npm/scittle@0.7.28/dist/scittle.js"
+                                    :type "application/javascript"}]
+                          [:script {:src "https://cdn.jsdelivr.net/npm/scittle@0.7.28/dist/scittle.replicant.js"
+                                    :type "application/javascript"}]
+                          [:script {:type "application/x-scittle"
+                                    :src "{joyride/user-dir}/resources/scittle/monitor/dispatch.cljs"}]
+                          [:script {:type "application/x-scittle"
+                                    :src "{joyride/user-dir}/resources/scittle/monitor/ui.cljs"}]
+                          [:script {:type "application/x-scittle"
+                                    :src "{joyride/user-dir}/resources/scittle/monitor/core.cljs"}]
+                          [:link {:rel "stylesheet"
+                                  :href "https://unpkg.com/@vscode/codicons@latest/dist/codicon.css"}]
+                          [:style "body { margin: 0; padding: 0; }"]]
+                         [:body
+                          [:div#app]]]
+                  :reveal? false
+                  :preserve-focus? true
+                  :webview-options {:enableScripts true
+                                    :retainContextWhenHidden true}
+                  :message-handler message-handler-fn})]
+        free-slot))))
 
 (defn send-state-to-webview!+
   "Returns promise of sending current conversation state to webview."
   []
-  (when-let [slot (state/get-sidebar-slot)]
+  (when-let [slot (find-monitor-slot)]
     (let [conversations (state/get-all-conversations)]
       (flare/post-message!+ slot
         {:type "state-update"
@@ -114,11 +124,12 @@
 
 (defn start-monitoring-conversation!+
   "Returns promise of conversation ID after registering `conversation-data`,
-   logging, and sending state to Replicant webview."
+   ensuring monitor flare exists, logging, and sending state to Replicant webview."
   [{:agent.conversation/keys [goal] :as conversation-data}]
   (let [conv-id (state/register-conversation! conversation-data)]
     (logging/log-to-channel! conv-id (str "🚀 Starting conversation: " (logging/truncate-strings-for-logging goal)))
-    (p/let [_ (send-state-to-webview!+)]
+    (p/let [_ (ensure-monitor-flare!+)
+            _ (send-state-to-webview!+)]
       conv-id)))
 
 (defn log-and-update!+
@@ -135,11 +146,11 @@
 (defn reveal-dispatch-monitor!+
   "Returns promise of revealing the Replicant dispatch monitor in the sidebar."
   []
-  (p/let [_ (create-monitor-flare!+)
+  (p/let [slot (ensure-monitor-flare!+)
           _ (send-state-to-webview!+)]
-    (let [slot (state/get-sidebar-slot)
-          view (some-> (flare/ls) slot :view)]
-      (.show view true))))
+    (when slot
+      (let [view (some-> (flare/ls) slot :view)]
+        (.show view true)))))
 
 (comment
   (reveal-dispatch-monitor!+)

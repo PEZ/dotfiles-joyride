@@ -292,11 +292,11 @@
     (if parsed
       ;; Step 8:
       (if (:memory-exists? parsed)
-        {:success true
-         :memory-already-existed? true
-         :message (:message parsed)
-         :domain (:domaain parsed)
-         :file-uri file-uri-string}
+        (p/resolved {:success true
+                     :memory-already-existed? true
+                     :message (:message parsed)
+                     :domain (:domain parsed)
+                     :file-uri file-uri-string})
         ;; Check if file exists first (handles agent misidentifying new vs existing)
         (p/let [existing-content (agent-util/read-existing-file!+ file-path)]
           (if existing-content
