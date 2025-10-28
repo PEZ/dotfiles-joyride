@@ -254,7 +254,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
     (state/update-conversation! conv-id {:agent.conversation/current-turn turn-count
                                          :agent.conversation/status :working
                                          :agent.conversation/total-tokens new-total})
-    (monitor/update-agent-monitor-flare!+)
+    (monitor/send-state-to-webview!+)
     (if (> turn-count max-turns)
       (format-completion-result history :max-turns-reached last-response)
 
@@ -411,7 +411,7 @@ Be proactive, creative, and goal-oriented. Drive the conversation forward!")
              completion-results
              (assoc :agent.conversation/results completion-results)))
           ;; Update monitor to reflect completion
-          (monitor/update-agent-monitor-flare!+))
+          (monitor/send-state-to-webview!+))
         ;; Dispose the cancellation token
         (.dispose cancellation-token-source)
         (assoc result :reason final-reason)))))
