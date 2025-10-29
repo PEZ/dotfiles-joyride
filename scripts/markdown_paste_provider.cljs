@@ -38,7 +38,7 @@
         plain-item (.get dataTransfer "text/plain")]
     (p/let [html (when html-item (.asString html-item))
             plain-text (when plain-item (.asString plain-item))
-            turndown-service (TurndownService.)]
+            turndown-service (TurndownService. #js {:headingStyle "atx"})]
       ;; Add GFM table support
       (.use turndown-service (.-tables gfm))
       (cond

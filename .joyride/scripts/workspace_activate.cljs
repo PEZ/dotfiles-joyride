@@ -1,7 +1,6 @@
 (ns workspace-activate
   (:require [joyride.core :as joyride]
             [promesa.core :as p]
-            markdown-paste-provider
             ["vscode" :as vscode]))
 
 (defonce !db (atom {:disposables []}))
@@ -34,7 +33,6 @@
           readme-path (vscode/Uri.joinPath (.-uri workspace-folder) "/README.md")]
     (vscode/commands.executeCommand "markdown.showPreview" readme-path))
 
-  (markdown-paste-provider/activate!)
   (vscode/commands.executeCommand "calva.startJoyrideReplAndConnect" "joyride"))
 
 (when (= (joyride/invoked-script) joyride/*file*)
