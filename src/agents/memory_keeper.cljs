@@ -62,23 +62,30 @@
           "1. Consider if any of these descriptions matches the lesson.\n"
           "   - If so: pick the best match and read that file\n"
           "   - Else: decide on a domain and domain slug for this new memory\n\n"
-          "### 2. Read up on existing domain knowledge")
-     "\n\n### 1. Read up on existing domain knowledge")
+          "### 2. Read existing knowledge to avoid duplicates")
+     "\n\n### 1. Read existing knowledge to avoid duplicates")
 
-   "\n1. Read these files:\n"
-   "   - **General instructions**; `{SEARCH-DIRECTORY}/copilot.instructions.md`\n"
-   "   - **General memories**; `{SEARCH-DIRECTORY}/memory.instructions.md`\n"
+   "\n1. Read these files to understand existing patterns:\n"
+   "   - **General instructions**: `{SEARCH-DIRECTORY}/copilot.instructions.md`\n"
+   "   - **General memories**: `{SEARCH-DIRECTORY}/memory.instructions.md`\n"
    (if domain
-     (str "   - **Domain instructions**: `{SEARCH-DIRECTORY}/" domain ".instructions.md`\n"
-          "   - **Domain memory**; `{SEARCH-DIRECTORY}/" domain "-memory.instructions.md`\n")
-     (str "   - **Domain instructions**: `{SEARCH-DIRECTORY}/<domain>.instructions.md`\n"
-          "   - **Domain memory**; `{SEARCH-DIRECTORY}/<domain>-memory.instructions.md`\n"))
+     (str "   - **Domain-specific files** (check AVAILABLE-MEMORY-FILES first):\n"
+          "     - If `" domain ".instructions.md` is listed → read `{SEARCH-DIRECTORY}/" domain ".instructions.md`\n"
+          "     - If `" domain "-memory.instructions.md` is listed → read `{SEARCH-DIRECTORY}/" domain "-memory.instructions.md`\n"
+          "     - If neither exists in the list, this is a NEW domain (don't try to read them)\n")
+     (str "   - **Domain-specific files** (after determining domain, check AVAILABLE-MEMORY-FILES):\n"
+          "     - If `<domain>.instructions.md` is listed → read `{SEARCH-DIRECTORY}/<domain>.instructions.md`\n"
+          "     - If `<domain>-memory.instructions.md` is listed → read `{SEARCH-DIRECTORY}/<domain>-memory.instructions.md`\n"
+          "     - If neither exists in the list, you're creating a NEW domain (don't try to read them)\n"))
 
-   "\n   **Critical**: Always use absolute paths when reading files.\n"
-   "1. **Analyze** the specific `SESSION-LESSON` learned from user input, as it fits with your knowledge about the domain.\n"
+   "\n   **Critical**: \n"
+   "   - Always use absolute paths when reading files\n"
+   "   - ONLY read domain files if they appear in AVAILABLE-MEMORY-FILES\n"
+   "   - If a domain file doesn't exist in the list, that's normal for new domains - don't retry reading it\n"
    "1. **Categorize** the learning:\n"
-   "   - New memory\n"
-   "   - Enhancement to existing memory\n"
+   "   - New memory (lesson not yet documented)\n"
+   "   - Enhancement to existing memory (adds nuance or examples)\n"
+   "   - Already covered (no action needed)\n"
    "1. **Re-author the lesson into a memory**, with focus on the good pattern\n"
    "   - Avoid creating redundancy\n"
    "   - Instead of comprehensive instructions, think about how to capture the lesson in a succinct and clear manner\n"
@@ -126,9 +133,7 @@
    "     :file-path path                          ; string, absolute path to the memory file where the memory already exists\n"
    "     }\n"
    "    ---END RESULTS---\n"
-   "    ~~~GOAL-ACHIEVED~~~\n"
-
-   ))
+   "    ~~~GOAL-ACHIEVED~~~\n"))
 
 (comment
   (remember-prompt {:ma/domain nil})
