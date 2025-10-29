@@ -1,6 +1,6 @@
 ;; npm install turndown turndown-plugin-gfm
 
-(ns markdown-paste-provider
+(ns pastedown
   "Add Markdown formatting options to VS Code's 'Paste As...' command"
   (:require
    ["turndown" :as TurndownService]
@@ -143,8 +143,7 @@
                          :pasteMimeTypes #js ["text/plain" "text/html"]})]
     (push-disposable! disposable)
 
-    (vscode/window.showInformationMessage
-     "Markdown paste provider registered! Use Ctrl+Shift+V (Cmd+Shift+V on Mac) after copying text to see markdown formatting options.")
+    (println "📋 Markdown paste provider registered! Use Ctrl+Shift+V (Cmd+Shift+V on Mac) after copying text to see markdown formatting options.")
 
     disposable))
 

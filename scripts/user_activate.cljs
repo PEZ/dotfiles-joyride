@@ -1,6 +1,6 @@
 (ns user-activate
   (:require ["vscode" :as vscode]
-            markdown-paste-provider
+            pastedown
             [joyride.core :as joyride]
             [promesa.core :as p]))
 
@@ -68,7 +68,7 @@
 
   (push-disposable! (#_{:clj-kondo/ignore [:unresolved-symbol]}
                      #_(requiring-resolve 'highlight-thousands/activate!)))
-  (markdown-paste-provider/activate!)
+  (pastedown/activate!)
   (vscode/commands.executeCommand "github.copilot.debug.showChatLogView" true)
 
   ;;; require VS Code extensions
