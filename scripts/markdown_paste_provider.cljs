@@ -31,8 +31,40 @@
       .-subscriptions
       (.push disposable)))
 
+(defn- clean-list-content
+  "Remove leading/trailing newlines and indent nested content with single space"
+  [content]
+  (-> content
+      (.replace #"^\n+" "")           ; remove leading newlines
+      (.replace #"\n+$" "\n")         ; keep single trailing newline
+      (.replace #"\n" "\n ")))        ; indent nested with single space
+
+(defn- get-list-prefix
+  "Returns the prefix for a list item (bullet or number)"
+  [node options]
+  (let [parent (.-parentNode node)]
+    (if (= (.-nodeName parent) "OL")
+      ;; Ordered list - calculate the number
+      (let [start (.getAttribute parent "start")
+            children (.-children parent)
+            index (.call (.-indexOf js/Array.prototype) children node)
+            num (if start (+ (js/parseInt start) index) (inc index))]
+        (str num ". "))
+      ;; Unordered list - use bullet marker
+      (str (.-bulletListMarker options) " "))))
+
+(defn- list-item-replacement
+  "Replacement function for list items with minimal spacing"
+  [content node options]
+  (let [cleaned-content (clean-list-content content)
+        prefix (get-list-prefix node options)
+        has-next (.-nextSibling node)
+        needs-trailing-nl (and has-next (not (.test #"\n$" cleaned-content)))
+        trailing-nl (if needs-trailing-nl "\n" "")]
+    (str prefix cleaned-content trailing-nl)))
+
 (defn convert-to-markdown
-  "Intelligently convert clipboard content to markdown using turndown with GFM tables"
+  "Intelligently convert clipboard content to markdown using turndown with full GFM support"
   [dataTransfer]
   (let [html-item (.get dataTransfer "text/html")
         plain-item (.get dataTransfer "text/plain")]
@@ -45,8 +77,12 @@
                                                     :fence "```"
                                                     :emDelimiter "*"
                                                     :strongDelimiter "**"})]
-      ;; Add GFM table support
-      (.use turndown-service (.-tables gfm))
+      ;; Add full GFM support (tables, strikethrough, task lists, highlighted code blocks)
+      (.use turndown-service (.-gfm gfm))
+      ;; Add custom list item rule with minimal spacing
+      (.addRule turndown-service "listItem"
+                #js {:filter "li"
+                     :replacement list-item-replacement})
       (cond
         (and html (not (s/blank? html)))
         (.turndown turndown-service html)
