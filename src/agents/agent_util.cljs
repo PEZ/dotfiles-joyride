@@ -75,7 +75,8 @@
 
 (defn build-file-descriptions-map!+
   "Returns promise of vector of maps with `:file` and `:description` keys
-   for instruction files in `search-dir`."
+   for instruction files in `search-dir`. For workspace scope, includes
+   `copilot-instructions.md` from parent `.github/` directory."
   [search-dir]
   (p/let [files (list-instruction-files!+ search-dir)
           file-data (p/all
@@ -84,8 +85,22 @@
                                content (read-existing-file!+ file-path)
                                description (extract-description-from-content content)]
                          {:file file-path
-                          :description description})))]
-    (vec file-data)))
+                          :description description})))
+
+          ;; Special case: include copilot-instructions.md from parent .github/ dir
+          is-workspace? (string/includes? search-dir ".github/instructions")
+          copilot-data (when is-workspace?
+                         (p/let [parent-dir (path/dirname search-dir)
+                                 copilot-path (path/join parent-dir "copilot-instructions.md")
+                                 content (read-existing-file!+ copilot-path)
+                                 description (when content
+                                               (extract-description-from-content content))]
+                           (when content
+                             {:file copilot-path
+                              :description description})))]
+
+    ;; Combine results, filtering out nil copilot-data if not found
+    (vec (filter some? (concat file-data [copilot-data])))))
 
 (defn format-description-listing
   "Returns formatted text listing for `descriptions` (vector of maps),

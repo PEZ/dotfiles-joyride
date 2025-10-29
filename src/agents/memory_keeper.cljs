@@ -7,6 +7,7 @@
 (ns agents.memory-keeper
   "Autonomous memory recording agent using the LM agent dispatch system"
   (:require
+   ["path" :as path]
    ["vscode" :as vscode]
    [agents.agent-util :as agent-util]
    [lm-dispatch.agent-orchestrator :as agent-orchestrator]
@@ -19,10 +20,18 @@
 (def default-max-turns 15)
 (def agent-tool-ids ["copilot_readFile"])
 
+(defn find-general-file-path
+  "Returns file path from `file-descriptions` matching `basename`, or `nil` if not found."
+  [file-descriptions basename]
+  (some (fn [{:keys [file]}]
+          (when (= (clojure.string/replace (path/basename file) #"^\./" "") basename)
+            file))
+        file-descriptions))
+
 (defn remember-prompt
   "Returns agent instructions string for memory recording, optionally using
    known `:ma/domain` to skip domain discovery."
-  [{:ma/keys [domain]}]
+  [{:ma/keys [domain copilot-path memory-path]}]
   (str
    "# Memory Recording Agent\n\n"
    "You are an expert prompt engineer and keeper of **"
@@ -66,8 +75,10 @@
      "\n\n### 1. Read existing knowledge to avoid duplicates")
 
    "\n1. Read these files to understand existing patterns:\n"
-   "   - **General instructions**: `{SEARCH-DIRECTORY}/copilot.instructions.md`\n"
-   "   - **General memories**: `{SEARCH-DIRECTORY}/memory.instructions.md`\n"
+   (when copilot-path
+     (str "   - **General instructions**: `" copilot-path "`\n"))
+   (when memory-path
+     (str "   - **General memories**: `" memory-path "`\n"))
    (if domain
      (str "   - **Domain-specific files** (check AVAILABLE-MEMORY-FILES first):\n"
           "     - If `" domain ".instructions.md` is listed → read `{SEARCH-DIRECTORY}/" domain ".instructions.md`\n"
@@ -163,12 +174,17 @@
 
 (defn build-goal-prompt
   "Returns complete goal prompt string for memory agent by combining template,
-   `:ma/search-dir`, and `:ma/summary` (required), with optional `:ma/domain` hint."
-  [{:ma/keys [summary domain search-dir description-listing]}]
-  (-> (remember-prompt {:ma/domain domain})
-      (string/replace "{SEARCH-DIRECTORY}" search-dir)
-      (string/replace "{DESCRIPTIONS}" description-listing)
-      (string/replace "{LESSON}" summary)))
+   `:ma/search-dir`, `:ma/summary` (required), `:ma/file-descriptions` for finding
+   general instruction paths, with optional `:ma/domain` hint."
+  [{:ma/keys [summary domain search-dir description-listing file-descriptions]}]
+  (let [copilot-path (find-general-file-path file-descriptions "copilot-instructions.md")
+        memory-path (find-general-file-path file-descriptions "memory.instructions.md")]
+    (-> (remember-prompt {:ma/domain domain
+                          :ma/copilot-path copilot-path
+                          :ma/memory-path memory-path})
+        (string/replace "{SEARCH-DIRECTORY}" search-dir)
+        (string/replace "{DESCRIPTIONS}" description-listing)
+        (string/replace "{LESSON}" summary))))
 
 
 
@@ -283,7 +299,8 @@
           goal (build-goal-prompt {:ma/summary summary
                                    :ma/domain domain
                                    :ma/search-dir search-dir
-                                   :ma/description-listing description-listing})
+                                   :ma/description-listing description-listing
+                                   :ma/file-descriptions file-descriptions})
           agent-result (agent-orchestrator/autonomous-conversation!+
                         goal
                         (merge conversation-data
