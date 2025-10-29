@@ -32,12 +32,14 @@
       (.push disposable)))
 
 (defn- clean-list-content
-  "Remove leading/trailing newlines and indent nested content with single space"
-  [content]
-  (-> content
-      (.replace #"^\n+" "")           ; remove leading newlines
-      (.replace #"\n+$" "\n")         ; keep single trailing newline
-      (.replace #"\n" "\n ")))        ; indent nested with single space
+  "Clean content but don't double-indent nested lists that are already indented"
+  [content indent-spaces]
+  (let [indent (apply str (repeat indent-spaces " "))]
+    (-> content
+        (.replace #"^\n+" "")              ; remove leading newlines
+        (.replace #"\n+$" "\n")            ; keep single trailing newline
+        ;; Only indent lines that don't already start with spaces (nested lists)
+        (.replace #"\n(?! )" (str "\n" indent)))))  ; indent nested content        ; indent nested with single space
 
 (defn- get-list-prefix
   "Returns the prefix for a list item (bullet or number)"
@@ -53,15 +55,30 @@
       ;; Unordered list - use bullet marker
       (str (.-bulletListMarker options) " "))))
 
+(defn- get-leading-indent
+  "Get fixed indent: 2 spaces for bullet lists, 3 for numbered lists"
+  [node]
+  (when-let [parent (.-parentNode node)]
+    (when (or (= (.-nodeName parent) "OL") (= (.-nodeName parent) "UL"))
+      (when-let [grandparent (.-parentNode parent)]
+        (when (= (.-nodeName grandparent) "LI")
+          (let [gg-parent (.-parentNode grandparent)]
+            (if (= (.-nodeName gg-parent) "OL")
+              3  ; parent is in numbered list
+              2)))))))
+
 (defn- list-item-replacement
-  "Replacement function for list items with minimal spacing"
+  "Replacement function for list items with proper 2/3 space nesting alignment"
   [content node options]
-  (let [cleaned-content (clean-list-content content)
-        prefix (get-list-prefix node options)
+  (let [prefix (get-list-prefix node options)
+        leading-indent-count (or (get-leading-indent node) 0)
+        leading-indent (apply str (repeat leading-indent-count " "))
+        total-indent-spaces (+ leading-indent-count (count prefix))
+        cleaned-content (clean-list-content content total-indent-spaces)
         has-next (.-nextSibling node)
         needs-trailing-nl (and has-next (not (.test #"\n$" cleaned-content)))
         trailing-nl (if needs-trailing-nl "\n" "")]
-    (str prefix cleaned-content trailing-nl)))
+    (str leading-indent prefix cleaned-content trailing-nl)))
 
 (defn convert-to-markdown
   "Intelligently convert clipboard content to markdown using turndown with full GFM support"
