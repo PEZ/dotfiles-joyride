@@ -170,20 +170,3 @@
 ;; Auto-run when script is invoked
 (when (= (joyride/invoked-script) joyride/*file*)
   (activate!))
-
-(comment
-  ;; Manual management examples:
-
-  ;; Check current status
-  (status)
-
-  ;; Register the provider
-  (activate!)
-
-  ;; Remove all providers
-  (deactivate!)
-
-  ;; Check what disposables are registered
-  (:disposables @!db)
-
-  :rcf)
