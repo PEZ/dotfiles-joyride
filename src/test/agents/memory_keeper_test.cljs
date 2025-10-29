@@ -100,23 +100,37 @@
   :rcf)
 
 (deftest build-goal-prompt-test
-  (testing "With domain - includes domain tag and lesson in SESSION-LESSON"
-    (let [result (mk/build-goal-prompt
+  (testing "With domain - includes domain tag and explicit file paths"
+    (let [file-descriptions [{:file "copilot-instructions.md"
+                              :path "/test/prompts/copilot-instructions.md"}
+                             {:file "clojure.instructions.md"
+                              :path "/test/prompts/clojure.instructions.md"}]
+          listing (agent-util/format-description-listing file-descriptions)
+          result (mk/build-goal-prompt
                   {:ma/summary "Use REPL for debugging"
                    :ma/domain "clojure"
-                   :ma/search-dir "/test/prompts"})]
+                   :ma/search-dir "/test/prompts"
+                   :ma/description-listing listing
+                   :ma/file-descriptions file-descriptions})]
       (is (string? result))
       (is (string/includes? result "<DOMAIN>clojure</DOMAIN>"))
       (is (string/includes? result "<SESSION-LESSON>"))
       (is (string/includes? result "Use REPL for debugging"))
       (is (string/includes? result "</SESSION-LESSON>"))
-      (is (string/includes? result "/test/prompts"))))
+      (is (string/includes? result "/test/prompts"))
+      (is (string/includes? result "/test/prompts/copilot-instructions.md")
+          "Should include explicit copilot path")))
 
   (testing "Without domain - includes determine step, no domain tag"
-    (let [result (mk/build-goal-prompt
+    (let [file-descriptions [{:file "memory.instructions.md"
+                              :path "/test/prompts/memory.instructions.md"}]
+          listing (agent-util/format-description-listing file-descriptions)
+          result (mk/build-goal-prompt
                   {:ma/summary "Verify API responses"
                    :ma/domain nil
-                   :ma/search-dir "/test/prompts"})]
+                   :ma/search-dir "/test/prompts"
+                   :ma/description-listing listing
+                   :ma/file-descriptions file-descriptions})]
       (is (string? result))
       (is (not (string/includes? result "<DOMAIN>")))
       (is (string/includes? result "Determine the memory domain"))
@@ -239,54 +253,17 @@
         (is (string/includes? full-goal ":file \"clojure-memory.instructions.md\""))
         (is (string/includes? full-goal "Review the \"Available Memory Files\" section"))))))
 
-(deftest extract-edn-from-response-test
-  (testing "Extracts EDN from wrapped response"
-    (testing "Should extract from BEGIN/END markers"
-      (let [response "Some preamble text\n---BEGIN RESULTS---\n{:domain \"test\" :file-path \"/test.md\"}\n---END RESULTS---\nSome trailing text"
-            result (mk/extract-edn-from-response response)]
-        (is (= {:domain "test" :file-path "/test.md"} result))))
+(deftest extract-edn-from-agent-result-test
+  (testing "Extracts EDN from agent result using agent-util extraction"
+    (testing "Returns nil when extraction fails"
+      (let [response "---BEGIN RESULTS---\n{:domain \"test\" :file-path \"/test.md\"}\n---END RESULTS---"
+            result (mk/extract-edn-from-agent-result response)]
+        (is (nil? result)
+            "Simple string responses fail extraction - agent-util expects conversation structure")))
 
-    (testing "Should handle response with just EDN"
-      (let [response "{:domain \"test\" :file-path \"/test.md\"}"
-            result (mk/extract-edn-from-response response)]
-        (is (= {:domain "test" :file-path "/test.md"} result))))
-
-    (testing "Should return nil for invalid EDN"
+    (testing "Returns nil for invalid EDN even if extracted"
       (let [response "---BEGIN RESULTS---\nNot valid EDN\n---END RESULTS---"
-            result (mk/extract-edn-from-response response)]
-        (is (nil? result))))))
-
-(deftest extract-edn-from-multi-turn-conversation-test
-  (testing "Extracts EDN from multiple agent messages"
-    (testing "Should find EDN in middle message when agent continues in later turns"
-      (let [;; Simulate multi-turn conversation
-            msg1 "Let me analyze this..."
-            msg2 "~~~CONTINUING~~~\n\n---BEGIN RESULTS---\n{:domain \"test\" :file-path \"/test.md\" :heading \"Test\" :content \"Content\"}\n---END RESULTS---"
-            msg3 "~~~GOAL-ACHIEVED~~~"
-            combined (str msg1 "\n\n" msg2 "\n\n" msg3)
-            result (mk/extract-edn-from-response combined)]
-        (is (= {:domain "test" :file-path "/test.md" :heading "Test" :content "Content"} result))))
-
-    (testing "Should handle EDN in first message"
-      (let [msg1 "---BEGIN RESULTS---\n{:domain \"test\" :file-path \"/test.md\"}\n---END RESULTS---"
-            msg2 "Task complete!"
-            combined (str msg1 "\n\n" msg2)
-            result (mk/extract-edn-from-response combined)]
-        (is (= {:domain "test" :file-path "/test.md"} result))))
-
-    (testing "Should handle EDN in last message"
-      (let [msg1 "Analyzing..."
-            msg2 "---BEGIN RESULTS---\n{:domain \"test\" :file-path \"/test.md\"}\n---END RESULTS---"
-            combined (str msg1 "\n\n" msg2)
-            result (mk/extract-edn-from-response combined)]
-        (is (= {:domain "test" :file-path "/test.md"} result))))
-
-    (testing "Should return nil when no EDN in any message"
-      (let [msg1 "Analyzing..."
-            msg2 "Still working..."
-            msg3 "Done!"
-            combined (str msg1 "\n\n" msg2 "\n\n" msg3)
-            result (mk/extract-edn-from-response combined)]
+            result (mk/extract-edn-from-agent-result response)]
         (is (nil? result))))))
 
 (deftest build-new-file-prevents-duplicate-heading-test
@@ -355,8 +332,10 @@
 
 
 (deftest remember-prompt-test
-  (testing "With domain - includes domain tag and specific instructions"
-    (let [result (mk/remember-prompt {:ma/domain "clojure"})]
+  (testing "With domain - includes domain tag and explicit paths when provided"
+    (let [result (mk/remember-prompt {:ma/domain "clojure"
+                                       :ma/copilot-path "/test/.github/copilot-instructions.md"
+                                       :ma/memory-path "/test/prompts/memory.instructions.md"})]
       (is (string/includes? result "<DOMAIN>clojure</DOMAIN>"))
       (is (string/includes? result "the clojure domain-organized"))
       (is (not (string/includes? result "automatically bin learnings by domain")))
@@ -364,7 +343,13 @@
           "Should include Available Memory Files for sanity checking domain")
       (is (string/includes? result "Consider that the user may have mistyped")
           "Should include sanity check instructions when domain provided")
-      (is (string/includes? result "### 1. Read up on existing domain knowledge"))
+      (is (string/includes? result "/test/.github/copilot-instructions.md")
+          "Should include explicit copilot path")
+      (is (string/includes? result "/test/prompts/memory.instructions.md")
+          "Should include explicit memory path")
+      (is (not (string/includes? result "Find"))
+          "Should not tell agent to search for files")
+      (is (string/includes? result "### 1. Read existing knowledge to avoid duplicates"))
       (is (string/includes? result "### 2. Deliver results"))))
 
   (testing "Without domain - includes domain determination steps"
@@ -376,7 +361,7 @@
       (is (string/includes? result "Use the domain and descriptions to find which domain")
           "Should include domain selection instructions when no domain provided")
       (is (string/includes? result "### 1. Determine the memory domain"))
-      (is (string/includes? result "### 2. Read up on existing domain knowledge"))
+      (is (string/includes? result "### 2. Read existing knowledge to avoid duplicates"))
       (is (string/includes? result "### 3. Deliver results"))))
 
   (testing "Contains required placeholders"

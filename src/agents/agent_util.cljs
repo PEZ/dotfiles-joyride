@@ -73,33 +73,34 @@
   (when content
     (second (re-find #"description:\s*'([^']*)'" content))))
 
+(defn- build-file-description!+
+  "Returns promise of map with `:file` and `:description` for `file-path`,
+   or `nil` if file doesn't exist."
+  [file-path]
+  (p/let [content (read-existing-file!+ file-path)
+          description (when content
+                        (extract-description-from-content content))]
+    (when content
+      {:file file-path
+       :description description})))
+
 (defn build-file-descriptions-map!+
   "Returns promise of vector of maps with `:file` and `:description` keys
    for instruction files in `search-dir`. For workspace scope, includes
    `copilot-instructions.md` from parent `.github/` directory."
   [search-dir]
   (p/let [files (list-instruction-files!+ search-dir)
-          file-data (p/all
-                     (for [filename files]
-                       (p/let [file-path (path/join search-dir filename)
-                               content (read-existing-file!+ file-path)
-                               description (extract-description-from-content content)]
-                         {:file file-path
-                          :description description})))
+          file-paths (map #(path/join search-dir %) files)
+          file-data (p/all (map build-file-description!+ file-paths))
 
           ;; Special case: include copilot-instructions.md from parent .github/ dir
           is-workspace? (string/includes? search-dir ".github/instructions")
           copilot-data (when is-workspace?
                          (p/let [parent-dir (path/dirname search-dir)
-                                 copilot-path (path/join parent-dir "copilot-instructions.md")
-                                 content (read-existing-file!+ copilot-path)
-                                 description (when content
-                                               (extract-description-from-content content))]
-                           (when content
-                             {:file copilot-path
-                              :description description})))]
+                                 copilot-path (path/join parent-dir "copilot-instructions.md")]
+                           (build-file-description!+ copilot-path)))]
 
-    ;; Combine results, filtering out nil copilot-data if not found
+    ;; Combine results, filtering out nils
     (vec (filter some? (concat file-data [copilot-data])))))
 
 (defn format-description-listing
