@@ -1,0 +1,158 @@
+/* Agent Dispatch Monitor Styles */
+
+.monitor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding: 0 8px;
+}
+
+.monitor-header h2 {
+  margin: 0;
+}
+
+.btn-show-logs {
+  padding: 4px 8px;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.conversations-container {
+  margin-top: 10px;
+  padding: 0 8px;
+}
+
+.empty-message {
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.conversation-card {
+  border: 1px solid var(--vscode-panel-border);
+  padding: 8px;
+  margin: 4px 0;
+  border-radius: 4px;
+}
+
+.conversation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.conversation-title {
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-icon {
+  padding-top: 2px;
+  flex-shrink: 0;
+}
+
+.title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.title-label {
+  color: var(--vscode-charts-foreground);
+}
+
+.conversation-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-cancel {
+  padding: 2px 4px;
+  background: transparent;
+  border: 1px solid var(--vscode-button-border);
+  border-radius: 2px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.btn-cancel .codicon {
+  color: var(--vscode-errorForeground);
+  font-size: 14px;
+}
+
+.conversation-time {
+  font-size: 0.9em;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+
+.btn-delete {
+  padding: 2px 4px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.btn-delete .codicon {
+  color: var(--vscode-foreground);
+  font-size: 12px;
+}
+
+.conversation-meta {
+  font-size: 0.9em;
+  margin-bottom: 4px;
+}
+
+.conversation-goal {
+  max-height: 120px;
+  overflow-y: auto;
+  font-size: 0.9em;
+  font-family: var(--vscode-editor-font-family);
+  white-space: pre-wrap;
+  padding: 4px;
+  background: var(--vscode-editor-background);
+  border-radius: 2px;
+}
+
+.error-message {
+  color: var(--vscode-errorForeground);
+  font-size: 0.85em;
+  margin-top: 4px;
+}
+
+.results-section {
+  font-size: 0.85em;
+  margin-top: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.results-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.btn-view-results {
+  padding: 2px 6px;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  flex-shrink: 0;
+}

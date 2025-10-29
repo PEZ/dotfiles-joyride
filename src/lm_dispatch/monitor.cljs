@@ -101,6 +101,8 @@
                                     :src "{joyride/user-dir}/resources/scittle/monitor/core.cljs"}]
                           [:link {:rel "stylesheet"
                                   :href "https://unpkg.com/@vscode/codicons@latest/dist/codicon.css"}]
+                          [:link {:rel "stylesheet"
+                                  :href "{joyride/user-dir}/resources/scittle/monitor/style.css"}]
                           [:style "body { margin: 0; padding: 0; }"]]
                          [:body
                           [:div#app]]]

@@ -58,26 +58,11 @@
   (when results
     (let [summary (truncate-text results 100)
           result-color (or icon-color "var(--vscode-charts-green)")]
-      [:div {:style {:color result-color
-                     :font-size "0.85em"
-                     :margin-top "4px"
-                     :display :flex
-                     :justify-content :space-between
-                     :align-items :center
-                     :gap "8px"}}
-       [:span {:style {:flex "1" :min-width "0"}}
+      [:div.results-section {:style {:color result-color}}
+       [:span.results-text
         "Results: " summary]
-       [:button {:on {:click [:show-results conv-id]}
-                 :style {:padding "2px 6px"
-                         :background "var(--vscode-button-background)"
-                         :color "var(--vscode-button-foreground)"
-                         :border :none
-                         :border-radius "2px"
-                         :cursor :pointer
-                         :font-size "0.8em"
-                         :flex-shrink "0"}}
-        "View Full"]])))
-
+       [:button.btn-view-results {:on {:click [:show-results conv-id]}}
+        "View"]])))
 (defn render-conversation
   "Returns Hiccup HTML for single conversation entry from `conv` map."
   [conv]
@@ -90,81 +75,32 @@
         icon-class (status-icon status-kw)
         icon-color (status-color status-kw)
         time-str (format-time started-at)]
-    [:div {:style {:border "1px solid var(--vscode-panel-border)"
-                   :padding "8px"
-                   :margin "4px 0"
-                   :border-radius "4px"}
-           :replicant/key id}
-     [:div {:style {:display :flex
-                    :justify-content :space-between
-                    :align-items :center
-                    :margin-bottom "4px"}}
-      [:span {:style {:font-weight :bold
-                      :display :flex
-                      :align-items :center
-                      :gap "4px"
-                      :flex "1"
-                      :min-width "0"
-                      :overflow :hidden
-                      :text-overflow :ellipsis
-                      :white-space :nowrap}}
-       [:i {:class (str "codicon " icon-class)
-            :style (merge {:padding-top "2px"
-                           :flex-shrink "0"}
-                          (when icon-color
-                            {:color icon-color}))}]
-       [:span {:style {:overflow :hidden
-                       :text-overflow :ellipsis}}
-        (str "[" id "] ")
-        [:span {:style {:color "var(--vscode-charts-foreground)"}}
-         title]]]
-      [:div {:style {:display :flex
-                     :align-items :center
-                     :gap "4px"}}
+    [:div.conversation-card {:replicant/key id}
+     [:div.conversation-header
+      [:span.conversation-title
+       [:i.status-icon {:class (str "codicon " icon-class)
+                        :style (when icon-color {:color icon-color})}]
+       [:span.title-text
+        [:span.title-id (str "[" id "] ")]
+        [:span.title-label title]]]
+      [:div.conversation-actions
        (when (#{:working :started} status-kw)
-         [:button {:on {:click [:cancel-conversation id]}
-                   :style {:padding "2px 4px"
-                           :background "transparent"
-                           :border "1px solid var(--vscode-button-border)"
-                           :border-radius "2px"
-                           :cursor :pointer
-                           :flex-shrink "0"}}
-          [:i {:class "codicon codicon-debug-stop"
-               :style {:color "var(--vscode-errorForeground)"
-                       :font-size "14px"}}]])
-       [:span {:style {:font-size "0.9em" :opacity "0.7" :flex-shrink "0"}}
-        time-str]
+         [:button.btn-cancel {:on {:click [:cancel-conversation id]}}
+          [:i.codicon.codicon-debug-stop]])
+       [:span.conversation-time time-str]
        (when (#{:task-complete :max-turns-reached :agent-finished :cancelled :error :done} status-kw)
-         [:button {:on {:click [:delete-conversation id]}
-                   :style {:padding "2px 4px"
-                           :background "transparent"
-                           :border "none"
-                           :cursor :pointer
-                           :opacity "0.6"
-                           :flex-shrink "0"}}
-          [:i {:class "codicon codicon-close"
-               :style {:color "var(--vscode-foreground)"
-                       :font-size "12px"}}]])]]
-     [:div {:style {:font-size "0.9em" :margin-bottom "4px"}}
+         [:button.btn-delete {:on {:click [:delete-conversation id]}}
+          [:i.codicon.codicon-close]])]]
+     [:div.conversation-meta
       current-turn "/" max-turns " | "
       [:strong "Tks: "] total-tokens " | "
       model-id " | "
       (when caller
         [:span
          [:strong "Who: "] caller])]
-     [:div {:style {:max-height "120px"
-                    :overflow-y :auto
-                    :font-size "0.9em"
-                    :font-family "var(--vscode-editor-font-family)"
-                    :white-space :pre-wrap
-                    :padding "4px"
-                    :background "var(--vscode-editor-background)"
-                    :border-radius "2px"}}
-      goal]
+     [:div.conversation-goal goal]
      (when error-message
-       [:div {:style {:color "var(--vscode-errorForeground)"
-                      :font-size "0.85em"
-                      :margin-top "4px"}}
+       [:div.error-message
         "Error: " error-message])
      (render-results-section id results icon-color)]))
 
@@ -173,23 +109,11 @@
   [conversations]
   (let [sorted-convs (reverse (sort-by :id conversations))]
     [:div
-     [:div {:style {:display :flex
-                    :justify-content :space-between
-                    :align-items :center
-                    :margin-bottom "10px"
-                    :padding "0 8px"}}
-      [:h2 {:style {:margin "0"}} "Dispatch Monitor"]
-      [:button {:on {:click [:show-logs]}
-                :style {:padding "4px 8px"
-                        :background "var(--vscode-button-background)"
-                        :color "var(--vscode-button-foreground)"
-                        :border :none
-                        :border-radius "2px"
-                        :cursor :pointer}}
+     [:div.monitor-header
+      [:h2 "Dispatch Monitor"]
+      [:button.btn-show-logs {:on {:click [:show-logs]}}
        "Show Logs"]]
-     [:div {:style {:margin-top "10px"
-                    :padding "0 8px"}}
+     [:div.conversations-container
       (if (empty? sorted-convs)
-        [:p {:style {:font-style :italic :opacity "0.7"}}
-         "No active conversations"]
+        [:p.empty-message "No active conversations"]
         (into [:div] (map render-conversation sorted-convs)))]]))
