@@ -63,14 +63,15 @@
         "Results: " summary]
        [:button.btn-view-results {:on {:click [:show-results conv-id]}}
         "View"]])))
+
 (defn render-conversation
   "Returns Hiccup HTML for single conversation entry from `conv` map."
   [conv]
-  (let [{:keys [id goal status model-id
-                caller title
-                current-turn max-turns
-                started-at error-message
-                results total-tokens]} conv
+  (let [{:agent.conversation/keys [id goal status model-id
+                                   caller title
+                                   current-turn max-turns
+                                   started-at error-message
+                                   results total-tokens]} conv
         status-kw (keyword status)
         icon-class (status-icon status-kw)
         icon-color (status-color status-kw)
