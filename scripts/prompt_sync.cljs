@@ -51,7 +51,8 @@
   [filename]
   (cond
     (.endsWith filename "prompt.md") :instruction.type/prompt
-    (.endsWith filename "chatmode.md") :instruction.type/chatmode
+    (.endsWith filename "agent.md") :instruction.type/agent
+    (.endsWith filename "chatmode.md") :instruction.type/agent
     :else :instruction.type/instruction))
 
 (defn is-md-file?
@@ -182,7 +183,7 @@
   (case instruction-type
     :instruction.type/instruction (vscode/ThemeIcon. "list-ordered")
     :instruction.type/prompt (vscode/ThemeIcon. "chevron-right")
-    :instruction.type/chatmode (vscode/ThemeIcon. "color-mode")
+    :instruction.type/agent (vscode/ThemeIcon. "color-mode")
     (vscode/ThemeIcon. "diff")))
 
 (defn instruction-status->display-string
@@ -826,6 +827,7 @@
   (case file-type
     ".instruction.md" (str "# Stable Instruction " index "\nThese are stable coding guidelines.\n\n- Always use stable APIs\n- Avoid experimental features")
     ".prompt.md" (str "# Stable Prompt " index "\nYou are a stable assistant.\n\n## Rules\n- Be conservative\n- Follow stable guidelines")
+    ".agent.md" (str "# Stable Agent " index "\nconversational: true\ntemperature: 0.3\n\n## Description\nStable agent mode")
     ".chatmode.md" (str "# Stable Chat Mode " index "\nconversational: true\ntemperature: 0.3\n\n## Description\nStable conversation mode")))
 
 (defn generate-insiders-content
@@ -834,12 +836,13 @@
   (case file-type
     ".instruction.md" (str "# Insiders Instruction " index "\nThese are experimental coding guidelines.\n\n- Try new APIs\n- Embrace experimental features")
     ".prompt.md" (str "# Insiders Prompt " index "\nYou are an experimental assistant.\n\n## Rules\n- Be innovative\n- Try new approaches")
+    ".agent.md" (str "# Insiders Agent " index "\nconversational: true\ntemperature: 0.8\n\n## Description\nExperimental agent mode")
     ".chatmode.md" (str "# Insiders Chat Mode " index "\nconversational: true\ntemperature: 0.8\n\n## Description\nExperimental conversation mode")))
 
 (defn generate-test-files
   "Generates test files based on status counts map."
   [{:test-files/keys [identical conflicts stable-only insiders-only]}]
-  (let [file-types [".instruction.md" ".prompt.md" ".chatmode.md"]]
+  (let [file-types [".instruction.md" ".prompt.md" ".agent.md"]]
     (concat
      (for [i (range identical)]
        (let [file-type (nth file-types (mod i (count file-types)))
