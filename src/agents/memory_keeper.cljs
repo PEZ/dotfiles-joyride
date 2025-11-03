@@ -281,7 +281,9 @@
       Error types:
       - :write-failed - File write operation failed
       - :file-not-found - Tried to append to non-existent file
-      - :parse-failed - Could not parse agent response"
+      - :parse-failed - Could not parse agent response
+      - :api-failed - Language Model API failure
+      - :invalid-response - Agent response missing required fields"
   [{:keys [summary domain scope model-id max-turns tool-ids title]
     :or {scope :global
          model-id agent-model
@@ -308,54 +310,64 @@
                                 :tool-ids tool-ids
                                 :max-turns max-turns
                                 :title title}))
-          {:keys [file-path] :as parsed} (extract-edn-from-agent-result agent-result)
-          file-uri-string (agent-util/file-path->uri-string file-path)]
+          parsed (extract-edn-from-agent-result agent-result)]
 
     (if parsed
-      ;; Step 8:
-      (if (:memory-exists? parsed)
-        (p/resolved {:success true
-                     :memory-already-existed? true
-                     :message (:message parsed)
-                     :domain (:domain parsed)
-                     :file-uri file-uri-string})
-        ;; Check if file exists first (handles agent misidentifying new vs existing)
-        (p/let [existing-content (agent-util/read-existing-file!+ file-path)]
-          (if existing-content
-            ;; File exists - always append (even if agent said :new-file true)
-            ;; Don't trust agent's applyTo when appending to existing unread file
-            (p/let [updated-content (append-memory-section
-                                     {:existing-content existing-content
-                                      :heading (:heading parsed)
-                                      :content (:content parsed)
-                                      :applyTo nil}) ; Ignore applyTo - agent hasn't read existing frontmatter
-                    write-result (write-memory-file!+ file-path updated-content)]
-              (if (:success write-result)
-                {:success true
-                 :file-uri file-uri-string}
-                {:success false
-                 :error (:error write-result)
-                 :error-type :write-failed
-                 :file-uri file-uri-string}))
-            ;; File doesn't exist - create new file
-            (if (:new-file parsed)
-              (p/let [complete-content (build-new-file-content parsed)
-                      write-result (write-memory-file!+ file-path complete-content)]
-                (if (:success write-result)
-                  {:success true
-                   :file-uri file-uri-string}
+      ;; Parsed successfully - verify we have required file-path
+      (if-let [file-path (:file-path parsed)]
+        (let [file-uri-string (agent-util/file-path->uri-string file-path)]
+          (if (:memory-exists? parsed)
+            (p/resolved {:success true
+                         :memory-already-existed? true
+                         :message (:message parsed)
+                         :domain (:domain parsed)
+                         :file-uri file-uri-string})
+            ;; Check if file exists first (handles agent misidentifying new vs existing)
+            (p/let [existing-content (agent-util/read-existing-file!+ file-path)]
+              (if existing-content
+                ;; File exists - always append (even if agent said :new-file true)
+                ;; Don't trust agent's applyTo when appending to existing unread file
+                (p/let [updated-content (append-memory-section
+                                         {:existing-content existing-content
+                                          :heading (:heading parsed)
+                                          :content (:content parsed)
+                                          :applyTo nil}) ; Ignore applyTo - agent hasn't read existing frontmatter
+                        write-result (write-memory-file!+ file-path updated-content)]
+                  (if (:success write-result)
+                    {:success true
+                     :file-uri file-uri-string}
+                    {:success false
+                     :error (:error write-result)
+                     :error-type :write-failed
+                     :file-uri file-uri-string}))
+                ;; File doesn't exist - create new file
+                (if (:new-file parsed)
+                  (p/let [complete-content (build-new-file-content parsed)
+                          write-result (write-memory-file!+ file-path complete-content)]
+                    (if (:success write-result)
+                      {:success true
+                       :file-uri file-uri-string}
+                      {:success false
+                       :error (:error write-result)
+                       :error-type :write-failed
+                       :file-uri file-uri-string}))
                   {:success false
-                   :error (:error write-result)
-                   :error-type :write-failed
-                   :file-uri file-uri-string}))
-              {:success false
-               :error "File does not exist but agent didn't provide new-file structure"
-               :error-type :file-not-found
-               :file-uri file-uri-string}))))
-      ;; Parsing failed
-      {:success false
-       :error "Failed to parse agent response. Agent did not return expected format."
-       :error-type :parse-failed})))
+                   :error "File does not exist but agent didn't provide new-file structure"
+                   :error-type :file-not-found
+                   :file-uri file-uri-string})))))
+        ;; Parsed but missing file-path
+        {:success false
+         :error "Agent response missing required file-path field"
+         :error-type :invalid-response})
+      ;; Parse failed - check if it's an API error
+      (let [final-msg (get-in agent-result [:final-response :message])]
+        (if (and final-msg (string/starts-with? final-msg "Request Failed:"))
+          {:success false
+           :error (str "Language Model API failed: " final-msg)
+           :error-type :api-failed}
+          {:success false
+           :error "Failed to parse agent response. Agent did not return expected format."
+           :error-type :parse-failed})))))
 
 (comment
   (p/let [;; Step 1: Normalize scope to handle both strings and keywords
