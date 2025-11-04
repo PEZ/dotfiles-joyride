@@ -10,21 +10,14 @@
    [joyride.core :as joyride]
    [promesa.core :as p]))
 
-;; Keep tally on VS Code disposables we register
 (defonce !db (atom {:disposables []}))
 
-;; To make the script re-runnable we dispose of
-;; event handlers and such that we might have registered
-;; in previous runs.
 (defn- clear-disposables! []
   (run! (fn [disposable]
           (.dispose disposable))
         (:disposables @!db))
   (swap! !db assoc :disposables []))
 
-;; Pushing the disposables on the extension context's
-;; subscriptions will make VS Code dispose of them when the
-;; Joyride extension is deactivated.
 (defn- push-disposable! [disposable]
   (swap! !db update :disposables conj disposable)
   (-> (joyride/extension-context)
@@ -39,20 +32,18 @@
         (.replace #"^\n+" "")              ; remove leading newlines
         (.replace #"\n+$" "\n")            ; keep single trailing newline
         ;; Only indent lines that don't already start with spaces (nested lists)
-        (.replace #"\n(?! )" (str "\n" indent)))))  ; indent nested content        ; indent nested with single space
+        (.replace #"\n(?! )" (str "\n" indent)))))  ; indent nested content with single space
 
 (defn- get-list-prefix
   "Returns the prefix for a list item (bullet or number)"
   [node options]
   (let [parent (.-parentNode node)]
     (if (= (.-nodeName parent) "OL")
-      ;; Ordered list - calculate the number
       (let [start (.getAttribute parent "start")
             children (.-children parent)
             index (.call (.-indexOf js/Array.prototype) children node)
             num (if start (+ (js/parseInt start) index) (inc index))]
         (str num ". "))
-      ;; Unordered list - use bullet marker
       (str (.-bulletListMarker options) " "))))
 
 (defn- get-leading-indent
@@ -94,9 +85,7 @@
                                                     :fence "```"
                                                     :emDelimiter "*"
                                                     :strongDelimiter "**"})]
-      ;; Add full GFM support (tables, strikethrough, task lists, highlighted code blocks)
       (.use turndown-service (.-gfm gfm))
-      ;; Add custom list item rule with minimal spacing
       (.addRule turndown-service "listItem"
                 #js {:filter "li"
                      :replacement list-item-replacement})
@@ -134,10 +123,10 @@
 (defn register-markdown-paste-provider!
   "Register the markdown paste provider with VS Code"
   []
-  (clear-disposables!) ; Clear any existing providers
+  (clear-disposables!)
   (let [provider (create-markdown-paste-provider)
         disposable (vscode/languages.registerDocumentPasteEditProvider
-                    "*"  ; Apply to all file types
+                    "*"
                     provider
                     #js {:providedPasteEditKinds #js [vscode/DocumentDropOrPasteEditKind.Text]
                          :pasteMimeTypes #js ["text/plain" "text/html"]})]
@@ -167,6 +156,6 @@
   []
   (register-markdown-paste-provider!))
 
-;; Auto-run when script is invoked
+;; Auto-run when script is invoked, but not when loading the code in the REPL
 (when (= (joyride/invoked-script) joyride/*file*)
   (activate!))
