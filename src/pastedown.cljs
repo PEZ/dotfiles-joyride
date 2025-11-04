@@ -100,6 +100,8 @@
         :else
         (str plain-text)))))
 
+(def pastedown-kind (.append vscode/DocumentDropOrPasteEditKind.Empty "pastedown"))
+
 (defn create-markdown-paste-edits
   "Create a single markdown paste edit with intelligent formatting"
   [dataTransfer]
@@ -108,7 +110,7 @@
     #js [(new vscode/DocumentPasteEdit
               markdown-content
               "Insert Markdown"
-              vscode/DocumentDropOrPasteEditKind.Text)]))
+              pastedown-kind)]))
 
 (defn create-markdown-paste-provider
   "Create a paste provider that intelligently converts rich text to markdown"
@@ -118,31 +120,23 @@
          (when-let [raw-text (.get dataTransfer "text/plain")]
            (let [text (if (string? raw-text) raw-text (str raw-text))]
              (when (and text (not (s/blank? text)))
-               (create-markdown-paste-edits dataTransfer)))))
-       :kind "markdown"})
+               (create-markdown-paste-edits dataTransfer)))))})
 
 (defn register-markdown-paste-provider!
   "Register the markdown paste provider with VS Code"
   []
   (clear-disposables!)
   (let [provider (create-markdown-paste-provider)
-        markdown-kind (.append vscode/DocumentDropOrPasteEditKind.Empty "markdown" "formatted")
-        _ (def markdown-kind markdown-kind)
         disposable (vscode/languages.registerDocumentPasteEditProvider
                     "*"
                     provider
-                    #js {:providedPasteEditKinds #js [markdown-kind vscode/DocumentDropOrPasteEditKind.Text]
+                    #js {:providedPasteEditKinds #js [pastedown-kind]
                          :pasteMimeTypes #js ["text/plain" "text/html"]})]
     (push-disposable! disposable)
 
     (println "📋 Markdown paste provider registered! Use Ctrl+Shift+V (Cmd+Shift+V on Mac) after copying text to see markdown formatting options.")
 
     disposable))
-
-(comment
-  (joyride.core/js-properties markdown-kind)
-  (.-value markdown-kind)
-  :rcf)
 
 (defn deactivate!
   "Remove all markdown paste providers"
