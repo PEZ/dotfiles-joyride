@@ -126,17 +126,23 @@
   []
   (clear-disposables!)
   (let [provider (create-markdown-paste-provider)
-        markdown-kind (.append vscode/DocumentDropOrPasteEditKind.Empty "markdown.formatted")
+        markdown-kind (.append vscode/DocumentDropOrPasteEditKind.Empty "markdown" "formatted")
+        _ (def markdown-kind markdown-kind)
         disposable (vscode/languages.registerDocumentPasteEditProvider
                     "*"
                     provider
-                    #js {:providedPasteEditKinds #js ["markdown.formatted" #_markdown-kind #_vscode/DocumentDropOrPasteEditKind.Text]
+                    #js {:providedPasteEditKinds #js [markdown-kind vscode/DocumentDropOrPasteEditKind.Text]
                          :pasteMimeTypes #js ["text/plain" "text/html"]})]
     (push-disposable! disposable)
 
     (println "📋 Markdown paste provider registered! Use Ctrl+Shift+V (Cmd+Shift+V on Mac) after copying text to see markdown formatting options.")
 
     disposable))
+
+(comment
+  (joyride.core/js-properties markdown-kind)
+  (.-value markdown-kind)
+  :rcf)
 
 (defn deactivate!
   "Remove all markdown paste providers"
@@ -157,48 +163,6 @@
   "Main function to register the markdown paste provider"
   []
   (register-markdown-paste-provider!))
-
-(defn paste-as-markdown-via-staging!+
-  "Opens temporary markdown document for pasting with markdown conversion.
-   Workflow:
-   1. Opens untitled markdown document
-   2. Triggers 'Paste As...' menu (user selects 'Paste as Markdown')
-   3. Waits for paste to complete
-   4. Selects all, copies to clipboard
-   5. Closes staging document
-   6. Returns to original editor
-
-   Use this as a workaround when paste provider isn't available (like in chat).
-   Returns promise."
-  []
-  (p/let [original-editor vscode/window.activeTextEditor
-
-          doc (vscode/workspace.openTextDocument #js {:language "markdown" :content ""})
-          _ (vscode/window.showTextDocument doc)
-
-          ;; Show paste-as menu (user selects markdown option)
-          _ (vscode/commands.executeCommand "editor.action.pasteAs" #js {:kind "markdown.formatted"})
-
-          ;; Wait for user to select and paste to complete
-          _ (js/Promise. (fn [resolve] (js/setTimeout resolve 1000)))
-
-          ;; Select all converted content
-          _ (vscode/commands.executeCommand "editor.action.selectAll")
-
-          ;; Copy to clipboard
-          _ (vscode/commands.executeCommand "editor.action.clipboardCopyAction")
-          _ (vscode/commands.executeCommand "undo")
-
-          ;; Close staging document
-          _ (vscode/commands.executeCommand "workbench.action.closeActiveEditor")
-
-          ;; Return to original editor if there was one
-          _ (when original-editor
-              (vscode/window.showTextDocument (.-document original-editor)))]
-
-    (vscode/window.showInformationMessage
-     "✓ Markdown in clipboard! Paste wherever you need it.")
-    :done))
 
 ;; Auto-run when script is invoked, but not when loading the code in the REPL
 (when (= (joyride/invoked-script) joyride/*file*)
