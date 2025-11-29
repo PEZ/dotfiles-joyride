@@ -149,6 +149,20 @@
                    :max-turns 15})]
     result)
 
+  (autonomous-conversation!+
+   "# Fibonacci Generator
+    Generate the nine first numbers in the fibonacci sequence
+    without writing function, but instead by starting with
+    evaluating `[0 1]` and then each step read the result and
+    evaluate `[second-number sum-of-first-and-second-number]`.
+    In the last step evaluate just `second-number`."
+   {:model-id "grok-code-fast-1"
+    :caller "Mr Clojurian"
+    :title "Expensive fibs"
+    :use-instruction-selection? true
+    :max-turns 12
+    :tool-ids ["joyride_evaluate_code"]})
+
   ;; Example 5: Validation - these should throw
   (try
     (autonomous-conversation!+
