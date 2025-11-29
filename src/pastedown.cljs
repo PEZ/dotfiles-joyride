@@ -1,5 +1,21 @@
 ;; npm install turndown turndown-plugin-gfm
 
+;; Keybindings to facilitate pasting as markdown at will, even in the chat window:
+  ;; {
+  ;;   "key": "ctrl+alt+j ctrl+alt+v",
+  ;;   "command": "joyride.runCode",
+  ;;   "when": "inChatInput",
+  ;;   "args": "(require 'pastedown :reload) (pastedown/pastedown-in-chat!)"
+  ;; },
+  ;; {
+  ;;   "key": "ctrl+alt+j ctrl+alt+v",
+  ;;   "command": "editor.action.pasteAs",
+  ;;   "when": "editorTextFocus",
+  ;;   "args": {
+  ;;     "kind": "pastedown"
+  ;;   }
+  ;; },
+
 (ns pastedown
   "Add Markdown formatting options to VS Code's 'Paste As...' command"
   (:require
@@ -138,7 +154,7 @@
 
     disposable))
 
-(defn deactivate!
+(defn ^:export deactivate!
   "Remove all markdown paste providers"
   []
   (clear-disposables!)
@@ -153,7 +169,21 @@
      :providers-count count
      :disposables (:disposables @!db)}))
 
-(defn activate!
+(defn ^:export pastedown-in-chat!
+  "In the chat window, our provider isn't provider. We do this cheesy thing."
+  []
+  (p/let [doc (vscode/workspace.openTextDocument #js {:language "markdown" :content ""})
+          _ (vscode/window.showTextDocument doc)
+          _ (vscode/commands.executeCommand "editor.action.pasteAs" #js {:kind "pastedown"})
+          _ (p/delay 0) ;; For some reason, select all won't work without this delay
+          _ (vscode/commands.executeCommand "editor.action.selectAll")
+          _ (vscode/commands.executeCommand "editor.action.clipboardCopyAction")
+          _ (vscode/commands.executeCommand "undo")
+          _ (vscode/commands.executeCommand "workbench.action.closeActiveEditor")
+          _ (vscode/commands.executeCommand "workbench.panel.chat")
+          _ (vscode/commands.executeCommand "editor.action.clipboardPasteAction")]))
+
+(defn ^:export activate!
   "Main function to register the markdown paste provider"
   []
   (register-markdown-paste-provider!))
