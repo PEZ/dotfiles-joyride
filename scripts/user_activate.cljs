@@ -31,7 +31,7 @@
   ;; will be cleared now. You can push them anew.
 
   (pastedown/activate!)
-  (vscode/commands.executeCommand "github.copilot.debug.showChatLogView" true))
+  #_(vscode/commands.executeCommand "github.copilot.debug.showChatLogView" true))
 
 (when (= (joyride/invoked-script) joyride/*file*)
   (println "Hello World 1, from my-main in user_activate.cljs script")
