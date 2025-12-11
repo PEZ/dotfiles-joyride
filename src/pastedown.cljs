@@ -87,6 +87,22 @@
         trailing-nl (if needs-trailing-nl "\n" "")]
     (str leading-indent prefix cleaned-content trailing-nl)))
 
+(defn- copilot-link-replacement
+  "Convert Copilot Chat's data-href links to proper markdown file links with workspace-relative paths"
+  [content node _options]
+  (if-let [data-href (.getAttribute node "data-href")]
+    (let [decoded (js/decodeURIComponent data-href)
+          file-match (re-find #"file://(/.*?)(?:#(\d+)(?:,(\d+))?)?$" decoded)]
+      (if file-match
+        (let [[_ file-path line-num _column-num] file-match
+              relative-path (vscode/workspace.asRelativePath file-path)
+              link-target (if line-num
+                            (str relative-path "#L" line-num)
+                            relative-path)]
+          (str "[" content "](" link-target ")"))
+        content))
+    content))
+
 (defn convert-to-markdown
   "Intelligently convert clipboard content to markdown using turndown with full GFM support"
   [dataTransfer]
@@ -105,6 +121,11 @@
       (.addRule turndown-service "listItem"
                 #js {:filter "li"
                      :replacement list-item-replacement})
+      (.addRule turndown-service "copilotLink"
+                #js {:filter (fn [node]
+                               (and (= (.-nodeName node) "A")
+                                    (.hasAttribute node "data-href")))
+                     :replacement copilot-link-replacement})
       (cond
         (and html (not (s/blank? html)))
         (.turndown turndown-service html)
