@@ -96,9 +96,13 @@
       (if file-match
         (let [[_ file-path line-num _column-num] file-match
               relative-path (vscode/workspace.asRelativePath file-path)
+              ;; Prepend file:// for absolute paths (files outside workspace)
+              path-with-uri (if (s/starts-with? relative-path "/")
+                              (str "file://" relative-path)
+                              relative-path)
               link-target (if line-num
-                            (str relative-path "#L" line-num)
-                            relative-path)]
+                            (str path-with-uri "#L" line-num)
+                            path-with-uri)]
           (str "[" content "](" link-target ")"))
         content))
     content))
