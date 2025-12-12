@@ -1,3 +1,10 @@
+;; Keyboard shortcut to view GitHub commit diffs:
+;; {
+;;   "key": "ctrl+alt+j d",
+;;   "command": "joyride.runCode",
+;;   "args": "(require 'gh-diff :reload) (gh-diff/view-github-commit!+)"
+;; }
+
 (ns gh-diff
   "View GitHub commit diffs in VS Code's diff view.
 
@@ -18,11 +25,12 @@
                     #js {:createIfNone true})]
     (.-accessToken session)))
 
-;; Memoized fetch to avoid abusing GitHub
+;; Memoized fetch with authentication for private repos
 (def ^:private fetch-url!+
   (memoize
    (fn [url]
-     (p/let [resp (js/fetch url)
+     (p/let [token (get-github-token!+)
+             resp (js/fetch url #js {:headers #js {"Authorization" (str "token " token)}})
              content (.text resp)]
        content))))
 
@@ -42,11 +50,8 @@
   #js {:provideTextDocumentContent
        (fn [uri]
          (let [path (.-path uri)
-               parts (str/split path #"/")
-               owner (first parts)
-               repo (second parts)
-               sha (nth parts 2)
-               filepath (str/join "/" (drop 3 parts))
+               [owner repo sha & path-segments] (str/split path #"/")
+               filepath (str/join "/" path-segments)
                url (str "https://raw.githubusercontent.com/" owner "/" repo "/" sha "/" filepath)]
            (fetch-url!+ url)))})
 
@@ -54,7 +59,7 @@
 (defonce ^:private _registration
   (vscode/workspace.registerTextDocumentContentProvider github-scheme provider))
 
-(defn parse-github-commit-url
+(defn- parse-github-commit-url
   "Parse a GitHub commit URL into owner, repo, and SHA components.
    Handles both direct commit URLs and PR commit URLs.
    Returns nil if the URL is not a valid GitHub commit URL."
@@ -92,14 +97,13 @@
           right-uri (vscode/Uri.parse (str github-scheme ":" owner "/" repo "/" sha "/" filepath))]
 
     ;; Open diff view - content will be fetched by provider
-    ;; preserveFocus keeps focus on the picker when navigating
     (vscode/commands.executeCommand "vscode.diff"
                                      left-uri
                                      right-uri
                                      (str filepath " (commit " (subs sha 0 7) ")")
                                      #js {:preserveFocus true})))
 
-(defn show-commit-file-picker!+
+(defn- show-commit-file-picker!+
   "Show a persistent file picker for all files changed in a GitHub commit.
    Opens diff views as you navigate through items (arrow keys).
    Picker stays open in background while viewing diffs.
@@ -110,47 +114,33 @@
    Returns a promise."
   [commit-url]
   (p/let [{:keys [owner repo sha]} (parse-github-commit-url commit-url)
-
-          ;; Fetch commit data (memoized)
           commit-clj (fetch-commit-info!+ owner repo sha)
-
           files (:files commit-clj)
           file-names (mapv :filename files)
-
-          ;; Create a persistent quick pick
           picker (vscode/window.createQuickPick)]
-
-    ;; Configure the picker to stay open
-    (set! (.-items picker) (clj->js (mapv #(js-obj "label" %) file-names)))
-    (set! (.-placeholder picker) (str "Navigate to view files (" (count files) " files changed) - Enter to close"))
-    (set! (.-canSelectMany picker) false)
-    (set! (.-ignoreFocusOut picker) true)  ;; Stay open when clicking elsewhere
-
-    ;; Open diff when navigating through items (arrow keys)
-    (.onDidChangeActive picker
-                        (fn [items]
-                          (when-let [selected (first items)]
-                            (let [label (.-label selected)
-                                  file-idx (.indexOf file-names label)]
-                              (show-commit-diff!+ commit-url file-idx)))))
-
-    ;; Close on accept (pressing Enter)
-    (.onDidAccept picker (fn [] (.hide picker)))
-
-    ;; Clean up when hidden
-    (.onDidHide picker (fn [] (.dispose picker)))
-
-    ;; Show the picker
-    (.show picker)))
+    (doto picker
+      (-> .-title (set! "Commit Explorer - Files"))
+      (-> .-items (set! (clj->js (mapv #(js-obj "label" %) file-names))))
+      (-> .-placeholder (set! (str "Navigate to view files (" (count files) " files changed) - Enter to close")))
+      (-> .-canSelectMany (set! false))
+      (-> .-ignoreFocusOut (set! true))
+      (.onDidChangeActive (fn [items]
+                            (when-let [selected (first items)]
+                              (let [label (.-label selected)
+                                    file-idx (.indexOf file-names label)]
+                                (show-commit-diff!+ commit-url file-idx)))))
+      (.onDidAccept (fn [] (.hide picker)))
+      (.onDidHide (fn [] (.dispose picker)))
+      (.show))))
 
 (defn view-github-commit!+
   "Interactively view a GitHub commit diff.
    Prompts for a commit URL, then shows a file picker for the changed files.
-
    Returns a promise."
   []
   (p/let [url (vscode/window.showInputBox
-               #js {:prompt "Enter GitHub commit URL"
+               #js {:title "Commit Explorer"
+                    :prompt "Enter GitHub commit URL"
                     :placeHolder "https://github.com/owner/repo/commit/sha"
                     :validateInput (fn [value]
                                      (when (and (seq value)
