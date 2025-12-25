@@ -25,6 +25,8 @@
    [promesa.core :as p]
    ["vscode" :as vscode]))
 
+(defonce !state (atom {:state/slot->url {}}))
+
 (def ^:private all-sidebar-slots
   #{:sidebar-1 :sidebar-2 :sidebar-3 :sidebar-4 :sidebar-5})
 
@@ -133,23 +135,27 @@
        (.onDidHide picker (fn [] (resolve nil)))
        (.show picker)))))
 
+(defn- open-url+! [url key]
+  (p/let [normalized-url (normalize-url url)
+          _ (flare/flare!+  {:key key
+                             :url normalized-url
+                             :title (or (second (re-find #"https?://(?:www\.)?([^/]+)" normalized-url))
+                                        "Browser")
+                             :reveal? true})]
+    (add-to-history!+ normalized-url)
+    (swap! !state assoc-in [:state/slot->url key] normalized-url)))
+
 (defn open-url-in-sidebar!+
   "Returns promise of opening `url` in an available sidebar flare slot.
    Prepends https:// if not present. Returns the slot keyword on success,
    nil if no slots available."
   [url]
-  (let [normalized-url (normalize-url url)]
-    (if-let [slot (find-free-sidebar-slot)]
-      (p/let [_ (flare/flare!+ {:key slot
-                                :url normalized-url
-                                :title (or (second (re-find #"https?://(?:www\.)?([^/]+)" normalized-url))
-                                           "Browser")
-                                :reveal? true
-                                :webview-options {:enableScripts true}})]
-        slot)
-      (do
-        (vscode/window.showWarningMessage "No free sidebar slots available")
-        nil))))
+  (if-let [slot (find-free-sidebar-slot)]
+    (p/let [_ (open-url+! url slot)]
+      slot)
+    (do
+      (vscode/window.showWarningMessage "No free sidebar slots available")
+      nil)))
 
 (defn prompt-and-open-url-in-sidebar!+
   "Shows URL picker with history and opens selected URL in sidebar.
@@ -158,8 +164,6 @@
   (p/let [url (show-url-picker!+)]
     (when url
       (p/let [result (open-url-in-sidebar!+ url)]
-        (when result
-          (add-to-history!+ (normalize-url url)))
         result))))
 
 (defn open-url-as-panel!+
@@ -168,12 +172,7 @@
   [url]
   (let [normalized-url (normalize-url url)
         panel-key (keyword (str "panel-" (second (re-find #"https?://(?:www\.)?([^/]+)" normalized-url))))]
-    (p/let [_ (flare/flare!+ {:key panel-key
-                              :url normalized-url
-                              :title (or (second (re-find #"https?://(?:www\.)?([^/]+)" normalized-url))
-                                         "Browser")
-                              :reveal? true
-                              :webview-options {:enableScripts true}})]
+    (p/let [_ (open-url+! url panel-key)]
       panel-key)))
 
 (defn prompt-and-open-url-as-panel!+
@@ -183,8 +182,6 @@
   (p/let [url (show-url-picker!+)]
     (when url
       (p/let [result (open-url-as-panel!+ url)]
-        (when result
-          (add-to-history!+ (normalize-url url)))
         result))))
 
 (defn- sidebar-slot?
@@ -200,17 +197,24 @@
 (defn- flare->quick-pick-item
   "Converts a flare entry `[slot flare-info]` to a QuickPickItem with close button."
   [[slot {:keys [view]}]]
+  (def slot slot)
   (let [title (.-title view)
         kind (flare-type slot)
-        visible? (.-visible view)]
+        visible? (.-visible view)
+        buttons #js [#js {:iconPath (vscode/ThemeIcon. "close")
+                          :tooltip "Close"
+                          :action "close"}]]
+    (when (get-in @!state [:state/slot->url slot])
+      (.unshift buttons #js {:iconPath (vscode/ThemeIcon. "refresh")
+                             :tooltip "Reload"
+                             :action "reload"}))
     #js {:label (or title (name slot))
          :description (str (name kind)
                            (when-not visible? " (hidden)"))
          :iconPath (vscode/ThemeIcon.
                     (if (= kind :sidebar) "layout-sidebar-right" "window"))
          :slot slot
-         :buttons #js [#js {:iconPath (vscode/ThemeIcon. "close")
-                            :tooltip "Close this flare"}]}))
+         :buttons buttons}))
 
 (defn- make-action-items
   "Returns the permanent action items (separator + open URL options)."
@@ -265,9 +269,13 @@
 
        (.onDidTriggerItemButton picker
                                 (fn [event]
-                                  (let [item (.-item event)
-                                        slot (.-slot item)]
-                                    (flare/close! slot)
+                                  (let [slot (-> event .-item .-slot)
+                                        action (-> event .-button .-action)]
+                                    (case action
+                                      "close" (do (flare/close! slot)
+                                                  (swap! !state update :state/slot->url dissoc slot))
+                                      "reload" (open-url+! (get-in @!state [:state/slot->url slot]) slot)
+                                      :nop)
                                     (set! (.-items picker) (into-array (build-picker-items))))))
 
        (.onDidHide picker (fn [] (resolve nil)))
