@@ -1,0 +1,30 @@
+{
+  // See https://go.microsoft.com/fwlink/?LinkId=733558
+  // for the documentation about the tasks.json format
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Epupp X REPL",
+      "type": "shell",
+      "command": "bb -Sdeps '{:deps {io.github.babashka/sci.nrepl {:git/sha \"1042578d5784db07b4d1b6d974f1db7cabf89e3f\"}}}' -e '(require (quote [sci.nrepl.browser-server :as server])) (server/start! {:nrepl-port 11339 :websocket-port 11340}) @(promise)'",
+      "group": "build",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "group": "epupp"
+      }
+    },
+    {
+      "label": "Gentlemen, Start Your Engines",
+      "dependsOn": [
+        "Epupp X REPL"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}

@@ -25,4 +25,20 @@
   "calva.showCalvaSaysOnStart": false,
   "calva.clojureLspVersion": "latest",
   "calva.autoOpenInspector": false,
+  "calva.replConnectSequences": [
+    {
+      "name": "Epupp X REPL",
+      "projectType": "scittle",
+      "fallbackPort": 11339,
+      "replSessionNames": {
+        "primary": "epupp-twitter"
+      },
+      "replSessionFilePatterns": {
+        "primary": [
+          "epupp/*.clj*",
+          "epupp/*.edn"
+        ],
+      }
+    }
+  ],
 }

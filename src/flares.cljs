@@ -281,6 +281,28 @@
        (.onDidHide picker (fn [] (resolve nil)))
        (.show picker)))))
 
+(defn init-dashboard-button!
+  "Creates a statusbar button for the flares picker. Toggle: call again to remove."
+  []
+  (let [item (vscode/window.createStatusBarItem
+              vscode/StatusBarAlignment.Left
+              -999)]
+    (set! (.-text item) "$(flame)")
+    (set! (.-tooltip item) "Flares")
+    (set! (.-command item)
+          (clj->js {:command "joyride.runCode"
+                    :arguments ["(flares/show-flares-picker!+)"]}))
+    (.show item)
+    (swap! !state assoc :state/dashboard-button item)
+    item))
+
+(defn remove-dashboard-button!
+  "Disposes the flares dashboard statusbar button."
+  []
+  (when-let [item (:state/dashboard-button @!state)]
+    (.dispose item)
+    (swap! !state dissoc :state/dashboard-button)))
+
 (comment
   (find-free-sidebar-slot)
   (open-url-in-sidebar!+ "https://clojure.org")
@@ -288,6 +310,8 @@
   (prompt-and-open-url-in-sidebar!+)
   (prompt-and-open-url-as-panel!+)
   (show-flares-picker!+)
+  (init-dashboard-button!)
+  (remove-dashboard-button!)
   (flare/ls)
   (flare/close-all!)
   :rcf)
