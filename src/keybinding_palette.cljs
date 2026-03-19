@@ -73,9 +73,9 @@
                             (not (str/starts-with? command "-")))
       #js {:label title
            :description (prettify-key key-str)
-           :detail (if when-clause
-                     (str command " · when: " when-clause)
-                     command)
+           :detail (str key-str " · " command
+                        (clojure.core/when when-clause
+                          (str " · when: " when-clause)))
            :_command command
            :_args args})))
 
