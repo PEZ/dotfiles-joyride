@@ -16,6 +16,8 @@
 ;;   "command": "joyride.runCode",
 ;;   "args": "(require '[keybinding-palette :as kp] :reload) (kp/show-palette!+)"
 ;; }
+;;
+;; NB: Add "title"s to your keybindings for best experience
 
 (defn- keybindings-path []
   (path/join (os/homedir)
