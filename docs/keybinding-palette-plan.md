@@ -36,7 +36,7 @@ The full pipeline (readFileSync + jsonc/parse + transform) takes ~2ms for 184 en
 
 - `(some? args)` correctly handles `args: false` (a real entry in the file)
 - No need for type-branching — raw JS args pass through directly
-- **Open question**: Vector args (7 entries) — verify whether `executeCommand` expects the array as a single arg or spread. Test one before committing.
+- **Resolved**: Vector args (7 entries) — VS Code keybindings pass `args` as a single value to `executeCommand`, not spread. Our `(executeCommand command args)` is correct.
 
 ### 5. `:when` destructuring gotcha
 
@@ -96,8 +96,9 @@ keybindings.json (JSONC file on disk)
 
 (defn- keybindings-path []
   (path/join (os/homedir)
-             "Library" "Application Support" "Code - Insiders" "User"
-             "keybindings.json"))
+             "Library" "Application Support"
+             (str/replace vscode/env.appName #"^Visual Studio " "")
+             "User" "keybindings.json"))
 
 (defn- read-keybindings
   "Reads and parses keybindings.json (JSONC). Returns JS array."
@@ -157,7 +158,7 @@ keybindings.json (JSONC file on disk)
 
 | Function | Signature | Purpose |
 |----------|-----------|---------|
-| `keybindings-path` | `[] → string` | Construct path to keybindings.json |
+| `keybindings-path` | `[] → string` | Path to keybindings.json (macOS, detects Insiders vs Stable) |
 | `read-keybindings` | `[] → JS Array` | Read + JSONC parse |
 | `js-entry->item` | `[JS Object] → #js QuickPickItem \| nil` | Transform + filter |
 | `execute-keybinding!` | `[#js QuickPickItem] → Promise` | Execute command with args |
@@ -177,9 +178,10 @@ keybindings.json (JSONC file on disk)
 ## Future Enhancements (v2)
 
 - **Recently Used**: Track usage in `globalState`, show recently-used section at top with `QuickPickItemKind.Separator`. Would require switching to `createQuickPick` with `sortByLabel=false`. REPL-validated as feasible.
-- **Context awareness**: Dim/disable items whose `when` clause doesn't match current context (no public API for this currently).
-- **File watcher**: Watch keybindings.json for changes and cache parsed results.
-- **Platform-aware path**: Currently hardcoded for macOS Code Insiders. Could detect platform and VS Code variant.
+
+###  v3
+
+- **Cross-platform paths**: Linux (`~/.config/<app>/User/`) and Windows (`%APPDATA%/<app>/User/`).
 
 ## REPL-Validated Facts
 
@@ -191,5 +193,7 @@ keybindings.json (JSONC file on disk)
 - Full pipeline: ~2ms
 - `:when` destructuring shadows `clojure.core/when` — avoided by using JS property access `(.-when entry)`
 - `(some? false)` → `true` — correctly handles boolean args
+- Vector args: keybindings pass args as single value (not spread) — `(executeCommand cmd args)` is correct
+- Platform detection: `(.-platform js/process)` → `"darwin"`, `vscode/env.appName` → `"Visual Studio Code - Insiders"`, prior art: `(str/replace appName #"^Visual Studio " "")`
 - `globalState` works from Joyride for future "Recently Used" feature
 - `QuickPickItemKind.Separator` exists (value -1) for future grouping
