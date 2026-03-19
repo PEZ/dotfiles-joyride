@@ -93,7 +93,7 @@
           selected (vscode/window.showQuickPick
                     items
                     #js {:title "Keybinding Command Palette"
-                         :placeholder "Search keybindings..."
+                         :placeHolder "Search keybindings..."
                          :matchOnDescription true
                          :matchOnDetail true})]
     (clojure.core/when selected
