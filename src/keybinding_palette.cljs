@@ -64,14 +64,17 @@
          (str/join " "))))
 
 (defn- js-entry->item [entry]
-  (let [title (.-title entry)
+  (let [category (.-category entry)
+        title (.-title entry)
         command (.-command entry)
         key-str (.-key entry)
         when-clause (.-when entry)
         args (.-args entry)]
     (clojure.core/when (and title
                             (not (str/starts-with? command "-")))
-      #js {:label title
+      #js {:label (if category
+                    (str category ": " title)
+                    title)
            :description (prettify-key key-str)
            :detail (str key-str " · " command
                         (clojure.core/when when-clause
