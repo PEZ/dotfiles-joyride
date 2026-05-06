@@ -1,102 +1,76 @@
 ---
-description: 'Expert assistance for Joyride User Script projects - REPL-driven ClojureScript and user space automation of VS Code'
+description: 'Joyride User project — scripts and source files available across all VS Code windows'
 applyTo: '**'
 ---
 
-# Joyride User Scripts Project Assistant
+# Joyride User Project
 
-You are an expert Clojure interactive programmer specializing in Joyride - VS Code automation in user space. Joyride runs SCI ClojureScript in VS Code's Extension Host with full access to the VS Code API. Your main tool is **Joyride evaluation** with which you test and validate code directly in VS Code's runtime environment. The REPL is your superpower - use it to provide tested, working solutions rather than theoretical suggestions.
+This is your Joyride User project at `~/.config/joyride/`. Scripts and
+source files here are available globally across all VS Code windows.
 
-## Essential Information Sources
+The Joyride extension bundles skills with comprehensive API documentation
+and pattern guidance. These instructions focus on this project's specific
+content.
 
-For comprehensive, up-to-date Joyride information, use the `fetch_webpage` tool to access these guides:
+## Project Inventory
 
-- **Joyride agent guide**: https://raw.githubusercontent.com/BetterThanTomorrow/joyride/master/assets/llm-contexts/agent-joyride-eval.md
-  - Technical guide for LLM agents using Joyride evaluation capabilities
-- **Joyride user guide**: https://raw.githubusercontent.com/BetterThanTomorrow/joyride/master/assets/llm-contexts/user-assistance.md
-  - Complete user assistance guide with project structure, patterns, examples, and troubleshooting
+### Scripts (`scripts/`)
 
-These guides contain all the detailed information about Joyride APIs, project structure, common patterns, user workflows, and troubleshooting guidance.
+- `user_activate.cljs` — Activation script, manages disposables
+- `agent_monitor_reveal.cljs`
+- `awesome_copilot.cljs`
+- `awesome_cursorrules_to_copilot.cljs`
+- `clojuredocs.cljs`
+- `create_memory.cljs`
+- `cursorrules_to_copilot.cljs`
+- `fuzzy.cljs`
+- `hello_joyride_user_script.cljs`
+- `highlight_thousands.cljs`
+- `html_to_hiccup.cljs`
+- `js_repl.cljs`
+- `keybinding_palette.cljs`
+- `my_lib.cljs`
+- `philosophers_race.cljs`
+- `print_string.cljs`
+- `prompt_sync.cljs`, `prompt_sync_testing.cljs`
+- `replicant_tictactoe.cljs`
+- `resolve_issue.cljs`
+- `showtime.cljs`
+- `sidecar_hello.cljs`
+- `splunk_test.cljs`
+- `timezones.cljs`
+- `typist.cljs`
+- `vscode_state_explorer.cljs`
+- `webview_editor.cljs`
 
-## Core Philosophy: Interactive Programming (aka REPL-Driven Development)
+### Source (`src/`)
 
-Please start by examining `README.md` and the code in the `scripts` and `src` folders of the project.
+- `my_lib.cljs`, `util.cljs` — Shared utilities
+- `flares.cljs`, `flare_lab.cljs` — Flare experiments
+- `gh_diff.cljs`, `git_fuzzy.cljs` — Git tooling
+- `human_intelligence.cljs` — Human input integration
+- `js_parse.cljs` — JS parsing utilities
+- `lm_fiddle.cljs` — LM experimentation
+- `pastedown.cljs` — Paste-as-markdown
+- `showtime.cljs` — Presentation support
+- `splunk.cljs` — Splunk integration
+- `async_test.cljs` — Async pattern testing
+- `agents/` — Agent utilities, Clojure interactive, instructions selector, memory keeper
+- `ai_workflow_old/` — Legacy AI workflow (human intelligence, mood selector)
+- `bench/` — Benchmarks (object_to_data)
+- `lm_dispatch/` — LM dispatch system (agent core, orchestrator, monitor, state, UI, logging, utils)
+- `prezo/` — Presentation system (next_slide, next_slide_notes)
+- `tts/` — Text-to-speech (audio generation, audio playback)
+- `test/` — Tests for agents, lm_dispatch modules
 
-Only update files when the user asks you to. Prefer using the REPL to evaluate features into existence.
+## Development
 
-You develop the Clojure Way, data oriented, and building up solutions step by small step.
+Use the REPL (`joyride_evaluate_code`) as your primary tool. Develop
+incrementally, evaluate subexpressions, only update files when asked.
+Prefer structural editing tools when editing Clojure files.
 
-The code will be data-oriented, functional code where functions take args and return results. This will be preferred over side effects. But we can use side effects as a last resort to service the larger goal.
-
-Prefer destructuring, and maps for function arguments.
-
-Prefer namespaced keywords. Consider using "synthetic" namespaces, like `:foo/something` to group things.
-
-Prefer flatness over depth when modeling data.
-
-When presented with a problem statement, you work through the problem iteratively step by step with the user.
-
-Each step you evaluate an expression to verify that it does what you think it will do.
-
-The expressions you evaluate do not have to be a complete function, they often are small and simple sub-expressions, the building blocks of functions.
-
-`println` (and things like `js/console.log`) use is HIGHLY discouraged. Prefer evaluating subexpressions to test them vs using println.
-
-The main thing is to work step by step to incrementally develop a solution to a problem. This will help me see the solution you are developing and allow the user to guide its development.
-
-Always verify API usage in the REPL before updating files.
-
-## AI Hacking VS Code in user space with Joyride, using Interactive Programming
-
-When creating disposable items that stay in the UI, such as statusbar buttons, make sure to hold on to a reference to the object so that you can modify it and dispose of it.
-
-Use the VS Code API via the correct interop syntax: vscode/api.method for functions and members, and plain JS objects instead of instantiating (e.g., `#js {:role "user" :content "..."}`).
-
-Whenever in doubt, check with the user, the REPL and the docs, and iterate interactively together with the user!
-
-## Essential APIs and Patterns
-
-To load namespaces/files into the REPL, instead of `load-file` (which isn't implemented) use the Joyride (async) version: `joyride.core/load-file`.
-
-### Namespace Targeting is Critical
-
-When using the **Joyride evaluation** tool, always specify the correct namespace parameter. Functions defined without proper namespace targeting may end up in the wrong namespace (like `user` instead of your intended namespace), making them unavailable where expected.
-
-### VS Code API Access
-```clojure
-(require '["vscode" :as vscode])
-
-;; Common patterns users need
-(vscode/window.showInformationMessage "Hello!")
-(vscode/commands.executeCommand "workbench.action.files.save")
-(vscode/window.showQuickPick #js ["Option 1" "Option 2"])
-```
-
-### Joyride Core API
-```clojure
-(require '[joyride.core :as joyride])
-
-;; Key functions users should know:
-joyride/*file*                    ; Current file path
-(joyride/invoked-script)          ; Script being run (nil in REPL)
-(joyride/extension-context)       ; VS Code extension context
-(joyride/output-channel)          ; Joyride's output channel
-joyride/user-joyride-dir          ; User joyride directory path
-joyride/slurp                     ; Similar to Clojure `slurp`, but is async. Accepts absolute or relative (to the workspace) path. Returns a promise
-joyride/load-file                 ; Similar to Clojure `load-file`, but is async.  Accepts absolute or relative (to the workspace) path. Returns a promise
-```
-
-### Async Operation Handling
-The evaluation tool has an `awaitResult` parameter for handling async operations:
-
-- **`awaitResult: false` (default)**: Returns immediately, suitable for synchronous operations or fire-and-forget async evaluations
-- **`awaitResult: true`**: Waits for async operations to complete before returning results, returns the resolved value of the promise
-
-**When to use `awaitResult: true`:**
-- User input dialogs where you need the response (`showInputBox`, `showQuickPick`)
-- File operations where you need the results (`findFiles`, `readFile`)
-- Extension API calls that return promises
-- Information messages with buttons where you need to know which was clicked
+As new scripts and source files are added to this project, update the
+inventory above.
 
 **When to use `awaitResult: false` (default):**
 - Synchronous operations
