@@ -1,9 +1,29 @@
-(require '["vscode" :as vscode]
-         '["fs" :as fs]
-         '["path" :as path]
-         '["os" :as os]
-         '[clojure.string :as str]
-         '[clojure.edn :as edn])
+;; Workspace-scoped chat session indexing and content search.
+;;
+;; Keybindings:
+;; {
+;;   "title": "Index Chat Sessions",
+;;   "category": "Chat",
+;;   "key": "ctrl+alt+j ctrl+r",
+;;   "command": "joyride.runCode",
+;;   "args": "(do (require '[search-chat-sessions :as scs] :reload) (scs/index-sessions!))"
+;; },
+;; {
+;;   "title": "Search Chat Sessions",
+;;   "category": "Chat",
+;;   "key": "ctrl+alt+j ctrl+alt+r",
+;;   "command": "joyride.runCode",
+;;   "args": "(do (require '[search-chat-sessions :as scs] :reload) (scs/show-session-search))"
+;; },
+
+(ns search-chat-sessions
+  "Workspace-scoped chat session indexing and content search."
+  (:require ["vscode" :as vscode]
+            ["fs" :as fs]
+            ["path" :as path]
+            ["os" :as os]
+            [clojure.string :as str]
+            [clojure.edn :as edn]))
 
 ;; -- find-ws-hash: works for multi-root + single-folder workspaces --
 (defn find-ws-hash []
@@ -178,7 +198,7 @@
 (defn session->item [s query]
   (let [title (session-display-title s)
         turn-count (count (:user-messages s))
-        lbl (str "$(history) " title)
+        lbl (str "$(device-desktop) " title)
         time-str (str turn-count " turns · " (time-ago (:last-active s)))
         all-text (str (str/join " | " (:user-messages s))
                       " | "

@@ -45,8 +45,8 @@
   [content indent-spaces]
   (let [indent (apply str (repeat indent-spaces " "))]
     (-> content
-        (.replace #"^\n+" "")              ; remove leading newlines
-        (.replace #"\n+$" "\n")            ; keep single trailing newline
+        (.replace #"^\n+" "")                       ; remove leading newlines
+        (.replace #"\n+$" "\n")                     ; keep single trailing newline
         ;; Only indent lines that don't already start with spaces (nested lists)
         (.replace #"\n(?! )" (str "\n" indent)))))  ; indent nested content with single space
 
